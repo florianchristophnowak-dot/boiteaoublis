@@ -100,6 +100,17 @@ Fach (Französisch, Englisch, …)
 Verweise. Deshalb kann derselbe Eintrag in beliebig vielen Wortbanken auftauchen, ohne sich zu vervielfachen –
 und beim Schuljahreswechsel bleibt alles erhalten.
 
+### Genus und Artikelfarben
+
+Das Genus wird zuerst am Artikel selbst erkannt (`le`, `la`, `un`, `une`, `el`, `il`, `der`, `die`, `das` …),
+sonst am Formhinweis (`m.`, `f.`, `n.`, auch `masculin`, `weiblich`, `neutrum`). Mehrdeutige Artikel wie
+`l’`, `les` oder `des` richten sich nach dem Formhinweis – deshalb steht bei `l’entreprise` im Feld
+*Formhinweis* ein `f.`. Gibt es keinen Anhaltspunkt, bleibt der Artikel neutral grau: **lieber keine Farbe
+als eine falsche.** Sprachen ohne Artikelgenus (Englisch) bleiben davon unberührt.
+
+Die Farben gelten überall gleich – in der Projektion, in der Wortschatzliste und im Wortbank-Editor.
+Auf dunklem Hintergrund werden dieselben Farben aufgehellt, damit sie lesbar bleiben.
+
 ### Status eines Wortschatzeintrags
 
 | Status | Bedeutung |
@@ -153,8 +164,12 @@ Die Projektionsansicht ist bewusst reduziert: keine Bedienelemente, kein Menü, 
 * **Nichts wird gequetscht.** Passt eine Wortbank nicht auf eine Seite, wird sie automatisch auf mehrere
   Abschnitte verteilt – die Aufteilung entsteht durch echtes Messen im Browser, nicht durch Schätzen.
   Gleichzeitig begrenzt eine einstellbare Obergrenze (Voreinstellung 12) die Einträge je Seite.
-* **Farbe nur mit Bedeutung:** Zielsprache = Tinte, Wortverbindung/Chunk = Akzentfarbe,
-  deutsche Entsprechung = Blau, Beispielsatz = kursiv gedämpft, Live-Hilfe = warmer Akzent.
+* **Farbe nur mit Bedeutung.** Die einzige inhaltliche Farbcodierung ist das **Genus des Artikels**:
+  <br>**maskulin = dunkelblau, feminin = dunkelrot, neutrum = dunkelgrün** – die aus dem Unterricht
+  vertraute Konvention der/die/das. Bei Doppelformen wird jedes Teilstück einzeln eingefärbt
+  („**le** / **la** responsable“). Alles Weitere ist reine Hierarchie: Zielsprache = Tinte,
+  Wortverbindung/Chunk = Akzentfarbe, deutsche Entsprechung = gedämpftes Blaugrau,
+  Beispielsatz = kursiv, Live-Hilfe = warmer Akzent.
 * **Leerstellen** in Satzanfängen werden als ruhige Linie dargestellt (im Text als `___` geschrieben).
 * **Zwischenüberschriften** nach kommunikativer Funktion erscheinen automatisch, sobald ein Abschnitt
   mehrere Funktionen enthält – und werden bei einem Seitenumbruch wiederholt, nie allein gelassen.
@@ -329,15 +344,16 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 89 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 100 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
 prüft unter anderem: Beispieldaten und getrennte Fächer, Anlegen von Lerngruppen, Reihen, Einträgen und
 Satzanfängen, Wortbanken samt Ziehen und Ablegen, die drei Unterstützungsstufen, Fokus- und
 Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion bei fünf Auflösungen
-(dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Schuljahreswechsel, Rückgängig,
-Export/Import/Zusammenführen, CSV und die Dauerhaftigkeit nach einem Neustart.
+(dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Genuserkennung und Artikelfarben in hell und
+dunkel, Schuljahreswechsel, Rückgängig, Export/Import/Zusammenführen, CSV und die Dauerhaftigkeit nach
+einem Neustart.
 Bildschirmfotos landen in `tests/output/`.
 
 ---

@@ -29,9 +29,15 @@
   --stage-muted: #6d7684;
   --stage-line: #ded8ce;
   --stage-accent: #a8502c;
-  --stage-de: #2f5580;
+  --stage-de: #3d5b7a;
   --stage-brand: #1f4f6b;
   --stage-live: #8a5200;
+
+  /* Genus des Artikels – die vertraute Konvention der/die/das.
+     Nur hier tragen Blau, Rot und Grün eine Bedeutung. */
+  --stage-genus-m: #0f3f96;
+  --stage-genus-f: #9c1223;
+  --stage-genus-n: #10603a;
 
   position: absolute;
   inset: 0;
@@ -60,9 +66,14 @@
   --stage-muted: #8c97a5;
   --stage-line: #2b333e;
   --stage-accent: #f0a074;
-  --stage-de: #8fbde8;
+  --stage-de: #9fc3e2;
   --stage-brand: #8ec3e3;
   --stage-live: #f0c273;
+  /* Auf dunklem Grund müssen dieselben Genusfarben aufgehellt werden,
+     damit sie lesbar bleiben – blau, rot und grün bleiben erkennbar. */
+  --stage-genus-m: #7db0f7;
+  --stage-genus-f: #f5919c;
+  --stage-genus-n: #77d3a5;
 }
 
 .bao-stage *, .bao-stage *::before, .bao-stage *::after { box-sizing: border-box; }
@@ -132,6 +143,10 @@
   letter-spacing: -.012em; overflow-wrap: break-word;
 }
 .pitem__term .art { color: var(--stage-muted); font-weight: 500; }
+.pitem__term .art__part[data-gender] { font-weight: 650; }
+.pitem__term .art__part[data-gender="m"] { color: var(--stage-genus-m); }
+.pitem__term .art__part[data-gender="f"] { color: var(--stage-genus-f); }
+.pitem__term .art__part[data-gender="n"] { color: var(--stage-genus-n); }
 .pitem__term .gram {
   font-size: .5em; color: var(--stage-muted); font-weight: 500;
   margin-left: .35em; white-space: nowrap;

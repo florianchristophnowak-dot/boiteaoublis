@@ -388,8 +388,7 @@
         }
       }),
       h('div.lex__mid', {},
-        h('div.lex__term', {}, ui.termLabel(lex),
-          lex.gram ? h('span.gram', { text: lex.gram }) : null),
+        h('div.lex__term', {}, ui.termNode(lex, { gram: !!lex.gram })),
         lex.collocation ? h('div.lex__chunk', { text: lex.collocation }) : null,
         lex.chunk && !lex.collocation ? h('div.lex__chunk', { text: lex.chunk }) : null
       ),

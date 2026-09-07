@@ -81,6 +81,13 @@
 .lex[data-selected="true"] { background: var(--brand-soft); }
 .lex__term { font-weight: 650; font-size: var(--fs-lg); font-family: var(--font-display); }
 .lex__term .gram { font-weight: 400; font-size: var(--fs-sm); color: var(--muted); margin-left: 6px; }
+
+/* Artikel farbig nach Genus – dieselbe Bedeutung wie auf dem Beamer. */
+.art { color: var(--muted); font-weight: 500; }
+.art__part[data-gender] { font-weight: 650; }
+.art__part[data-gender="m"] { color: var(--genus-m); }
+.art__part[data-gender="f"] { color: var(--genus-f); }
+.art__part[data-gender="n"] { color: var(--genus-n); }
 .lex__sub { font-size: var(--fs-sm); color: var(--muted); }
 .lex__mid { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .lex__de { color: var(--ink-2); }

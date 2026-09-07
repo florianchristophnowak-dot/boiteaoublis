@@ -33,6 +33,7 @@
     }
     return {
       text: ui.termLabel(resolved.ref),
+      node: ui.termNode(resolved.ref),
       meta: resolved.ref.translation || resolved.ref.collocation || '',
       status: resolved.ref.status
     };
@@ -130,7 +131,7 @@
         h('span.bitem__grip', { text: '⠿', title: 'Zum Verschieben ziehen' }),
         item.kind === 'starter' ? ui.icon('quote', 14) : ui.icon('list', 14),
         h('span.bitem__label', { title: label.text + (label.meta ? ' – ' + label.meta : '') },
-          label.text,
+          label.node || label.text,
           label.meta ? h('span.bitem__kind', { text: '  ' + label.meta }) : null
         ),
         label.status ? ui.statusChip(label.status) : null,
@@ -269,7 +270,7 @@
           onclick: function () { addToActiveSection(bank, 'lex', lex.id, app); }
         },
           h('span.plus', { text: used ? '✓' : '+' }),
-          h('span.bitem__label', {}, ui.termLabel(lex),
+          h('span.bitem__label', { title: ui.termLabel(lex) }, ui.termNode(lex),
             lex.translation ? h('span.bitem__kind', { text: '  ' + lex.translation }) : null),
           ui.statusChip(lex.status)
         ));

@@ -642,6 +642,92 @@ async function run() {
   }), marker);
   check('Daten sind nach dem Neuladen noch da', persisted.found, JSON.stringify(persisted));
 
+  /* --- 12b. Genusfarben der Artikel --------------------------------------- */
+  section('12b. Artikel farbig nach Genus');
+  const genusLogic = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const pick = (term) => state.lexemes.filter((l) => l.term === term)[0];
+    return {
+      stage: BAO.ui.genderOf(pick('stage')),              // le, m.
+      entreprise: BAO.ui.genderOf(pick('entreprise')),    // l’, f.
+      responsable: BAO.ui.genderOf(pick('responsable')),  // le / la
+      horaires: BAO.ui.genderOf(pick('horaires')),        // les, m. pl.
+      englisch: BAO.ui.genderOf(pick('social media')),    // ohne Artikel
+      deutschDer: BAO.ui.genderOf({ article: 'der', term: 'Vertrag' }),
+      deutschDie: BAO.ui.genderOf({ article: 'die', term: 'Bewerbung' }),
+      deutschDas: BAO.ui.genderOf({ article: 'das', term: 'Praktikum' })
+    };
+  });
+  check('maskulin am Artikel erkannt', genusLogic.stage === 'm', genusLogic.stage);
+  check('feminin über den Formhinweis erkannt („l’“ + f.)', genusLogic.entreprise === 'f', genusLogic.entreprise);
+  check('doppelte Form „le / la“ erkannt', genusLogic.responsable === 'mf', genusLogic.responsable);
+  check('Plural greift auf den Formhinweis zurück', genusLogic.horaires === 'm', genusLogic.horaires);
+  check('ohne Anhaltspunkt keine Farbe', genusLogic.englisch === '', genusLogic.englisch);
+  check('deutsche Artikel der/die/das erkannt',
+    genusLogic.deutschDer === 'm' && genusLogic.deutschDie === 'f' && genusLogic.deutschDas === 'n',
+    JSON.stringify(genusLogic));
+
+  await page.evaluate(() => {
+    BAO.app.setContext('sub_fr', 'grp_fr9b');
+    BAO.session.start('bnk_fr_stage', { level: 2 });
+    BAO.app.go('projektion');
+    BAO.output.openOverlay();
+    BAO.session.renderAll({ reason: 'overlay-opened' });
+  });
+  await page.waitForTimeout(500);
+
+  function rgb(value) {
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value || '');
+    return m ? { r: +m[1], g: +m[2], b: +m[3] } : null;
+  }
+
+  const stageColours = await page.evaluate(() => {
+    const read = (gender) => {
+      const el = document.querySelector('.stage-overlay .art__part[data-gender="' + gender + '"]');
+      return el ? { text: el.textContent, color: getComputedStyle(el).color } : null;
+    };
+    return { m: read('m'), f: read('f'), plain: document.querySelectorAll('.stage-overlay .art__part:not([data-gender])').length };
+  });
+  const mColour = stageColours.m && rgb(stageColours.m.color);
+  const fColour = stageColours.f && rgb(stageColours.f.color);
+  check('maskuliner Artikel wird in der Projektion blau dargestellt',
+    !!mColour && mColour.b > mColour.r + 40, JSON.stringify(stageColours.m));
+  check('femininer Artikel wird in der Projektion rot dargestellt',
+    !!fColour && fColour.r > fColour.b + 40, JSON.stringify(stageColours.f));
+  await page.screenshot({ path: join(shotDir, 'genusfarben.png') });
+
+  const darkColours = await page.evaluate(() => {
+    BAO.session.setTheme('dark');
+    const read = (gender) => {
+      const el = document.querySelector('.stage-overlay .art__part[data-gender="' + gender + '"]');
+      return el ? getComputedStyle(el).color : '';
+    };
+    const bg = getComputedStyle(document.querySelector('.stage-overlay .bao-stage')).backgroundColor;
+    const result = { m: read('m'), f: read('f'), bg: bg };
+    BAO.session.setTheme('light');
+    return result;
+  });
+  const darkM = rgb(darkColours.m);
+  const darkF = rgb(darkColours.f);
+  check('auf dunklem Grund bleiben die Genusfarben hell genug',
+    !!darkM && !!darkF && darkM.b > 180 && darkF.r > 180, JSON.stringify(darkColours));
+  check('auch aufgehellt bleibt blau blau und rot rot',
+    darkM.b > darkM.r + 40 && darkF.r > darkF.b + 40, JSON.stringify(darkColours));
+
+  await page.evaluate(() => { BAO.output.closeOverlay(); BAO.app.go('wortschatz'); });
+  await page.waitForTimeout(400);
+  const listColours = await page.evaluate(() => {
+    const read = (gender) => {
+      const el = document.querySelector('.lex__term .art__part[data-gender="' + gender + '"]');
+      return el ? getComputedStyle(el).color : '';
+    };
+    return { m: read('m'), f: read('f') };
+  });
+  const listM = rgb(listColours.m);
+  const listF = rgb(listColours.f);
+  check('gleiche Genusfarben in der Wortschatzliste',
+    !!listM && !!listF && listM.b > listM.r + 40 && listF.r > listF.b + 40, JSON.stringify(listColours));
+
   /* --- 13. Alle Ansichten zeichnen sich fehlerfrei ------------------------ */
   section('13. Alle Ansichten');
   for (const route of ['start', 'wortschatz', 'satzanfaenge', 'wortbanken', 'projektion', 'verwaltung', 'daten']) {

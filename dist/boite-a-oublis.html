@@ -1,6 +1,6 @@
 <!--
   Boîte à Oublis 1.0.0 – © Florian Nowak
-  Erzeugt am 2026-09-07T21:23:45.698Z aus app/index.html.
+  Erzeugt am 2026-09-07T21:39:03.440Z aus app/index.html.
   Diese Datei ist vollständig eigenständig: einfach im Browser öffnen.
 -->
 <!doctype html>
@@ -88,6 +88,11 @@
   --st-archived: #6b7382;
   --st-archived-soft: #eceae7;
 
+  /* --- Genus des Artikels (gleiche Bedeutung wie in der Projektion) */
+  --genus-m: #0f3f96;
+  --genus-f: #9c1223;
+  --genus-n: #10603a;
+
   --hit: 38px;              /* Mindesthöhe für Bedienelemente */
   --rail-w: 218px;
   --topbar-h: 56px;
@@ -129,6 +134,10 @@
   --st-archived: #9aa4b2;
   --st-archived-soft: #232830;
 
+  --genus-m: #7db0f7;
+  --genus-f: #f5919c;
+  --genus-n: #77d3a5;
+
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-2: 0 6px 18px rgba(0, 0, 0, .45);
   --shadow-3: 0 18px 48px rgba(0, 0, 0, .6);
@@ -165,6 +174,9 @@
     --st-core-soft: #262238;
     --st-archived: #9aa4b2;
     --st-archived-soft: #232830;
+    --genus-m: #7db0f7;
+    --genus-f: #f5919c;
+    --genus-n: #77d3a5;
     --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
     --shadow-2: 0 6px 18px rgba(0, 0, 0, .45);
     --shadow-3: 0 18px 48px rgba(0, 0, 0, .6);
@@ -639,6 +651,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 .lex[data-selected="true"] { background: var(--brand-soft); }
 .lex__term { font-weight: 650; font-size: var(--fs-lg); font-family: var(--font-display); }
 .lex__term .gram { font-weight: 400; font-size: var(--fs-sm); color: var(--muted); margin-left: 6px; }
+
+/* Artikel farbig nach Genus – dieselbe Bedeutung wie auf dem Beamer. */
+.art { color: var(--muted); font-weight: 500; }
+.art__part[data-gender] { font-weight: 650; }
+.art__part[data-gender="m"] { color: var(--genus-m); }
+.art__part[data-gender="f"] { color: var(--genus-f); }
+.art__part[data-gender="n"] { color: var(--genus-n); }
 .lex__sub { font-size: var(--fs-sm); color: var(--muted); }
 .lex__mid { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .lex__de { color: var(--ink-2); }
@@ -3401,6 +3420,112 @@ body[data-projecting="true"] .toast-root { display: none; }
     return [article, lex.term].filter(Boolean).join(' ');
   }
 
+  /* --- Genus des Artikels ----------------------------------------------------
+     Artikel werden farbig ausgezeichnet: maskulin blau, feminin rot, neutrum
+     grün – die aus dem Unterricht vertraute Konvention der/die/das. Die Farbe
+     ist die einzige Bedeutung, die sie trägt.
+
+     Erkannt wird das Genus zuerst am Artikel selbst, sonst am Formhinweis
+     ("m.", "f.", "n."). Steht dort nichts, bleibt der Artikel neutral grau –
+     lieber keine Farbe als eine falsche. */
+
+  var ARTICLE_GENDER = {
+    // romanische Sprachen
+    le: 'm', la: 'f', un: 'm', une: 'f',
+    el: 'm', lo: 'm', il: 'm', uno: 'm', una: 'f',
+    // Deutsch
+    der: 'm', die: 'f', das: 'n', eine: 'f'
+    // Bewusst nicht aufgeführt: les, des, los, las, l', the, ein …
+    // Sie sind mehrdeutig und richten sich nach dem Formhinweis.
+  };
+
+  /** Genus aus einem Formhinweis wie "m.", "f. pl." oder "neutrum". */
+  function genderFromGram(gram) {
+    if (!gram) return '';
+    var text = ' ' + util.fold(gram).replace(/[.,;:()\[\]/]/g, ' ') + ' ';
+    if (/ (f|fem|feminin|feminine|weiblich) /.test(text)) return 'f';
+    if (/ (n|neutr|neutrum|neutral|sachlich) /.test(text)) return 'n';
+    if (/ (m|masc|mask|maskulin|masculine|mannlich) /.test(text)) return 'm';
+    return '';
+  }
+
+  function genderOfToken(token) {
+    var key = util.fold(token).replace(/[\u2019']/g, '').replace(/[^a-z]/g, '');
+    return ARTICLE_GENDER[key] || '';
+  }
+
+  /** Genus eines Eintrags, soweit eindeutig bestimmbar. */
+  function genderOf(lex) {
+    if (!lex) return '';
+    var article = displayArticle(lex);
+    var found = {};
+    String(article).split(/[\s/]+/).forEach(function (token) {
+      var gender = genderOfToken(token);
+      if (gender) found[gender] = true;
+    });
+    var list = Object.keys(found);
+    if (list.length === 1) return list[0];
+    if (list.length > 1) return 'mf';
+    return genderFromGram(lex.gram);
+  }
+
+  /**
+   * Artikel als Knoten – jedes Teilstück bekommt seine eigene Genusfarbe.
+   * So wird aus "le / la" ein blaues „le“ und ein rotes „la“.
+   */
+  function articleNode(lex, doc) {
+    doc = doc || document;
+    var article = displayArticle(lex);
+    if (!article) return null;
+    var fallback = genderFromGram(lex.gram);
+
+    var wrap = doc.createElement('span');
+    wrap.className = 'art';
+    String(article).split(/(\s+|\/)/).forEach(function (token) {
+      if (!token) return;
+      if (/^(\s+|\/)$/.test(token)) {
+        wrap.appendChild(doc.createTextNode(token));
+        return;
+      }
+      var gender = genderOfToken(token) || fallback;
+      var part = doc.createElement('span');
+      part.className = 'art__part';
+      if (gender) part.dataset.gender = gender;
+      part.textContent = token;
+      wrap.appendChild(part);
+    });
+    return wrap;
+  }
+
+  /**
+   * Vollständige Wortform als Knoten: farbiger Artikel, Zielwort, Formhinweis.
+   * Wird in der Projektion und in den Listen der Lehreransicht verwendet,
+   * damit die Genusfarbe überall dieselbe Bedeutung hat.
+   */
+  function termNode(lex, options) {
+    options = options || {};
+    var doc = options.doc || document;
+    var fragment = doc.createDocumentFragment();
+    if (!lex) return fragment;
+
+    var article = articleNode(lex, doc);
+    if (article) {
+      fragment.appendChild(article);
+      // Elidierte Artikel („l’“) stehen ohne Leerzeichen am Wort.
+      var text = article.textContent;
+      if (text.charAt(text.length - 1) !== '\u2019') fragment.appendChild(doc.createTextNode(' '));
+    }
+    fragment.appendChild(doc.createTextNode(lex.term || ''));
+
+    if (options.gram && lex.gram) {
+      var gram = doc.createElement('span');
+      gram.className = options.gramClass || 'gram';
+      gram.textContent = lex.gram;
+      fragment.appendChild(gram);
+    }
+    return fragment;
+  }
+
   /**
    * Wandelt Leerstellen ("___") in ruhige Linien um.
    * Wird sowohl in der Lehreransicht als auch auf dem Beamer verwendet.
@@ -3558,7 +3683,11 @@ body[data-projecting="true"] .toast-root { display: none; }
     variantPips: variantPips,
     favButton: favButton,
     termLabel: termLabel,
+    termNode: termNode,
     displayArticle: displayArticle,
+    articleNode: articleNode,
+    genderOf: genderOf,
+    genderFromGram: genderFromGram,
     gapText: gapText,
     plainStarterText: plainStarterText,
     emptyState: emptyState,
@@ -3607,9 +3736,15 @@ body[data-projecting="true"] .toast-root { display: none; }
   --stage-muted: #6d7684;
   --stage-line: #ded8ce;
   --stage-accent: #a8502c;
-  --stage-de: #2f5580;
+  --stage-de: #3d5b7a;
   --stage-brand: #1f4f6b;
   --stage-live: #8a5200;
+
+  /* Genus des Artikels – die vertraute Konvention der/die/das.
+     Nur hier tragen Blau, Rot und Grün eine Bedeutung. */
+  --stage-genus-m: #0f3f96;
+  --stage-genus-f: #9c1223;
+  --stage-genus-n: #10603a;
 
   position: absolute;
   inset: 0;
@@ -3638,9 +3773,14 @@ body[data-projecting="true"] .toast-root { display: none; }
   --stage-muted: #8c97a5;
   --stage-line: #2b333e;
   --stage-accent: #f0a074;
-  --stage-de: #8fbde8;
+  --stage-de: #9fc3e2;
   --stage-brand: #8ec3e3;
   --stage-live: #f0c273;
+  /* Auf dunklem Grund müssen dieselben Genusfarben aufgehellt werden,
+     damit sie lesbar bleiben – blau, rot und grün bleiben erkennbar. */
+  --stage-genus-m: #7db0f7;
+  --stage-genus-f: #f5919c;
+  --stage-genus-n: #77d3a5;
 }
 
 .bao-stage *, .bao-stage *::before, .bao-stage *::after { box-sizing: border-box; }
@@ -3710,6 +3850,10 @@ body[data-projecting="true"] .toast-root { display: none; }
   letter-spacing: -.012em; overflow-wrap: break-word;
 }
 .pitem__term .art { color: var(--stage-muted); font-weight: 500; }
+.pitem__term .art__part[data-gender] { font-weight: 650; }
+.pitem__term .art__part[data-gender="m"] { color: var(--stage-genus-m); }
+.pitem__term .art__part[data-gender="f"] { color: var(--stage-genus-f); }
+.pitem__term .art__part[data-gender="n"] { color: var(--stage-genus-n); }
 .pitem__term .gram {
   font-size: .5em; color: var(--stage-muted); font-weight: 500;
   margin-left: .35em; white-space: nowrap;
@@ -4160,21 +4304,11 @@ body { position: relative; }
 
     var term = doc.createElement('div');
     term.className = 'pitem__term';
-    var article = deck.fields.article ? ui.displayArticle(lex) : '';
-    if (article) {
-      var art = doc.createElement('span');
-      art.className = 'art';
-      // Elidierter Artikel („l’“) steht ohne Leerzeichen am Wort.
-      art.textContent = article.charAt(article.length - 1) === '\u2019' ? article : article + ' ';
-      term.appendChild(art);
-    }
-    term.appendChild(doc.createTextNode(lex.term || ''));
-    if (deck.fields.gram && lex.gram) {
-      var gram = doc.createElement('span');
-      gram.className = 'gram';
-      gram.textContent = lex.gram;
-      term.appendChild(gram);
-    }
+    // Artikel farbig nach Genus, Zielwort, optionaler Formhinweis.
+    term.appendChild(ui.termNode(deck.fields.article ? lex : Object.assign({}, lex, { article: '' }), {
+      doc: doc,
+      gram: !!(deck.fields.gram && lex.gram)
+    }));
     node.appendChild(term);
 
     deckLib.lexemeLines(lex, deck.fields, layout).forEach(function (line) {
@@ -5881,8 +6015,7 @@ body { position: relative; }
         }
       }),
       h('div.lex__mid', {},
-        h('div.lex__term', {}, ui.termLabel(lex),
-          lex.gram ? h('span.gram', { text: lex.gram }) : null),
+        h('div.lex__term', {}, ui.termNode(lex, { gram: !!lex.gram })),
         lex.collocation ? h('div.lex__chunk', { text: lex.collocation }) : null,
         lex.chunk && !lex.collocation ? h('div.lex__chunk', { text: lex.chunk }) : null
       ),
@@ -6678,6 +6811,7 @@ body { position: relative; }
     }
     return {
       text: ui.termLabel(resolved.ref),
+      node: ui.termNode(resolved.ref),
       meta: resolved.ref.translation || resolved.ref.collocation || '',
       status: resolved.ref.status
     };
@@ -6775,7 +6909,7 @@ body { position: relative; }
         h('span.bitem__grip', { text: '⠿', title: 'Zum Verschieben ziehen' }),
         item.kind === 'starter' ? ui.icon('quote', 14) : ui.icon('list', 14),
         h('span.bitem__label', { title: label.text + (label.meta ? ' – ' + label.meta : '') },
-          label.text,
+          label.node || label.text,
           label.meta ? h('span.bitem__kind', { text: '  ' + label.meta }) : null
         ),
         label.status ? ui.statusChip(label.status) : null,
@@ -6914,7 +7048,7 @@ body { position: relative; }
           onclick: function () { addToActiveSection(bank, 'lex', lex.id, app); }
         },
           h('span.plus', { text: used ? '✓' : '+' }),
-          h('span.bitem__label', {}, ui.termLabel(lex),
+          h('span.bitem__label', { title: ui.termLabel(lex) }, ui.termNode(lex),
             lex.translation ? h('span.bitem__kind', { text: '  ' + lex.translation }) : null),
           ui.statusChip(lex.status)
         ));

@@ -56,21 +56,11 @@
 
     var term = doc.createElement('div');
     term.className = 'pitem__term';
-    var article = deck.fields.article ? ui.displayArticle(lex) : '';
-    if (article) {
-      var art = doc.createElement('span');
-      art.className = 'art';
-      // Elidierter Artikel („l’“) steht ohne Leerzeichen am Wort.
-      art.textContent = article.charAt(article.length - 1) === '\u2019' ? article : article + ' ';
-      term.appendChild(art);
-    }
-    term.appendChild(doc.createTextNode(lex.term || ''));
-    if (deck.fields.gram && lex.gram) {
-      var gram = doc.createElement('span');
-      gram.className = 'gram';
-      gram.textContent = lex.gram;
-      term.appendChild(gram);
-    }
+    // Artikel farbig nach Genus, Zielwort, optionaler Formhinweis.
+    term.appendChild(ui.termNode(deck.fields.article ? lex : Object.assign({}, lex, { article: '' }), {
+      doc: doc,
+      gram: !!(deck.fields.gram && lex.gram)
+    }));
     node.appendChild(term);
 
     deckLib.lexemeLines(lex, deck.fields, layout).forEach(function (line) {

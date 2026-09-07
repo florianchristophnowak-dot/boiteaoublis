@@ -116,6 +116,112 @@
     return [article, lex.term].filter(Boolean).join(' ');
   }
 
+  /* --- Genus des Artikels ----------------------------------------------------
+     Artikel werden farbig ausgezeichnet: maskulin blau, feminin rot, neutrum
+     grün – die aus dem Unterricht vertraute Konvention der/die/das. Die Farbe
+     ist die einzige Bedeutung, die sie trägt.
+
+     Erkannt wird das Genus zuerst am Artikel selbst, sonst am Formhinweis
+     ("m.", "f.", "n."). Steht dort nichts, bleibt der Artikel neutral grau –
+     lieber keine Farbe als eine falsche. */
+
+  var ARTICLE_GENDER = {
+    // romanische Sprachen
+    le: 'm', la: 'f', un: 'm', une: 'f',
+    el: 'm', lo: 'm', il: 'm', uno: 'm', una: 'f',
+    // Deutsch
+    der: 'm', die: 'f', das: 'n', eine: 'f'
+    // Bewusst nicht aufgeführt: les, des, los, las, l', the, ein …
+    // Sie sind mehrdeutig und richten sich nach dem Formhinweis.
+  };
+
+  /** Genus aus einem Formhinweis wie "m.", "f. pl." oder "neutrum". */
+  function genderFromGram(gram) {
+    if (!gram) return '';
+    var text = ' ' + util.fold(gram).replace(/[.,;:()\[\]/]/g, ' ') + ' ';
+    if (/ (f|fem|feminin|feminine|weiblich) /.test(text)) return 'f';
+    if (/ (n|neutr|neutrum|neutral|sachlich) /.test(text)) return 'n';
+    if (/ (m|masc|mask|maskulin|masculine|mannlich) /.test(text)) return 'm';
+    return '';
+  }
+
+  function genderOfToken(token) {
+    var key = util.fold(token).replace(/[\u2019']/g, '').replace(/[^a-z]/g, '');
+    return ARTICLE_GENDER[key] || '';
+  }
+
+  /** Genus eines Eintrags, soweit eindeutig bestimmbar. */
+  function genderOf(lex) {
+    if (!lex) return '';
+    var article = displayArticle(lex);
+    var found = {};
+    String(article).split(/[\s/]+/).forEach(function (token) {
+      var gender = genderOfToken(token);
+      if (gender) found[gender] = true;
+    });
+    var list = Object.keys(found);
+    if (list.length === 1) return list[0];
+    if (list.length > 1) return 'mf';
+    return genderFromGram(lex.gram);
+  }
+
+  /**
+   * Artikel als Knoten – jedes Teilstück bekommt seine eigene Genusfarbe.
+   * So wird aus "le / la" ein blaues „le“ und ein rotes „la“.
+   */
+  function articleNode(lex, doc) {
+    doc = doc || document;
+    var article = displayArticle(lex);
+    if (!article) return null;
+    var fallback = genderFromGram(lex.gram);
+
+    var wrap = doc.createElement('span');
+    wrap.className = 'art';
+    String(article).split(/(\s+|\/)/).forEach(function (token) {
+      if (!token) return;
+      if (/^(\s+|\/)$/.test(token)) {
+        wrap.appendChild(doc.createTextNode(token));
+        return;
+      }
+      var gender = genderOfToken(token) || fallback;
+      var part = doc.createElement('span');
+      part.className = 'art__part';
+      if (gender) part.dataset.gender = gender;
+      part.textContent = token;
+      wrap.appendChild(part);
+    });
+    return wrap;
+  }
+
+  /**
+   * Vollständige Wortform als Knoten: farbiger Artikel, Zielwort, Formhinweis.
+   * Wird in der Projektion und in den Listen der Lehreransicht verwendet,
+   * damit die Genusfarbe überall dieselbe Bedeutung hat.
+   */
+  function termNode(lex, options) {
+    options = options || {};
+    var doc = options.doc || document;
+    var fragment = doc.createDocumentFragment();
+    if (!lex) return fragment;
+
+    var article = articleNode(lex, doc);
+    if (article) {
+      fragment.appendChild(article);
+      // Elidierte Artikel („l’“) stehen ohne Leerzeichen am Wort.
+      var text = article.textContent;
+      if (text.charAt(text.length - 1) !== '\u2019') fragment.appendChild(doc.createTextNode(' '));
+    }
+    fragment.appendChild(doc.createTextNode(lex.term || ''));
+
+    if (options.gram && lex.gram) {
+      var gram = doc.createElement('span');
+      gram.className = options.gramClass || 'gram';
+      gram.textContent = lex.gram;
+      fragment.appendChild(gram);
+    }
+    return fragment;
+  }
+
   /**
    * Wandelt Leerstellen ("___") in ruhige Linien um.
    * Wird sowohl in der Lehreransicht als auch auf dem Beamer verwendet.
@@ -273,7 +379,11 @@
     variantPips: variantPips,
     favButton: favButton,
     termLabel: termLabel,
+    termNode: termNode,
     displayArticle: displayArticle,
+    articleNode: articleNode,
+    genderOf: genderOf,
+    genderFromGram: genderFromGram,
     gapText: gapText,
     plainStarterText: plainStarterText,
     emptyState: emptyState,

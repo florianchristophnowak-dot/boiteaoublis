@@ -66,7 +66,7 @@ Die Lerngruppe ist der Eigentümer des Wortschatzbestands. Beim Schuljahreswechs
 |---|---|
 | `term` | Zielwort **ohne** Artikel |
 | `article` | „le“, „la“, „l’“, „le / la“ … (wird nicht doppelt angezeigt, wenn er schon im Zielwort steht) |
-| `gram` | Form- oder Pluralhinweis („m.“, „pl. les stages“, „adj.“) |
+| `gram` | Form- oder Pluralhinweis („m.“, „pl. les stages“, „adj.“) – bestimmt bei mehrdeutigen Artikeln das Genus |
 | `collocation` | typische Wortverbindung |
 | `chunk` | kurzer, sofort verwendbarer Baustein |
 | `explanation` | zielsprachige Erklärung |
@@ -151,3 +151,23 @@ eine Version anheben. Eine neue Version bedeutet:
 
 Fehlende Felder werden zusätzlich beim Laden durch `validateState` ergänzt, sodass auch unvollständige
 Datensätze nutzbar bleiben.
+
+## Genus der Artikel
+
+`BAO.ui.genderOf(lexeme)` liefert `'m'`, `'f'`, `'n'`, `'mf'` (Doppelform) oder `''` (unbestimmt).
+Die Reihenfolge der Auswertung:
+
+1. **Artikel selbst** – `le, un, el, lo, il, uno, der` → maskulin; `la, une, una, die, eine` → feminin;
+   `das` → neutrum. Bewusst *nicht* in der Tabelle: `les, des, los, las, l’, the, ein` – sie sind
+   mehrdeutig.
+2. **Formhinweis** (`gram`) – `m.`, `f.`, `n.` sowie ausgeschriebene Formen wie `maskulin`, `weiblich`,
+   `neutrum`. Der Hinweis greift auch für die mehrdeutigen Artikel aus Schritt 1.
+3. Sonst: keine Farbe.
+
+`BAO.ui.termNode(lexeme, { doc, gram })` erzeugt daraus die Darstellung. Jedes Teilstück des Artikels
+bekommt ein eigenes `<span class="art__part" data-gender="…">`, damit „le / la“ zweifarbig erscheint.
+Die Farben stehen als Token `--genus-m/-f/-n` (Lehreransicht) und `--stage-genus-m/-f/-n` (Projektion,
+jeweils für hell und dunkel).
+
+Eine weitere Sprache braucht dafür keinen Programmeingriff, solange ihre Artikel in der Tabelle stehen
+oder die Lehrkraft den Formhinweis pflegt.
