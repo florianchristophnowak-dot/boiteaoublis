@@ -98,14 +98,16 @@
       function onKey(event) {
         if (openStack[openStack.length - 1] !== api) return;
         if (event.key === 'Escape') {
+          // Nicht an die Projektionssteuerung durchreichen.
           event.preventDefault();
+          event.stopPropagation();
           if (config.dismissable === false) return;
           finish(null);
           return;
         }
         if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
           var primary = actions.filter(function (a) { return a.kind === 'primary'; })[0];
-          if (primary) { event.preventDefault(); choose(primary); }
+          if (primary) { event.preventDefault(); event.stopPropagation(); choose(primary); }
           return;
         }
         if (event.key === 'Tab') {

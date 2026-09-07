@@ -239,6 +239,14 @@ async function run() {
   await page.waitForTimeout(400);
 
   check('Vollbildfläche geöffnet', await page.isVisible('.stage-overlay .bao-stage'));
+
+  await page.evaluate(() => BAO.toast.show('Diese Meldung darf niemand sehen.'));
+  await page.waitForTimeout(150);
+  check('Kurzmeldungen erscheinen nicht auf der Projektionsfläche',
+    (await page.isVisible('.toast')) === false);
+
+  check('keine Bedienelemente in der Projektion',
+    await page.evaluate(() => document.querySelectorAll('.stage-overlay button, .stage-overlay input').length === 0));
   const deckInfo = await page.evaluate(() => {
     const deck = BAO.session.getDeck();
     return { slides: deck.slides.length, sections: deck.sections.length };

@@ -104,6 +104,25 @@
 }
 .stage__body[data-layout="starters"] { gap: calc(var(--u) * 1.5) calc(var(--u) * 3); }
 .stage__body[data-layout="impulse"] { justify-items: center; gap: calc(var(--u) * 2.4); }
+
+/* Wortschatzseiten fließen spaltenweise: erst Spalte 1 von oben nach unten,
+   dann Spalte 2. Das packt unterschiedlich hohe Einträge dicht und entspricht
+   der gewohnten Lesart einer Wortliste. */
+.stage__body[data-layout="cards"] {
+  display: block;
+  columns: var(--cols, 2);
+  column-gap: calc(var(--u) * 2.8);
+  /* Ausgeglichene Spalten: Auch eine halb volle Seite wirkt aufgeräumt.
+     Passt der Inhalt nicht, entstehen weitere Spalten – das erkennt die
+     Messung in render.js an der Breite und bricht die Seite um. */
+  column-fill: balance;
+}
+.stage__body[data-layout="cards"] .pitem {
+  break-inside: avoid;
+  margin-bottom: calc(var(--u) * 1.3);
+}
+.stage__body[data-layout="cards"] .pitem:last-child { margin-bottom: 0; }
+
 /* Während der Messung oben ausrichten – nur so ist ein Überlauf messbar. */
 .stage__body[data-measuring="true"] { visibility: hidden; align-content: start; }
 

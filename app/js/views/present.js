@@ -40,6 +40,9 @@
       if (route.path !== 'projektion' && !BAO.output.isOverlayOpen()) return;
       if (isTyping(event)) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
+      // Solange ein Dialog offen ist, gehört die Tastatur dem Dialog.
+      var modalRoot = document.getElementById('modal-root');
+      if (modalRoot && modalRoot.firstChild) return;
     }
 
     var key = event.key;

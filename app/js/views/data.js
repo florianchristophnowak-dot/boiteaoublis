@@ -26,7 +26,8 @@
     if (!lexemes.length) { BAO.toast.error('Diese Lerngruppe hat noch keinen Wortschatz.'); return; }
     var csv = BAO.csv.lexemesToCsv(lexemes);
     var name = 'wortschatz_' + util.fold(ctx.subject.name).slice(0, 3) + '_' + util.fold(ctx.group.name) + '.csv';
-    util.downloadText(name, '﻿' + csv, 'text/csv');
+    // Byte Order Mark, damit Excel die Umlaute richtig erkennt.
+    util.downloadText(name, '\uFEFF' + csv, 'text/csv');
     BAO.toast.ok(lexemes.length + ' Einträge als CSV gespeichert.');
   }
 

@@ -27,3 +27,8 @@
   position: fixed; inset: 0; z-index: 70; background: #05070a; overflow: hidden;
 }
 .stage-overlay .bao-stage { position: absolute; inset: 0; }
+
+/* Während der Vollbild-Projektion auf demselben Bildschirm bleiben
+   Kurzmeldungen der Lehreransicht unsichtbar – die Lernenden sollen nur die
+   sprachlichen Hilfen sehen. Dialoge bleiben bewusst bedienbar. */
+body[data-projecting="true"] .toast-root { display: none; }

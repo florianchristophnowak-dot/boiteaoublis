@@ -190,6 +190,8 @@
     overlayNode.appendChild(stage.root);
     overlayNode.appendChild(hint);
     document.getElementById('overlay-root').appendChild(overlayNode);
+    // Kurzmeldungen der Lehreransicht dürfen nicht auf der Leinwand landen.
+    document.body.dataset.projecting = 'true';
     showHint(stage, 6000);
 
     overlayNode.addEventListener('mousemove', function () { showHint(stage, 2500); });
@@ -212,6 +214,7 @@
     }
     if (overlayNode.parentNode) overlayNode.parentNode.removeChild(overlayNode);
     overlayNode = null;
+    delete document.body.dataset.projecting;
     removeSurface('overlay');
     notifyChange('overlay-closed');
   }

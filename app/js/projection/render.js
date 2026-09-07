@@ -174,6 +174,16 @@
 
   /* --- Messbasierte Seitenaufteilung ---------------------------------------- */
 
+  /**
+   * Läuft der Inhalt über die Seite hinaus?
+   * Das Raster wächst nach unten, der Spaltenfluss nach rechts – geprüft wird
+   * deshalb beides.
+   */
+  function overflows(stage) {
+    var body = stage.body;
+    return body.scrollHeight > body.clientHeight + 1 || body.scrollWidth > body.clientWidth + 1;
+  }
+
   /** Kopie einer Zwischenüberschrift für die Fortsetzung auf der nächsten Seite. */
   function continuation(group, index) {
     return { kind: 'group', key: group.key + '__c' + index, label: group.label };
@@ -217,7 +227,7 @@
       if (deckLib.countEntries(items) > maxItems) return false;
       util.clear(stage.body);
       items.forEach(function (item) { stage.body.appendChild(buildItemNode(doc, item, deck, section.layout)); });
-      return stage.body.scrollHeight <= stage.body.clientHeight + 1;
+      return !overflows(stage);
     });
   }
 
@@ -272,8 +282,7 @@
         current.push(item);
 
         var entries = deckLib.countEntries(current);
-        var overflows = stage.body.scrollHeight > stage.body.clientHeight + 1;
-        if (overflows && entries > 1) {
+        if (overflows(stage) && entries > 1) {
           current.pop();
           current = closePage([item]);
           drawPage(current);
