@@ -1,0 +1,15 @@
+{
+  "name": "boite-a-oublis",
+  "version": "1.0.0",
+  "description": "Boîte à Oublis – lokale Wortschatz- und Projektions-App für den Fremdsprachenunterricht",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "author": "Florian Nowak",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "build": "node tools/build.mjs",
+    "check": "node tools/check.mjs",
+    "test": "node tests/e2e.mjs"
+  }
+}

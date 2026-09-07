@@ -1,0 +1,29 @@
+/* ==========================================================================
+   Rahmen der Projektion innerhalb der Lehreransicht
+   Die eigentliche Bühnengestaltung liegt in js/projection/stage-style.js,
+   weil sie auch in das separate Beamerfenster injiziert werden muss.
+   ========================================================================== */
+
+/* Vorschau in der Steuerungsansicht */
+.stage-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  background: #0d1116;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+.stage-frame .bao-stage { position: absolute; inset: 0; }
+.stage-frame[data-mirrored="true"]::after {
+  content: "Spiegel des Beamerfensters";
+  position: absolute; right: 8px; top: 8px;
+  background: rgba(16, 21, 28, .72); color: #fff;
+  font-size: 11px; padding: 2px 8px; border-radius: 999px; letter-spacing: .02em;
+}
+
+/* Vollbild-Überlagerung als Rückfallebene ohne zweites Fenster */
+.overlay-root:empty { display: none; }
+.stage-overlay {
+  position: fixed; inset: 0; z-index: 70; background: #05070a; overflow: hidden;
+}
+.stage-overlay .bao-stage { position: absolute; inset: 0; }

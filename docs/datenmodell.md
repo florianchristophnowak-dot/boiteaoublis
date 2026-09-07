@@ -1,0 +1,153 @@
+# Datenmodell
+
+Referenz für Weiterentwicklung und für das Verständnis einer Sicherungsdatei.
+Quelle der Wahrheit ist `app/js/core/schema.js`.
+
+## Aufbau einer Sicherungsdatei
+
+```json
+{
+  "kind": "boite-a-oublis.backup",
+  "appVersion": "1.0.0",
+  "schemaVersion": 1,
+  "exportedAt": "2026-09-07T18:12:00.000Z",
+  "counts": { "subjects": 2, "groups": 2, "…": 0 },
+  "data": { /* der vollständige Zustand, siehe unten */ }
+}
+```
+
+Ein Import akzeptiert auch den bloßen Zustand (ohne Hülle), sofern er `schemaVersion` und `lexemes` enthält.
+
+## Zustand
+
+```js
+{
+  schemaVersion: 1,
+  meta:     { appVersion, createdAt, updatedAt, seededAt },
+  settings: { … },                 // siehe unten
+  ui:       { subjectId, groupId, recentBanks[], recentGroups[] },
+  functions: [ { id, label, order } ],   // kommunikative Funktionen
+  subjects:  [ … ], groups: [ … ], units: [ … ],
+  lexemes:   [ … ], starters: [ … ], banks: [ … ]
+}
+```
+
+Alle Verweise laufen über Kennungen (`id`). Es gibt keine verschachtelten Kopien.
+
+### `subjects` – Fach / Fremdsprache
+
+| Feld | Bedeutung |
+|---|---|
+| `id`, `name` | z. B. `sub_fr`, „Französisch“ |
+| `short` | Kürzel für die Kopfzeile („FR“) |
+| `color`, `colorSoft` | Fachfarbe, konsistent in der ganzen Oberfläche |
+| `order` | Reihenfolge in der Auswahl |
+
+### `groups` – Lerngruppe
+
+| Feld | Bedeutung |
+|---|---|
+| `subjectId` | Zugehöriges Fach |
+| `name`, `grade`, `schoolYear` | „9b“, `9`, `"2025/26"` |
+| `favorite`, `archived`, `note` | |
+| `history[]` | `{ schoolYear, grade, at, note }` je Schuljahreswechsel |
+
+Die Lerngruppe ist der Eigentümer des Wortschatzbestands. Beim Schuljahreswechsel ändern sich nur
+`grade`, `schoolYear` und `history` – die Einträge bleiben dieselben Objekte.
+
+### `units` – Unterrichtsreihe
+
+`{ id, groupId, title, description, schoolYear, status, order }`
+`status`: `planned` | `current` | `done`. Je Lerngruppe ist höchstens eine Reihe `current`.
+
+### `lexemes` – Wortschatzeintrag
+
+| Feld | Bedeutung |
+|---|---|
+| `term` | Zielwort **ohne** Artikel |
+| `article` | „le“, „la“, „l’“, „le / la“ … (wird nicht doppelt angezeigt, wenn er schon im Zielwort steht) |
+| `gram` | Form- oder Pluralhinweis („m.“, „pl. les stages“, „adj.“) |
+| `collocation` | typische Wortverbindung |
+| `chunk` | kurzer, sofort verwendbarer Baustein |
+| `explanation` | zielsprachige Erklärung |
+| `translation` | deutsche Entsprechung (optional) |
+| `example` | Beispielsatz |
+| `pronunciation` | Aussprache- oder Betonungshinweis |
+| `functionId` | kommunikative Funktion (optional) |
+| `topics[]`, `tags[]`, `cefr` | Themen, Schlagwörter, Niveau |
+| `status` | `new` \| `active` \| `revisit` \| `core` \| `archived` |
+| `introducedUnitId`, `introducedSchoolYear` | Zeitpunkt bzw. Kontext der Einführung |
+| `subjectId`, `groupId`, `createdAt`, `updatedAt`, `favorite` | |
+
+Pflichtfeld ist nur `term`.
+
+### `starters` – Satzanfang
+
+| Feld | Bedeutung |
+|---|---|
+| `text` | Formulierung; `___` markiert eine Leerstelle |
+| `translation` | deutsche Entsprechung (optional) |
+| `functionId` | kommunikative Funktion |
+| `variant` | `einfach` \| `standard` \| `anspruchsvoll` |
+| `groupId` | leer = im ganzen Fach verfügbar |
+| `subjectId`, `tags[]`, `status`, `note` | |
+
+### `banks` – Wortbank
+
+```js
+{
+  id, subjectId, groupId, unitId, title,
+  scene: "Partnergespräch",
+  defaultLevel: 2,
+  note,                       // nur für die Lehrkraft
+  favorite, createdAt, updatedAt, lastUsedAt,
+  sections: [
+    {
+      id, title,
+      layout: "auto" | "cards" | "impulse" | "starters",
+      items: [ { id, kind: "lex" | "starter", refId } ]
+    }
+  ]
+}
+```
+
+Beim Laden entfernt die Prüfung in `schema.validateState` Positionen, deren Ziel es nicht mehr gibt, und
+meldet das als Hinweis.
+
+### `settings`
+
+| Feld | Bedeutung |
+|---|---|
+| `theme` | `auto` \| `light` \| `dark` (Lehreransicht) |
+| `stageTheme`, `stageScale` | Projektion: hell/dunkel, Schriftfaktor |
+| `autoAdvanceSeconds`, `autoAdvanceLoop` | Automatik |
+| `maxItemsPerSlide` | didaktische Obergrenze je Projektionsseite |
+| `showProgressOnStage` | Fortschritt am Beamer zeigen |
+| `railCollapsed` | Navigationsbreite |
+| `scenes[]` | Unterrichtsszenen (erweiterbar) |
+| `fieldLevels{}` | ab welcher Unterstützungsstufe ein Feld erscheint |
+
+## Unterstützungsstufen
+
+`fieldLevels` ordnet jedem projizierbaren Feld eine Stufe zu. Voreinstellung:
+
+| Feld | ab Stufe |
+|---|---|
+| `article` | 1 |
+| `collocation`, `chunk` | 2 |
+| `gram`, `explanation`, `translation`, `example`, `pronunciation`, `starterTranslation` | 3 |
+
+`BAO.deck.fieldsForLevel(level, fieldLevels)` erzeugt daraus die Sichtbarkeitszuordnung. Die Lehrkraft kann
+in der Steuerung einzelne Felder übersteuern; ein Stufenwechsel setzt die Übersteuerung zurück.
+
+## Migrationen
+
+`app/js/core/migrations.js` enthält eine geordnete Liste von Schritten, die den Bestand jeweils um genau
+eine Version anheben. Eine neue Version bedeutet:
+
+1. `SCHEMA_VERSION` in `schema.js` erhöhen,
+2. einen Schritt `{ to: n, describe, run(state) }` an `STEPS` anhängen,
+3. Standardwerte in den Fabriken (`makeLexeme`, `makeBank`, …) ergänzen.
+
+Fehlende Felder werden zusätzlich beim Laden durch `validateState` ergänzt, sodass auch unvollständige
+Datensätze nutzbar bleiben.
