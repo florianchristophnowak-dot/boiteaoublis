@@ -174,6 +174,74 @@ async function run() {
   });
   check('Satzanfang mit Leerstellen angelegt', starterCreated);
 
+  /* --- 3b. IPA-Tastatur ---------------------------------------------------- */
+  section('3b. Virtuelle IPA-Tastatur');
+  await page.evaluate(() => {
+    BAO.app.setContext('sub_fr', 'grp_fr9b');
+    const lex = BAO.store.getState().lexemes.filter((l) => l.term === 'stage')[0];
+    BAO.views.vocab.openEditor(lex);
+  });
+  await page.waitForSelector('.modal .ipa-field');
+  check('Tastatur ist zunächst eingeklappt',
+    (await page.isVisible('.modal .ipa-board')) === false);
+
+  await page.fill('.modal .ipa-field input', '');
+  await page.click('.modal .ipa-field input');
+  await page.waitForTimeout(500);
+  check('Klick ins Aussprachefeld öffnet die Tastatur', await page.isVisible('.modal .ipa-board'));
+  check('Sprache des Fachs ist vorgewählt',
+    (await page.textContent('.modal .ipa-board__tabs .btn[aria-selected="true"]')) === 'Französisch');
+
+  await page.click('.modal .ipa-key[aria-label^="[ ]"]');
+  await page.click('.modal .ipa-key[aria-label^="ʁ"]');
+  await page.click('.modal .ipa-key[aria-label^="ɛ̃"]');
+  await page.waitForTimeout(150);
+  check('Zeichen landen zwischen den Klammern',
+    (await page.inputValue('.modal .ipa-field input')) === '[ʁɛ̃]',
+    await page.inputValue('.modal .ipa-field input'));
+
+  await page.click('.modal .ipa-board__tabs .btn:has-text("Englisch")');
+  await page.waitForTimeout(150);
+  const englishKeys = await page.evaluate(() =>
+    Array.prototype.map.call(document.querySelectorAll('.modal .ipa-key'), (k) => k.textContent));
+  check('Englische Zeichen vorhanden (θ, ð, ŋ, æ, Diphthonge)',
+    ['θ', 'ð', 'ŋ', 'æ', 'eɪ', 'ɜː'].every((k) => englishKeys.includes(k)));
+  await page.click('.modal .ipa-board__tabs .btn:has-text("Spanisch")');
+  await page.waitForTimeout(150);
+  const spanishKeys = await page.evaluate(() =>
+    Array.prototype.map.call(document.querySelectorAll('.modal .ipa-key'), (k) => k.textContent));
+  check('Spanische Zeichen vorhanden (β, ɣ, ʎ, ɾ, x)',
+    ['β', 'ɣ', 'ʎ', 'ɾ', 'x'].every((k) => spanishKeys.includes(k)));
+
+  await page.click('.modal button:has-text("Löschen")');
+  await page.waitForTimeout(120);
+  check('Löschen nimmt ein ganzes Zeichen samt Kombinationszeichen zurück',
+    (await page.inputValue('.modal .ipa-field input')) === '[ʁ]',
+    await page.inputValue('.modal .ipa-field input'));
+
+  await page.click('.modal .ipa-field input');
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  check('Esc schließt zuerst die Tastatur, nicht den Dialog',
+    (await page.isVisible('.modal .ipa-board')) === false && (await page.isVisible('.modal')) === true);
+
+  await page.fill('.modal .ipa-field input', '[ʁɛ̃]');
+  await page.click('.modal button:text-is("Änderungen übernehmen")');
+  await page.waitForTimeout(250);
+  check('Lautschrift wird gespeichert',
+    await page.evaluate(() => {
+      const lex = BAO.store.getState().lexemes.filter((l) => l.term === 'stage')[0];
+      return lex && lex.pronunciation === '[ʁɛ̃]';
+    }));
+  await page.screenshot({ path: join(shotDir, 'ipa-tastatur.png') });
+
+  // Ursprünglichen Wert zurückschreiben, damit die Projektion später stimmt.
+  await page.evaluate(() => BAO.store.commit('Test: Lautschrift zurück', (draft) => {
+    const lex = draft.lexemes.filter((l) => l.term === 'stage')[0];
+    if (lex) lex.pronunciation = '[sta\u0292]';
+  }));
+
   /* --- 4. Wortbank zusammenstellen ---------------------------------------- */
   section('4. Wortbank zusammenstellen');
   const bankId = await page.evaluate(() => {

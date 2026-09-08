@@ -100,6 +100,22 @@ Fach (Französisch, Englisch, …)
 Verweise. Deshalb kann derselbe Eintrag in beliebig vielen Wortbanken auftauchen, ohne sich zu vervielfachen –
 und beim Schuljahreswechsel bleibt alles erhalten.
 
+### Lautschrift eingeben
+
+Das Feld **Aussprache / Betonung** im Eintragseditor öffnet beim Anklicken eine **virtuelle IPA-Tastatur**.
+Sie hat vier Register – Französisch, Englisch, Spanisch und ein Register mit Klammern, Betonungs- und
+Längenzeichen sowie Diakritika. Das zum Fach passende Register ist vorgewählt.
+
+* Zeichen werden an der Cursorposition eingefügt, der Fokus bleibt im Feld – Tippen und Klicken lassen
+  sich mischen.
+* Über allen Registern steht eine Zeile mit den ständig gebrauchten Zeichen: `[ ]`, `/ /`, `ˈ`, `ˌ`, `ː`, `.`
+  Die Klammertasten setzen den Cursor gleich dazwischen.
+* Zu jedem Zeichen gehört ein Beispielwort (`ɛ̃` – *vin*, `θ` – *think*, `β` – *haber*). Es erscheint in der
+  Hinweiszeile, sobald man ein Zeichen berührt oder mit der Tabulatortaste anspringt.
+* **Löschen** nimmt ein ganzes Zeichen samt Kombinationszeichen zurück – ein Klick eingefügt, ein Klick weg.
+* `Esc` schließt zuerst die Tastatur und erst beim zweiten Mal den Dialog, damit keine halb fertige
+  Eingabe verloren geht.
+
 ### Genus und Artikelfarben
 
 Das Genus wird zuerst am Artikel selbst erkannt (`le`, `la`, `un`, `une`, `el`, `il`, `der`, `die`, `das` …),
@@ -262,7 +278,7 @@ boite-a-oublis/
 │       ├── core/                 util, storage, schema, migrations, store,
 │       │                         selectors, search, csv, backup
 │       ├── data/seed.js          Beispieldaten
-│       ├── ui/                   toast, modal, components (Symbole, Felder, Chips)
+│       ├── ui/                   toast, modal, components, ipa (Lautschrift-Tastatur)
 │       ├── projection/           stage-style, deck, render, output, session
 │       ├── views/                dashboard, vocab, starters, banks, bank-editor,
 │       │                         present, manage, data
@@ -344,12 +360,12 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 100 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 109 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
 prüft unter anderem: Beispieldaten und getrennte Fächer, Anlegen von Lerngruppen, Reihen, Einträgen und
-Satzanfängen, Wortbanken samt Ziehen und Ablegen, die drei Unterstützungsstufen, Fokus- und
+Satzanfängen, die IPA-Tastatur, Wortbanken samt Ziehen und Ablegen, die drei Unterstützungsstufen, Fokus- und
 Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion bei fünf Auflösungen
 (dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Genuserkennung und Artikelfarben in hell und
 dunkel, Schuljahreswechsel, Rückgängig, Export/Import/Zusammenführen, CSV und die Dauerhaftigkeit nach
