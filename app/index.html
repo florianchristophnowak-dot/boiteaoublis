@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="de" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Boîte à Oublis</title>
+  <meta name="description" content="Lokale Wortschatz- und Projektions-App für den Fremdsprachenunterricht.">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/shell.css">
+  <link rel="stylesheet" href="styles/views.css">
+  <link rel="stylesheet" href="styles/projection.css">
+</head>
+<body>
+  <a class="skip-link" href="#view">Zum Inhalt springen</a>
+
+  <div class="shell" id="shell">
+    <header class="topbar">
+      <div class="topbar__brand">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="26" height="26" focusable="false">
+            <rect x="3" y="10" width="26" height="18" rx="3" fill="currentColor" opacity=".16"></rect>
+            <path d="M3 13.5h26" stroke="currentColor" stroke-width="2" fill="none"></path>
+            <path d="M8.5 10V7.5A2.5 2.5 0 0 1 11 5h10a2.5 2.5 0 0 1 2.5 2.5V10" stroke="currentColor" stroke-width="2" fill="none"></path>
+            <rect x="3" y="10" width="26" height="18" rx="3" stroke="currentColor" stroke-width="2" fill="none"></rect>
+            <path d="M13 19h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+          </svg>
+        </span>
+        <span class="brand__text">
+          <strong>Boîte à Oublis</strong>
+          <small data-bind="context-label">Wortschatz für den Unterricht</small>
+        </span>
+      </div>
+
+      <div class="topbar__context" id="context-switcher"></div>
+
+      <div class="topbar__actions">
+        <button class="btn btn--ghost" type="button" data-action="open-search" title="Schnellsuche (Strg + K)">
+          <span class="ico" aria-hidden="true">⌕</span><span class="btn__label">Suchen</span>
+          <kbd class="kbd">Strg K</kbd>
+        </button>
+        <button class="btn btn--ghost" type="button" data-action="open-live" title="Live-Hilfe (Strg + L)">
+          <span class="ico" aria-hidden="true">✎</span><span class="btn__label">Live-Hilfe</span>
+        </button>
+        <button class="btn btn--ghost btn--icon" type="button" data-action="toggle-theme" title="Helligkeit umschalten" aria-label="Helligkeit umschalten">
+          <span class="ico" aria-hidden="true">◐</span>
+        </button>
+      </div>
+    </header>
+
+    <nav class="rail" id="rail" aria-label="Hauptnavigation"></nav>
+
+    <main class="main" id="view" tabindex="-1"></main>
+
+    <footer class="appfoot">
+      <span class="appfoot__left">Boîte à Oublis <span data-bind="version">–</span> · © Florian Nowak</span>
+      <span class="appfoot__right" data-bind="storage-state">Lokale Speicherung aktiv</span>
+    </footer>
+  </div>
+
+  <div id="overlay-root" class="overlay-root"></div>
+  <div id="modal-root" class="modal-root" aria-live="polite"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite" role="status"></div>
+
+  <!-- Kern -->
+  <script src="js/core/util.js"></script>
+  <script src="js/core/storage.js"></script>
+  <script src="js/core/schema.js"></script>
+  <script src="js/core/migrations.js"></script>
+  <script src="js/core/store.js"></script>
+  <script src="js/data/seed.js"></script>
+  <script src="js/core/selectors.js"></script>
+  <script src="js/core/search.js"></script>
+  <script src="js/core/csv.js"></script>
+  <script src="js/core/backup.js"></script>
+
+  <!-- Oberflächenbausteine -->
+  <script src="js/ui/toast.js"></script>
+  <script src="js/ui/modal.js"></script>
+  <script src="js/ui/components.js"></script>
+
+  <!-- Projektion -->
+  <script src="js/projection/stage-style.js"></script>
+  <script src="js/projection/deck.js"></script>
+  <script src="js/projection/render.js"></script>
+  <script src="js/projection/output.js"></script>
+  <script src="js/projection/session.js"></script>
+
+  <!-- Ansichten -->
+  <script src="js/views/dashboard.js"></script>
+  <script src="js/views/vocab.js"></script>
+  <script src="js/views/starters.js"></script>
+  <script src="js/views/banks.js"></script>
+  <script src="js/views/bank-editor.js"></script>
+  <script src="js/views/present.js"></script>
+  <script src="js/views/manage.js"></script>
+  <script src="js/views/data.js"></script>
+
+  <!-- Anwendung -->
+  <script src="js/app.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

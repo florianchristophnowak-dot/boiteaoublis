@@ -1,0 +1,168 @@
+/* ==========================================================================
+   Boîte à Oublis – Gestaltungstoken
+   Eine einzige Quelle für Farben, Abstände, Radien und Typografie.
+   Farben tragen Bedeutung: Fachfarbe, Status, Unterstützungsstufe.
+   ========================================================================== */
+
+:root {
+  /* --- Typografie: ausschließlich systemeigene Schriften (offline-tauglich) */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+             Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Semibold", var(--font-ui);
+  --font-mono: "Cascadia Mono", Consolas, "SF Mono", "DejaVu Sans Mono", monospace;
+
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.82rem;
+  --fs-md: 0.92rem;
+  --fs-lg: 1.05rem;
+  --fs-xl: 1.32rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.3rem;
+
+  /* --- Abstände (4px-Raster) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* --- Radien und Schatten */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(20, 26, 38, .07), 0 1px 3px rgba(20, 26, 38, .05);
+  --shadow-2: 0 6px 16px rgba(20, 26, 38, .10), 0 2px 5px rgba(20, 26, 38, .06);
+  --shadow-3: 0 18px 48px rgba(15, 20, 30, .22);
+
+  /* --- Helles Grundthema: warmes Papier, ruhige Tinte */
+  --paper: #f6f3ee;
+  --surface: #ffffff;
+  --surface-2: #fbf9f6;
+  --surface-sunken: #efeae3;
+  --ink: #1a1f28;
+  --ink-2: #3c4553;
+  --muted: #6b7382;
+  --line: #e0d9d0;
+  --line-strong: #cdc3b7;
+
+  --brand: #1f4f6b;
+  --brand-ink: #16394d;
+  --brand-soft: #e3edf3;
+  --accent: #c26240;
+  --accent-soft: #f8e9e2;
+
+  --focus: #2b7bb9;
+  --danger: #a33a2c;
+  --danger-soft: #fbe7e3;
+  --ok: #1c7a5c;
+  --ok-soft: #e2f2ec;
+
+  /* --- Status des Wortschatzes (durchgängig gleiche Bedeutung) */
+  --st-new: #1c7a5c;
+  --st-new-soft: #e2f2ec;
+  --st-active: #2464a8;
+  --st-active-soft: #e5eefa;
+  --st-revisit: #9a6512;
+  --st-revisit-soft: #f8eeda;
+  --st-core: #5c4a99;
+  --st-core-soft: #ece8f8;
+  --st-archived: #6b7382;
+  --st-archived-soft: #eceae7;
+
+  /* --- Genus des Artikels (gleiche Bedeutung wie in der Projektion) */
+  --genus-m: #0f3f96;
+  --genus-f: #9c1223;
+  --genus-n: #10603a;
+
+  --hit: 38px;              /* Mindesthöhe für Bedienelemente */
+  --rail-w: 218px;
+  --topbar-h: 56px;
+  --foot-h: 30px;
+}
+
+/* --- Dunkles Thema ------------------------------------------------------ */
+:root[data-theme="dark"] {
+  --paper: #14181f;
+  --surface: #1b212a;
+  --surface-2: #202733;
+  --surface-sunken: #10141a;
+  --ink: #eef1f5;
+  --ink-2: #c6cdd8;
+  --muted: #9aa4b2;
+  --line: #2c3542;
+  --line-strong: #3d4857;
+
+  --brand: #7fb8d8;
+  --brand-ink: #a9d2ea;
+  --brand-soft: #1d2c37;
+  --accent: #e2916d;
+  --accent-soft: #33241d;
+
+  --focus: #63b3ed;
+  --danger: #e88f7f;
+  --danger-soft: #35201c;
+  --ok: #6dc9a8;
+  --ok-soft: #16302a;
+
+  --st-new: #6dc9a8;
+  --st-new-soft: #16302a;
+  --st-active: #7db2ea;
+  --st-active-soft: #172736;
+  --st-revisit: #dcb063;
+  --st-revisit-soft: #322818;
+  --st-core: #b0a0ea;
+  --st-core-soft: #262238;
+  --st-archived: #9aa4b2;
+  --st-archived-soft: #232830;
+
+  --genus-m: #7db0f7;
+  --genus-f: #f5919c;
+  --genus-n: #77d3a5;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 6px 18px rgba(0, 0, 0, .45);
+  --shadow-3: 0 18px 48px rgba(0, 0, 0, .6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --paper: #14181f;
+    --surface: #1b212a;
+    --surface-2: #202733;
+    --surface-sunken: #10141a;
+    --ink: #eef1f5;
+    --ink-2: #c6cdd8;
+    --muted: #9aa4b2;
+    --line: #2c3542;
+    --line-strong: #3d4857;
+    --brand: #7fb8d8;
+    --brand-ink: #a9d2ea;
+    --brand-soft: #1d2c37;
+    --accent: #e2916d;
+    --accent-soft: #33241d;
+    --focus: #63b3ed;
+    --danger: #e88f7f;
+    --danger-soft: #35201c;
+    --ok: #6dc9a8;
+    --ok-soft: #16302a;
+    --st-new: #6dc9a8;
+    --st-new-soft: #16302a;
+    --st-active: #7db2ea;
+    --st-active-soft: #172736;
+    --st-revisit: #dcb063;
+    --st-revisit-soft: #322818;
+    --st-core: #b0a0ea;
+    --st-core-soft: #262238;
+    --st-archived: #9aa4b2;
+    --st-archived-soft: #232830;
+    --genus-m: #7db0f7;
+    --genus-f: #f5919c;
+    --genus-n: #77d3a5;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-2: 0 6px 18px rgba(0, 0, 0, .45);
+    --shadow-3: 0 18px 48px rgba(0, 0, 0, .6);
+  }
+}
