@@ -72,7 +72,7 @@ Die Lerngruppe ist der Eigentümer des Wortschatzbestands. Beim Schuljahreswechs
 | `explanation` | zielsprachige Erklärung |
 | `translation` | deutsche Entsprechung (optional) |
 | `example` | Beispielsatz |
-| `pronunciation` | Aussprache- oder Betonungshinweis |
+| `pronunciation` | Aussprache- oder Betonungshinweis; im Editor über die IPA-Tastatur eingebbar (`app/js/ui/ipa.js`) |
 | `functionId` | kommunikative Funktion (optional) |
 | `topics[]`, `tags[]`, `cefr` | Themen, Schlagwörter, Niveau |
 | `status` | `new` \| `active` \| `revisit` \| `core` \| `archived` |
@@ -85,9 +85,9 @@ Pflichtfeld ist nur `term`.
 
 | Feld | Bedeutung |
 |---|---|
-| `text` | Formulierung; `___` markiert eine Leerstelle |
+| `text` | Formulierung; `___`, `...` oder `…` markieren eine Leerstelle |
 | `translation` | deutsche Entsprechung (optional) |
-| `functionId` | kommunikative Funktion |
+| `functionId` | Verwendung (kommunikative Funktion) – frei benennbar, siehe unten |
 | `variant` | `einfach` \| `standard` \| `anspruchsvoll` |
 | `groupId` | leer = im ganzen Fach verfügbar |
 | `subjectId`, `tags[]`, `status`, `note` | |
@@ -171,3 +171,25 @@ jeweils für hell und dunkel).
 
 Eine weitere Sprache braucht dafür keinen Programmeingriff, solange ihre Artikel in der Tabelle stehen
 oder die Lehrkraft den Formhinweis pflegt.
+
+## IPA-Tastatur
+
+`BAO.ipa.field({ label, value, placeholder, hint, subject, full })` liefert ein Eingabefeld mit
+eingebauter Zeichentastatur. `BAO.ipa.LAYOUTS` enthält die Register; jede Taste ist entweder
+
+* `'ʃ'` – nur das Zeichen,
+* `['ɛ̃', 'vin']` – Zeichen mit Beispielwort, oder
+* `{ ins, show, hint, caret }` – für Fälle, in denen sich Eingefügtes und Angezeigtes unterscheiden
+  (`{ ins: '[]', show: '[ ]', caret: -1 }` setzt den Cursor zwischen die Klammern; `{ ins: '\u0303',
+  show: '◌̃' }` zeigt ein Kombinationszeichen auf dem gepunkteten Kreis).
+
+Ein weiteres Register braucht nur einen zusätzlichen Eintrag in `LAYOUTS`. `layoutForSubject` wählt das
+Register anhand des Fachnamens vor.
+
+## Verwendungen (kommunikative Funktionen)
+
+`state.functions` ist eine gewöhnliche Liste `{ id, label, order }` – kein fester Vorrat im Programm.
+`BAO.ui.functionField({ state, value, label })` liefert ein Eingabefeld mit Vorschlagsliste; sein
+`resolve(draft)` sucht die eingetippte Bezeichnung (akzentunempfindlich) und legt sie andernfalls an.
+Aufgerufen wird es **innerhalb** des commit-Mutators, damit Anlegen und Zuordnen ein einziger,
+gemeinsam rückgängig zu machender Schritt sind.

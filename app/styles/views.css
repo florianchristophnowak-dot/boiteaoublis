@@ -298,3 +298,61 @@ table.mini tr:last-child td { border-bottom: 0; }
 .tag-input input { border: 0; min-height: 28px; flex: 1 1 120px; width: auto; padding: 0 6px; }
 .tag-input .chip { cursor: default; }
 .tag-input .chip button { border: 0; background: none; cursor: pointer; color: inherit; padding: 0 0 0 2px; font-size: 1rem; line-height: 1; }
+
+/* --- Virtuelle IPA-Tastatur ---------------------------------------------- */
+.ipa-field > label { display: flex; align-items: center; gap: var(--sp-2); }
+.ipa-field > label .btn { margin-left: auto; font-weight: 550; }
+.ipa-field input {
+  font-family: "Segoe UI", "DejaVu Sans", "Charis SIL", "Doulos SIL", system-ui, sans-serif;
+  font-size: var(--fs-lg);
+  letter-spacing: .01em;
+}
+
+.ipa-board {
+  margin-top: var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.ipa-board__tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.ipa-board__tabs .btn[aria-selected="true"] {
+  background: var(--brand); border-color: var(--brand); color: #fff;
+}
+:root[data-theme="dark"] .ipa-board__tabs .btn[aria-selected="true"] { color: #10171d; }
+
+.ipa-board__groups { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ipa-group__label {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); font-weight: 700; margin-bottom: 4px;
+}
+.ipa-keys { display: flex; flex-wrap: wrap; gap: 4px; }
+.ipa-key {
+  min-width: 42px; min-height: 38px; padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  font-family: "Segoe UI", "DejaVu Sans", "Charis SIL", "Doulos SIL", system-ui, sans-serif;
+  font-size: 1.15rem; line-height: 1;
+}
+.ipa-key:hover { background: var(--brand-soft); border-color: var(--brand); }
+.ipa-key:active { transform: translateY(1px); }
+
+.ipa-board__foot {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+}
+.ipa-board__hint {
+  font-size: var(--fs-sm); color: var(--muted);
+  /* Feste Höhe und kein Umbruch: Der Hinweis wechselt beim Überfahren der
+     Tasten ständig – die Tastatur darf dabei nicht springen. */
+  height: 1.4em; line-height: 1.4em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px solid var(--line); padding-top: var(--sp-2);
+  box-sizing: content-box;
+}
+
+/* Feld mit Knopf in der Beschriftungszeile (Leerstelle, IPA-Tastatur …) */
+.field--action > label,
+.ipa-field > label { display: flex; align-items: center; gap: var(--sp-2); }
+.field--action > label .btn,
+.ipa-field > label .btn { margin-left: auto; font-weight: 550; }

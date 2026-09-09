@@ -100,6 +100,33 @@ Fach (Französisch, Englisch, …)
 Verweise. Deshalb kann derselbe Eintrag in beliebig vielen Wortbanken auftauchen, ohne sich zu vervielfachen –
 und beim Schuljahreswechsel bleibt alles erhalten.
 
+### Satzanfänge erfassen
+
+Satzanfänge sind nach ihrer **Verwendung** geordnet – „eine Meinung äußern“, „begründen“,
+„widersprechen“ und so weiter. Diese Bezeichnungen sind **frei benennbar**: Im Editor lässt sich eine
+vorhandene auswählen oder einfach eine neue eintippen; sie wird beim Speichern angelegt und steht
+danach überall zur Verfügung (Filter, Projektionsüberschriften, Einstellungen).
+
+Für die Leerstellen gibt es einen Knopf **Leerstelle einfügen** – man muss keine Unterstriche tippen.
+Als Leerstelle erkannt werden `___` (mehrere Unterstriche), `...` und `…`; in der Projektion erscheinen
+sie als ruhige Linie.
+
+### Lautschrift eingeben
+
+Das Feld **Aussprache / Betonung** im Eintragseditor öffnet beim Anklicken eine **virtuelle IPA-Tastatur**.
+Sie hat vier Register – Französisch, Englisch, Spanisch und ein Register mit Klammern, Betonungs- und
+Längenzeichen sowie Diakritika. Das zum Fach passende Register ist vorgewählt.
+
+* Zeichen werden an der Cursorposition eingefügt, der Fokus bleibt im Feld – Tippen und Klicken lassen
+  sich mischen.
+* Über allen Registern steht eine Zeile mit den ständig gebrauchten Zeichen: `[ ]`, `/ /`, `ˈ`, `ˌ`, `ː`, `.`
+  Die Klammertasten setzen den Cursor gleich dazwischen.
+* Zu jedem Zeichen gehört ein Beispielwort (`ɛ̃` – *vin*, `θ` – *think*, `β` – *haber*). Es erscheint in der
+  Hinweiszeile, sobald man ein Zeichen berührt oder mit der Tabulatortaste anspringt.
+* **Löschen** nimmt ein ganzes Zeichen samt Kombinationszeichen zurück – ein Klick eingefügt, ein Klick weg.
+* `Esc` schließt zuerst die Tastatur und erst beim zweiten Mal den Dialog, damit keine halb fertige
+  Eingabe verloren geht.
+
 ### Genus und Artikelfarben
 
 Das Genus wird zuerst am Artikel selbst erkannt (`le`, `la`, `un`, `une`, `el`, `il`, `der`, `die`, `das` …),
@@ -262,7 +289,7 @@ boite-a-oublis/
 │       ├── core/                 util, storage, schema, migrations, store,
 │       │                         selectors, search, csv, backup
 │       ├── data/seed.js          Beispieldaten
-│       ├── ui/                   toast, modal, components (Symbole, Felder, Chips)
+│       ├── ui/                   toast, modal, components, ipa (Lautschrift-Tastatur)
 │       ├── projection/           stage-style, deck, render, output, session
 │       ├── views/                dashboard, vocab, starters, banks, bank-editor,
 │       │                         present, manage, data
@@ -301,7 +328,11 @@ Build-Schritt – und ist trotzdem in nachvollziehbare Dateien gegliedert.
 **Der Build ist optional und trivial.**
 `tools/build.mjs` liest `app/index.html`, bettet alle Stylesheets und Skripte ein und schreibt eine einzige
 HTML-Datei. Kein Transpiler, keine Abhängigkeiten, keine Namensmangelung – der Quelltext in der Einzeldatei
-ist derselbe wie im Ordner `app/`.
+ist derselbe wie im Ordner `app/`. Das ist keine Selbstverständlichkeit: `String.replace` deutet `$$`,
+`$&` und ``$` `` im Ersatztext als Sonderfolgen. Genau daran wurde aus `util.$$` einmal ein `util.$` –
+die ausgelieferte Datei verhielt sich anders als der Quelltext. Deshalb ersetzt der Build ausschließlich
+über Funktionen und prüft anschließend, dass jede eingebettete Datei Zeichen für Zeichen in der Ausgabe
+steht; `npm run check` prüft dasselbe noch einmal.
 
 **Ein Zustand, eine Schreibstelle.**
 `core/store.js` hält den gesamten Bestand. Änderungen laufen ausschließlich über `commit(label, mutator)`.
@@ -344,17 +375,18 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 100 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 120 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
 prüft unter anderem: Beispieldaten und getrennte Fächer, Anlegen von Lerngruppen, Reihen, Einträgen und
-Satzanfängen, Wortbanken samt Ziehen und Ablegen, die drei Unterstützungsstufen, Fokus- und
+Satzanfängen, die IPA-Tastatur, Wortbanken samt Ziehen und Ablegen, die drei Unterstützungsstufen, Fokus- und
 Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion bei fünf Auflösungen
 (dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Genuserkennung und Artikelfarben in hell und
 dunkel, Schuljahreswechsel, Rückgängig, Export/Import/Zusammenführen, CSV und die Dauerhaftigkeit nach
-einem Neustart.
-Bildschirmfotos landen in `tests/output/`.
+einem Neustart. Ein eigener Abschnitt prüft dieselben Abläufe zusätzlich in der portablen
+Einzeldatei `dist/boite-a-oublis.html` – dort lief einmal ein Einbettungsfehler auf, den der Quelltext
+nicht hatte. Bildschirmfotos landen in `tests/output/`.
 
 ---
 

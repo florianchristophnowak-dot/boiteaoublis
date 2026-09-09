@@ -1,6 +1,6 @@
 <!--
   Boîte à Oublis 1.0.0 – © Florian Nowak
-  Erzeugt am 2026-09-07T21:39:03.440Z aus app/index.html.
+  Erzeugt am 2026-09-09T03:54:32.974Z aus app/index.html.
   Diese Datei ist vollständig eigenständig: einfach im Browser öffnen.
 -->
 <!doctype html>
@@ -191,6 +191,9 @@
    ========================================================================== */
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Eigene display-Regeln dürfen [hidden] nicht aushebeln. */
+[hidden] { display: none !important; }
 
 html, body { height: 100%; }
 
@@ -869,6 +872,64 @@ table.mini tr:last-child td { border-bottom: 0; }
 .tag-input .chip { cursor: default; }
 .tag-input .chip button { border: 0; background: none; cursor: pointer; color: inherit; padding: 0 0 0 2px; font-size: 1rem; line-height: 1; }
 
+/* --- Virtuelle IPA-Tastatur ---------------------------------------------- */
+.ipa-field > label { display: flex; align-items: center; gap: var(--sp-2); }
+.ipa-field > label .btn { margin-left: auto; font-weight: 550; }
+.ipa-field input {
+  font-family: "Segoe UI", "DejaVu Sans", "Charis SIL", "Doulos SIL", system-ui, sans-serif;
+  font-size: var(--fs-lg);
+  letter-spacing: .01em;
+}
+
+.ipa-board {
+  margin-top: var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.ipa-board__tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.ipa-board__tabs .btn[aria-selected="true"] {
+  background: var(--brand); border-color: var(--brand); color: #fff;
+}
+:root[data-theme="dark"] .ipa-board__tabs .btn[aria-selected="true"] { color: #10171d; }
+
+.ipa-board__groups { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ipa-group__label {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); font-weight: 700; margin-bottom: 4px;
+}
+.ipa-keys { display: flex; flex-wrap: wrap; gap: 4px; }
+.ipa-key {
+  min-width: 42px; min-height: 38px; padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  font-family: "Segoe UI", "DejaVu Sans", "Charis SIL", "Doulos SIL", system-ui, sans-serif;
+  font-size: 1.15rem; line-height: 1;
+}
+.ipa-key:hover { background: var(--brand-soft); border-color: var(--brand); }
+.ipa-key:active { transform: translateY(1px); }
+
+.ipa-board__foot {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+}
+.ipa-board__hint {
+  font-size: var(--fs-sm); color: var(--muted);
+  /* Feste Höhe und kein Umbruch: Der Hinweis wechselt beim Überfahren der
+     Tasten ständig – die Tastatur darf dabei nicht springen. */
+  height: 1.4em; line-height: 1.4em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px solid var(--line); padding-top: var(--sp-2);
+  box-sizing: content-box;
+}
+
+/* Feld mit Knopf in der Beschriftungszeile (Leerstelle, IPA-Tastatur …) */
+.field--action > label,
+.ipa-field > label { display: flex; align-items: center; gap: var(--sp-2); }
+.field--action > label .btn,
+.ipa-field > label .btn { margin-left: auto; font-weight: 550; }
+
   </style>
   <style>
 /* styles/projection.css */
@@ -1058,7 +1119,7 @@ body[data-projecting="true"] .toast-root { display: none; }
   function clear(node) { while (node && node.firstChild) node.removeChild(node.firstChild); return node; }
 
   function $(sel, root) { return (root || document).querySelector(sel); }
-  function $(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
 
   /** Ereignisdelegation: on(root, 'click', '[data-action]', handler) */
   function on(root, type, selector, handler) {
@@ -1068,6 +1129,23 @@ body[data-projecting="true"] .toast-root { display: none; }
       var match = target.closest(selector);
       if (match && root.contains(match)) handler.call(match, event, match);
     });
+  }
+
+  /**
+   * Fügt Text an der Cursorposition eines Eingabefelds ein und meldet die
+   * Änderung wie eine Tastatureingabe. caretOffset verschiebt den Cursor
+   * danach (z. B. -1, um zwischen zwei eben eingefügte Klammern zu springen).
+   */
+  function insertAtCursor(input, text, caretOffset) {
+    var start = input.selectionStart === null ? input.value.length : input.selectionStart;
+    var end = input.selectionEnd === null ? start : input.selectionEnd;
+    input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    var position = start + text.length + (caretOffset || 0);
+    // preventScroll: Ohne das springt die Ansicht bei jedem eingefügten
+    // Zeichen zum Feld zurück – bei einer Zeichentastatur unbrauchbar.
+    try { input.focus({ preventScroll: true }); } catch (err) { input.focus(); }
+    try { input.setSelectionRange(position, position); } catch (err) { /* Feldtyp ohne Auswahl */ }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   /* --- Text und Formate --------------------------------------------------- */
@@ -1193,7 +1271,7 @@ body[data-projecting="true"] .toast-root { display: none; }
   BAO.util = {
     uid: uid, nowISO: nowISO, clone: clone, debounce: debounce, clamp: clamp,
     fold: fold, escapeHtml: escapeHtml,
-    h: h, append: append, clear: clear, $: $, $: $, on: on,
+    h: h, append: append, clear: clear, $: $, $$: $$, on: on, insertAtCursor: insertAtCursor,
     plural: plural, formatDate: formatDate, formatDateTime: formatDateTime, relativeDate: relativeDate,
     currentSchoolYear: currentSchoolYear, nextSchoolYear: nextSchoolYear,
     sortBy: sortBy, byOrder: byOrder, groupBy: groupBy, unique: unique, moveInArray: moveInArray,
@@ -3131,8 +3209,33 @@ body[data-projecting="true"] .toast-root { display: none; }
   var h = util.h;
   var openStack = [];
 
+  /* Untergeordnete Einblendungen (z. B. die IPA-Tastatur) dürfen die
+     Esc-Taste zuerst bekommen – sonst schließt Esc gleich den ganzen Dialog
+     und eine halb fertige Eingabe wäre verloren. Der Handler meldet mit
+     true zurück, dass er die Taste verbraucht hat. */
+  var escapeStack = [];
+
+  function onEscape(handler) {
+    escapeStack.push(handler);
+    return function () {
+      var index = escapeStack.indexOf(handler);
+      if (index >= 0) escapeStack.splice(index, 1);
+    };
+  }
+
+  /** true, wenn eine Einblendung die Esc-Taste verbraucht hat. */
+  function consumeEscape() {
+    for (var i = escapeStack.length - 1; i >= 0; i--) {
+      var handled = false;
+      try { handled = escapeStack[i]() === true; }
+      catch (err) { console.error('Fehler beim Schließen einer Einblendung:', err); }
+      if (handled) return true;
+    }
+    return false;
+  }
+
   function focusables(node) {
-    return util.$('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', node)
+    return util.$$('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', node)
       .filter(function (el) { return el.offsetParent !== null || el === document.activeElement; });
   }
 
@@ -3162,7 +3265,7 @@ body[data-projecting="true"] .toast-root { display: none; }
         body: null,
         close: function (value) { finish(value); },
         setBusy: function (busy) {
-          util.$('button', dialog).forEach(function (b) { b.disabled = !!busy; });
+          util.$$('button', dialog).forEach(function (b) { b.disabled = !!busy; });
         }
       };
 
@@ -3222,6 +3325,7 @@ body[data-projecting="true"] .toast-root { display: none; }
           // Nicht an die Projektionssteuerung durchreichen.
           event.preventDefault();
           event.stopPropagation();
+          if (consumeEscape()) return;
           if (config.dismissable === false) return;
           finish(null);
           return;
@@ -3296,7 +3400,7 @@ body[data-projecting="true"] .toast-root { display: none; }
     });
   }
 
-  BAO.modal = { open: open, confirm: confirm, prompt: prompt };
+  BAO.modal = { open: open, confirm: confirm, prompt: prompt, onEscape: onEscape, consumeEscape: consumeEscape };
 })(window.BAO = window.BAO || {});
 
   </script>
@@ -3526,16 +3630,22 @@ body[data-projecting="true"] .toast-root { display: none; }
     return fragment;
   }
 
+  /* Als Leerstelle gilt, was Lehrkräfte üblicherweise schreiben: mehrere
+     Unterstriche, drei Punkte oder ein Auslassungszeichen. */
+  var GAP_SPLIT = /(_{2,}|\.{3,}|\u2026)/;
+  var GAP_MATCH = /^(_{2,}|\.{3,}|\u2026)$/;
+  var GAP_GLOBAL = /(_{2,}|\.{3,}|\u2026)/g;
+
   /**
-   * Wandelt Leerstellen ("___") in ruhige Linien um.
+   * Wandelt Leerstellen in ruhige Linien um.
    * Wird sowohl in der Lehreransicht als auch auf dem Beamer verwendet.
    */
   function gapText(text, doc) {
     doc = doc || document;
     var fragment = doc.createDocumentFragment();
-    String(text || '').split(/(_{2,})/).forEach(function (part) {
+    String(text || '').split(GAP_SPLIT).forEach(function (part) {
       if (!part) return;
-      if (/^_{2,}$/.test(part)) {
+      if (GAP_MATCH.test(part)) {
         var span = doc.createElement('span');
         span.className = 'gap';
         span.setAttribute('aria-label', 'Leerstelle');
@@ -3548,8 +3658,9 @@ body[data-projecting="true"] .toast-root { display: none; }
     return fragment;
   }
 
+  /** Für kompakte Listen: Leerstellen als einzelnes Auslassungszeichen. */
   function plainStarterText(text) {
-    return String(text || '').replace(/_{2,}/g, '…');
+    return String(text || '').replace(GAP_GLOBAL, '\u2026');
   }
 
   /* --- Bausteine ----------------------------------------------------------- */
@@ -3597,8 +3708,25 @@ body[data-projecting="true"] .toast-root { display: none; }
     if (config.multiline) input.value = config.value || '';
     if (config.onInput) input.addEventListener('input', function () { config.onInput(input.value, input); });
     if (config.name) input.name = config.name;
-    var field = h('div.field' + (config.full ? '.full' : ''), {},
-      config.label ? h('label', { text: config.label }) : null,
+
+    // Optionaler Knopf in der Beschriftungszeile, z. B. „Leerstelle einfügen“.
+    var labelNode = null;
+    if (config.label) {
+      labelNode = h('label', {}, h('span', { text: config.label }));
+      if (config.action) {
+        labelNode.appendChild(h('button.btn.btn--sm', {
+          type: 'button',
+          text: config.action.label,
+          title: config.action.title || config.action.label,
+          // Fokus im Feld lassen, damit die Cursorposition erhalten bleibt.
+          onmousedown: function (event) { event.preventDefault(); },
+          onclick: function () { config.action.onClick(input); }
+        }));
+      }
+    }
+
+    var field = h('div.field' + (config.full ? '.full' : '') + (config.action ? '.field--action' : ''), {},
+      labelNode,
       input,
       config.hint ? h('span.hint', { text: config.hint }) : null
     );
@@ -3669,6 +3797,56 @@ body[data-projecting="true"] .toast-root { display: none; }
     return list;
   }
 
+  /**
+   * Eingabefeld für die Verwendung (kommunikative Funktion) eines
+   * Satzanfangs. Vorhandene Bezeichnungen lassen sich auswählen, neue
+   * einfach eintippen – sie werden beim Speichern angelegt.
+   */
+  function functionField(config) {
+    var functions = BAO.select.functions(config.state);
+    var current = functions.filter(function (f) { return f.id === config.value; })[0];
+    var listId = util.uid('fnlist');
+
+    var input = h('input', {
+      type: 'text',
+      value: current ? current.label : '',
+      list: listId,
+      autocomplete: 'off',
+      placeholder: config.placeholder || 'z. B. eine Meinung äußern'
+    });
+    var datalist = h('datalist', { id: listId });
+    functions.forEach(function (fn) { datalist.appendChild(h('option', { value: fn.label })); });
+
+    var field = h('div.field' + (config.full ? '.full' : ''), {},
+      h('label', { text: config.label || 'Verwendung' }),
+      input,
+      datalist,
+      h('span.hint', {
+        text: config.hint || 'Frei benennbar: vorhandene Bezeichnung wählen oder eine neue eintippen.'
+      })
+    );
+    field.input = input;
+
+    /**
+     * Sucht die Bezeichnung im Bestand und legt sie sonst an.
+     * Muss innerhalb eines commit-Mutators mit dem Entwurf aufgerufen werden.
+     */
+    field.resolve = function (draft) {
+      var label = input.value.trim();
+      if (!label) return '';
+      var needle = util.fold(label);
+      var match = (draft.functions || []).filter(function (fn) {
+        return util.fold(fn.label) === needle;
+      })[0];
+      if (match) return match.id;
+      var created = { id: util.uid('fn'), label: label, order: draft.functions.length };
+      draft.functions.push(created);
+      return created.id;
+    };
+
+    return field;
+  }
+
   function functionOptions(state, includeEmpty) {
     var list = BAO.select.functions(state).map(function (f) { return { value: f.id, label: f.label }; });
     if (includeEmpty) list.unshift({ value: '', label: '– ohne Funktion –' });
@@ -3690,6 +3868,7 @@ body[data-projecting="true"] .toast-root { display: none; }
     genderFromGram: genderFromGram,
     gapText: gapText,
     plainStarterText: plainStarterText,
+    GAP_MATCH: GAP_MATCH,
     emptyState: emptyState,
     selectField: selectField,
     textField: textField,
@@ -3697,7 +3876,403 @@ body[data-projecting="true"] .toast-root { display: none; }
     statusOptions: statusOptions,
     sceneOptions: sceneOptions,
     unitOptions: unitOptions,
+    functionField: functionField,
     functionOptions: functionOptions
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/ui/ipa.js */
+/* ==========================================================================
+   Virtuelle IPA-Tastatur
+   Lautschrift lässt sich auf einer gewöhnlichen Tastatur nicht eingeben.
+   Deshalb öffnet sich beim Anklicken des Aussprachefelds eine Tastatur mit
+   den im Französisch-, Englisch- und Spanischunterricht üblichen Zeichen.
+
+   Grundsätze
+   - Zeichen werden an der Cursorposition eingefügt, der Fokus bleibt im Feld.
+   - Zu jedem Zeichen gehört ein Beispielwort; es erscheint in der Hinweiszeile,
+     sobald man ein Zeichen berührt oder anspringt.
+   - Tippen bleibt jederzeit möglich; die Tastatur ist eine Ergänzung,
+     kein Ersatz.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var h = util.h;
+
+  /* --- Zeichenvorrat ------------------------------------------------------
+     Jede Taste ist entweder "Zeichen" oder [Zeichen, Beispiel] oder
+     { ins, show, hint, caret }. */
+
+  var LAYOUTS = [
+    {
+      id: 'fr',
+      label: 'Französisch',
+      groups: [
+        {
+          label: 'Vokale',
+          keys: [['i', 'ici'], ['e', 'été'], ['ɛ', 'mère'], ['a', 'patte'], ['ɑ', 'pâte'],
+            ['ɔ', 'sortir'], ['o', 'mot'], ['u', 'vous'], ['y', 'tu'], ['ø', 'deux'],
+            ['œ', 'sœur'], ['ə', 'le']]
+        },
+        {
+          label: 'Nasalvokale',
+          keys: [['ɛ̃', 'vin'], ['ɑ̃', 'dans'], ['ɔ̃', 'bon'], ['œ̃', 'brun']]
+        },
+        {
+          label: 'Halbvokale',
+          keys: [['j', 'yeux'], ['ɥ', 'huit'], ['w', 'oui']]
+        },
+        {
+          label: 'Konsonanten',
+          keys: [['p', 'père'], ['b', 'bon'], ['t', 'tout'], ['d', 'deux'], ['k', 'car'],
+            ['ɡ', 'gare'], ['f', 'fille'], ['v', 'vous'], ['s', 'six'], ['z', 'zéro'],
+            ['ʃ', 'chat'], ['ʒ', 'jour'], ['m', 'mère'], ['n', 'nous'], ['ɲ', 'agneau'],
+            ['ŋ', 'parking'], ['l', 'lit'], ['ʁ', 'rue']]
+        },
+        {
+          label: 'Verbindung',
+          keys: [['‿', 'Liaison: les‿amis']]
+        }
+      ]
+    },
+    {
+      id: 'en',
+      label: 'Englisch',
+      groups: [
+        {
+          label: 'Kurze Vokale',
+          keys: [['ɪ', 'sit'], ['e', 'bed'], ['æ', 'cat'], ['ʌ', 'cup'], ['ɒ', 'hot (BrE)'],
+            ['ʊ', 'book'], ['ə', 'about'], ['ɑ', 'lot (AmE)']]
+        },
+        {
+          label: 'Lange Vokale',
+          keys: [['iː', 'see'], ['ɑː', 'car'], ['ɔː', 'door'], ['uː', 'blue'], ['ɜː', 'bird']]
+        },
+        {
+          label: 'Diphthonge',
+          keys: [['eɪ', 'day'], ['aɪ', 'my'], ['ɔɪ', 'boy'], ['əʊ', 'go (BrE)'], ['oʊ', 'go (AmE)'],
+            ['aʊ', 'now'], ['ɪə', 'here'], ['eə', 'hair'], ['ʊə', 'tour']]
+        },
+        {
+          label: 'Konsonanten',
+          keys: [['p', 'pen'], ['b', 'book'], ['t', 'ten'], ['d', 'day'], ['k', 'cat'], ['ɡ', 'go'],
+            ['tʃ', 'chair'], ['dʒ', 'jam'], ['f', 'five'], ['v', 'very'], ['θ', 'think'],
+            ['ð', 'this'], ['s', 'see'], ['z', 'zoo'], ['ʃ', 'she'], ['ʒ', 'measure'],
+            ['h', 'how'], ['m', 'man'], ['n', 'no'], ['ŋ', 'sing'], ['l', 'leg'],
+            ['r', 'red (BrE)'], ['ɹ', 'red (AmE)'], ['j', 'yes'], ['w', 'wet']]
+        },
+        {
+          label: 'Amerikanisches Englisch',
+          keys: [['ɚ', 'teacher'], ['ɝ', 'bird'], ['ɾ', 'better (Flap)']]
+        }
+      ]
+    },
+    {
+      id: 'es',
+      label: 'Spanisch',
+      groups: [
+        {
+          label: 'Vokale',
+          keys: [['a', 'casa'], ['e', 'mesa'], ['i', 'vivir'], ['o', 'como'], ['u', 'luna']]
+        },
+        {
+          label: 'Konsonanten',
+          keys: [['p', 'padre'], ['b', 'boca'], ['β', 'haber'], ['t', 'todo'], ['d', 'dos'],
+            ['ð', 'nada'], ['k', 'casa'], ['ɡ', 'gato'], ['ɣ', 'lago'], ['tʃ', 'mucho'],
+            ['f', 'fácil'], ['s', 'sala'], ['θ', 'cinco (kast.)'], ['x', 'jamón'],
+            ['ʝ', 'ayer'], ['m', 'mano'], ['n', 'nada'], ['ɲ', 'año'], ['ŋ', 'tango'],
+            ['l', 'luna'], ['ʎ', 'llave (regional)'], ['ɾ', 'pero'], ['r', 'perro'],
+            ['j', 'tiene'], ['w', 'cuatro']]
+        }
+      ]
+    },
+    {
+      id: 'zeichen',
+      label: 'Zeichen',
+      groups: [
+        {
+          label: 'Klammern',
+          keys: [
+            { ins: '[]', show: '[ ]', hint: 'phonetische Umschrift', caret: -1 },
+            { ins: '//', show: '/ /', hint: 'phonologische Umschrift', caret: -1 }
+          ]
+        },
+        {
+          label: 'Betonung und Länge',
+          keys: [['ˈ', 'Hauptbetonung'], ['ˌ', 'Nebenbetonung'], ['ː', 'lang'],
+            ['ˑ', 'halblang'], ['.', 'Silbengrenze'], ['‿', 'Bindung / Liaison']]
+        },
+        {
+          label: 'Diakritika',
+          keys: [
+            { ins: '̃', show: '◌̃', hint: 'Nasalierung (auf das vorige Zeichen)' },
+            { ins: '̯', show: '◌̯', hint: 'nicht silbisch' },
+            { ins: '̩', show: '◌̩', hint: 'silbisch' },
+            { ins: '̥', show: '◌̥', hint: 'stimmlos' },
+            ['ʰ', 'behaucht'], ['ʔ', 'Knacklaut']
+          ]
+        }
+      ]
+    }
+  ];
+
+  /* Diese Zeichen braucht man in jeder Sprache – sie stehen deshalb über
+     allen Sprachansichten, nicht nur im Zeichen-Register. */
+  var COMMON = {
+    label: 'Häufig gebraucht',
+    keys: [
+      { ins: '[]', show: '[ ]', hint: 'phonetische Umschrift', caret: -1 },
+      { ins: '//', show: '/ /', hint: 'phonologische Umschrift', caret: -1 },
+      ['ˈ', 'Hauptbetonung'],
+      ['ˌ', 'Nebenbetonung'],
+      ['ː', 'lang'],
+      ['.', 'Silbengrenze']
+    ]
+  };
+
+  var lastLayoutId = '';
+
+  function layoutById(id) {
+    for (var i = 0; i < LAYOUTS.length; i++) if (LAYOUTS[i].id === id) return LAYOUTS[i];
+    return null;
+  }
+
+  /** Passendes Tastaturbild zum Fach: „FR“ → Französisch usw. */
+  function layoutForSubject(subject) {
+    if (!subject) return LAYOUTS[0].id;
+    var text = util.fold(subject.name + ' ' + (subject.short || ''));
+    if (/franz|french|francais|\bfr\b/.test(text)) return 'fr';
+    if (/engl|\ben\b/.test(text)) return 'en';
+    if (/span|espan|\bes\b/.test(text)) return 'es';
+    return 'zeichen';
+  }
+
+  function normaliseKey(key) {
+    if (Array.isArray(key)) return { ins: key[0], show: key[0], hint: key[1] || '' };
+    if (typeof key === 'string') return { ins: key, show: key, hint: '' };
+    return { ins: key.ins, show: key.show || key.ins, hint: key.hint || '', caret: key.caret || 0 };
+  }
+
+  /* --- Einfügen ------------------------------------------------------------ */
+
+  var insert = util.insertAtCursor;
+
+  /** Kombinierende Zeichen (Tilde, Ring, Bogen …) gehören zum Laut davor. */
+  function isCombining(code) {
+    return (code >= 0x0300 && code <= 0x036F)
+      || (code >= 0x1AB0 && code <= 0x1AFF)
+      || (code >= 0x1DC0 && code <= 0x1DFF)
+      || (code >= 0x20D0 && code <= 0x20FF);
+  }
+
+  function backspace(input) {
+    var start = input.selectionStart === null ? input.value.length : input.selectionStart;
+    var end = input.selectionEnd === null ? start : input.selectionEnd;
+    if (start === end) {
+      if (start === 0) { input.focus(); return; }
+      // Ein Klick auf die Taste hat ein Zeichen eingefügt – ein Klick auf
+      // „Löschen“ nimmt es vollständig zurück, samt Kombinationszeichen.
+      while (start > 0 && isCombining(input.value.charCodeAt(start - 1))) start -= 1;
+      start -= 1;
+      var code = input.value.charCodeAt(start);
+      if (start > 0 && code >= 0xDC00 && code <= 0xDFFF) start -= 1;   // Ersatzzeichenpaar
+    }
+    input.value = input.value.slice(0, start) + input.value.slice(end);
+    input.focus();
+    try { input.setSelectionRange(start, start); } catch (err) { /* egal */ }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /* --- Feld mit Tastatur --------------------------------------------------- */
+
+  /**
+   * field({ label, value, placeholder, hint, subject, full })
+   * Rückgabe: Feldelement mit .input (wie ui.textField).
+   */
+  function field(config) {
+    config = config || {};
+    var input = h('input', {
+      type: 'text',
+      value: config.value || '',
+      placeholder: config.placeholder || '[staʒ]',
+      autocomplete: 'off',
+      spellcheck: 'false',
+      'aria-describedby': 'ipa-hint'
+    });
+
+    var currentId = lastLayoutId || layoutForSubject(config.subject);
+    if (!layoutById(currentId)) currentId = LAYOUTS[0].id;
+
+    var tabs = h('div.ipa-board__tabs', { role: 'tablist' });
+    var groups = h('div.ipa-board__groups');
+    var hintLine = h('div.ipa-board__hint', {
+      id: 'ipa-hint',
+      text: 'Zeichen werden an der Cursorposition eingefügt.'
+    });
+
+    var board = h('div.ipa-board', { hidden: true },
+      tabs,
+      groups,
+      // Eigene Zeile mit fester Höhe: Sonst ändert der Hinweis beim Überfahren
+      // der Tasten die Höhe der Tastatur und alles springt.
+      hintLine,
+      h('div.ipa-board__foot', {},
+        h('button.btn.btn--sm', {
+          type: 'button', title: 'Leerzeichen einfügen',
+          onmousedown: function (event) { event.preventDefault(); },
+          onclick: function () { insert(input, ' '); }
+        }, 'Leerzeichen'),
+        h('button.btn.btn--sm', {
+          type: 'button', title: 'Letztes Zeichen löschen',
+          onmousedown: function (event) { event.preventDefault(); },
+          onclick: function () { backspace(input); }
+        }, '⌫ Löschen'),
+        h('span.spacer'),
+        h('button.btn.btn--sm.btn--ghost', {
+          type: 'button', text: 'Fertig',
+          onclick: function () { close(); input.focus(); }
+        })
+      )
+    );
+
+    function setHint(text) {
+      hintLine.textContent = text || 'Zeichen werden an der Cursorposition eingefügt.';
+    }
+
+    function keyButton(raw) {
+      var key = normaliseKey(raw);
+      var describe = key.hint ? key.show + ' – ' + key.hint : key.show;
+      return h('button.ipa-key', {
+        type: 'button',
+        title: describe,
+        'aria-label': describe,
+        // Der Fokus muss im Eingabefeld bleiben, sonst geht die Cursorposition verloren.
+        onmousedown: function (event) { event.preventDefault(); },
+        onclick: function () { insert(input, key.ins, key.caret); },
+        onmouseenter: function () { setHint(describe); },
+        onmouseleave: function () { setHint(''); },
+        onfocus: function () { setHint(describe); },
+        onblur: function () { setHint(''); }
+      }, key.show);
+    }
+
+    function drawGroups() {
+      var layout = layoutById(currentId) || LAYOUTS[0];
+      util.clear(groups);
+      var visible = layout.id === 'zeichen' ? layout.groups : [COMMON].concat(layout.groups);
+      visible.forEach(function (group) {
+        var keys = h('div.ipa-keys');
+        group.keys.forEach(function (key) { keys.appendChild(keyButton(key)); });
+        groups.appendChild(h('div.ipa-group', {},
+          h('div.ipa-group__label', { text: group.label }),
+          keys
+        ));
+      });
+      util.$$('button', tabs).forEach(function (button) {
+        button.setAttribute('aria-selected', button.dataset.layout === currentId ? 'true' : 'false');
+      });
+    }
+
+    LAYOUTS.forEach(function (layout) {
+      tabs.appendChild(h('button.btn.btn--sm', {
+        type: 'button',
+        role: 'tab',
+        dataset: { layout: layout.id },
+        text: layout.label,
+        onmousedown: function (event) { event.preventDefault(); },
+        onclick: function () {
+          currentId = layout.id;
+          lastLayoutId = layout.id;
+          drawGroups();
+        }
+      }));
+    });
+    drawGroups();
+
+    var releaseEscape = null;
+
+    function open() {
+      if (!board.hidden) return;
+      board.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+      // Im Dialog steht das Feld weit unten – die Tastatur muss sichtbar werden.
+      window.requestAnimationFrame(function () {
+        try { board.scrollIntoView({ block: 'end' }); }
+        catch (err) { board.scrollIntoView(false); }
+      });
+      if (BAO.modal && BAO.modal.onEscape) {
+        releaseEscape = BAO.modal.onEscape(function () {
+          if (board.hidden) return false;
+          close();
+          input.focus();
+          return true;
+        });
+      }
+    }
+
+    function close() {
+      if (board.hidden) return;
+      board.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+      if (releaseEscape) { releaseEscape(); releaseEscape = null; }
+    }
+
+    var toggle = h('button.btn.btn--sm.ipa-toggle', {
+      type: 'button',
+      'aria-expanded': 'false',
+      title: 'Virtuelle Tastatur für Lautschrift ein- und ausblenden',
+      onclick: function () { if (board.hidden) { open(); input.focus(); } else { close(); } }
+    }, 'IPA-Tastatur');
+
+    input.addEventListener('focus', open);
+    input.addEventListener('click', open);
+
+    var wrapper = h('div.field.ipa-field' + (config.full ? '.full' : ''), {},
+      h('label', {},
+        h('span', { text: config.label || 'Aussprache / Betonung' }),
+        toggle
+      ),
+      input,
+      config.hint ? h('span.hint', { text: config.hint }) : null,
+      board
+    );
+
+    // Die Tastatur schließt, wenn der Fokus tatsächlich in einem anderen
+    // Bedienelement landet. Ein vorübergehender Fokusverlust (etwa beim
+    // Scrollen) darf sie nicht zuklappen – sonst bricht die Eingabe mitten
+    // im Wort ab.
+    wrapper.addEventListener('focusout', function () {
+      window.setTimeout(function () {
+        var active = document.activeElement;
+        if (!active || active === document.body) return;
+        if (!wrapper.contains(active)) close();
+      }, 0);
+    });
+
+    // Ein Klick irgendwo außerhalb schließt sie ebenfalls.
+    function onOutsidePointer(event) {
+      if (board.hidden) return;
+      if (wrapper.contains(event.target)) return;
+      close();
+    }
+    document.addEventListener('mousedown', onOutsidePointer, true);
+
+    wrapper.input = input;
+    wrapper.openBoard = open;
+    wrapper.closeBoard = close;
+    return wrapper;
+  }
+
+  BAO.ipa = {
+    LAYOUTS: LAYOUTS,
+    field: field,
+    insert: insert,
+    backspace: backspace,
+    layoutForSubject: layoutForSubject
   };
 })(window.BAO = window.BAO || {});
 
@@ -5671,7 +6246,14 @@ body { position: relative; }
     var fieldChunk = ui.textField({ label: 'Chunk', value: data.chunk, placeholder: 'J’ai fait un stage chez …' });
     var fieldExplanation = ui.textField({ label: 'Erklärung in der Zielsprache', value: data.explanation, full: true, placeholder: 'une période de travail pour découvrir un métier' });
     var fieldExample = ui.textField({ label: 'Beispielsatz', value: data.example, full: true, placeholder: 'J’ai fait un stage dans une boulangerie.' });
-    var fieldPronunciation = ui.textField({ label: 'Aussprache / Betonung', value: data.pronunciation, placeholder: '[staʒ]' });
+    var fieldPronunciation = BAO.ipa.field({
+      label: 'Aussprache / Betonung',
+      value: data.pronunciation,
+      placeholder: '[staʒ]',
+      hint: 'Ein Klick ins Feld öffnet die IPA-Tastatur.',
+      subject: select.subject(state, data.subjectId),
+      full: true
+    });
     var fieldCefr = ui.textField({ label: 'Niveau', value: data.cefr, placeholder: 'A2, B1 …' });
 
     var topics = (data.topics || []).slice();
@@ -5684,9 +6266,9 @@ body { position: relative; }
       label: 'Eingeführt in Reihe', value: data.introducedUnitId,
       options: ui.unitOptions(state, data.groupId)
     });
-    var fieldFunction = ui.selectField({
-      label: 'Kommunikative Funktion', value: data.functionId,
-      options: ui.functionOptions(state, true)
+    var fieldFunction = ui.functionField({
+      state: state, value: data.functionId,
+      label: 'Verwendung (kommunikative Funktion)'
     });
 
     function collect() {
@@ -5704,14 +6286,14 @@ body { position: relative; }
         topics: topics,
         tags: tags,
         status: util.$('select', fieldStatus).value,
-        introducedUnitId: util.$('select', fieldUnit).value,
-        functionId: util.$('select', fieldFunction).value
+        introducedUnitId: util.$('select', fieldUnit).value
       };
     }
 
     function save(values) {
       var unit = values.introducedUnitId ? select.unit(BAO.store.getState(), values.introducedUnitId) : null;
       BAO.store.commit(isNew ? 'Eintrag angelegt' : 'Eintrag bearbeitet', function (draft) {
+        values.functionId = fieldFunction.resolve(draft);
         if (isNew) {
           draft.lexemes.push(Object.assign(data, values, {
             introducedSchoolYear: unit ? unit.schoolYear : data.introducedSchoolYear,
@@ -5770,8 +6352,8 @@ body { position: relative; }
           fieldCollocation, fieldChunk, fieldExplanation, fieldExample),
         h('details.form-more', { open: isNew ? null : true },
           h('summary', { text: 'Weitere Angaben: Aussprache, Themen, Status, Reihe' }),
-          h('div.grid2.entry-form', {}, fieldPronunciation, fieldCefr, fieldFunction, fieldStatus,
-            fieldUnit, h('div'), fieldTopics, fieldTags)
+          h('div.grid2.entry-form', {}, fieldCefr, fieldFunction, fieldStatus, fieldUnit,
+            fieldTopics, fieldTags, fieldPronunciation)
         )
       ),
       actions: actions
@@ -6265,11 +6847,19 @@ body { position: relative; }
     var fieldText = ui.textField({
       label: 'Satzanfang', value: data.text, full: true,
       placeholder: 'À mon avis, ___.',
-      hint: 'Drei Unterstriche „___“ erzeugen eine ruhige Leerstelle in der Projektion.'
+      hint: 'Die Leerstelle erscheint in der Projektion als ruhige Linie. '
+        + 'Auch „…“ oder „...“ werden als Leerstelle erkannt.',
+      action: {
+        label: 'Leerstelle einfügen',
+        title: 'Setzt eine Leerstelle an der Cursorposition ein',
+        onClick: function (input) { util.insertAtCursor(input, '___'); }
+      }
     });
     var fieldTranslation = ui.textField({ label: 'Deutsche Entsprechung (optional)', value: data.translation, full: true });
-    var fieldFunction = ui.selectField({
-      label: 'Kommunikative Funktion', value: data.functionId, options: ui.functionOptions(state, true)
+    var fieldFunction = ui.functionField({
+      state: state, value: data.functionId,
+      label: 'Verwendung (kommunikative Funktion)',
+      hint: 'Frei benennbar: vorhandene Bezeichnung wählen oder eine neue eintippen.'
     });
     var fieldVariant = ui.selectField({
       label: 'Anspruch', value: data.variant,
@@ -6312,13 +6902,14 @@ body { position: relative; }
             var values = {
               text: text,
               translation: fieldTranslation.input.value.trim(),
-              functionId: util.$('select', fieldFunction).value,
               variant: util.$('select', fieldVariant).value,
               groupId: util.$('select', fieldScope).value === 'group' ? (data.groupId || defaults.groupId) : '',
               tags: tags,
               updatedAt: util.nowISO()
             };
             BAO.store.commit(isNew ? 'Satzanfang angelegt' : 'Satzanfang bearbeitet', function (draft) {
+              // Eine neu eingetippte Verwendung wird hier angelegt.
+              values.functionId = fieldFunction.resolve(draft);
               if (isNew) draft.starters.push(Object.assign(data, values));
               else {
                 var target = select.starter(draft, data.id);
@@ -6421,6 +7012,7 @@ body { position: relative; }
     }
 
     var all = select.startersOfGroup(state, ctx.group.id, ctx.subject.id);
+    var usedFunctions = util.unique(all.map(function (s) { return s.functionId || ''; })).length;
     var needle = util.fold(filters.query);
     var visible = all.filter(function (starter) {
       if (filters.variant !== 'all' && starter.variant !== filters.variant) return false;
@@ -6433,8 +7025,9 @@ body { position: relative; }
       h('div.view__title', {},
         h('h1', { text: 'Satzanfänge' }),
         h('span.sub', {
-          text: ctx.subject.name + ' · ' + ctx.group.name + ' · ' + all.length + ' Formulierungen in '
-            + select.functions(state).length + ' kommunikativen Funktionen'
+          text: ctx.subject.name + ' · ' + ctx.group.name + ' · '
+            + all.length + ' ' + util.plural(all.length, 'Formulierung', 'Formulierungen')
+            + ' in ' + usedFunctions + ' ' + util.plural(usedFunctions, 'Verwendung', 'Verwendungen')
         })
       ),
       h('div.spacer'),
@@ -6458,8 +7051,8 @@ body { position: relative; }
         oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
       }),
       ui.selectField({
-        value: filters.functionId, ariaLabel: 'Nach Funktion filtern',
-        options: [{ value: 'all', label: 'Alle Funktionen' }].concat(ui.functionOptions(state, false)),
+        value: filters.functionId, ariaLabel: 'Nach Verwendung filtern',
+        options: [{ value: 'all', label: 'Alle Verwendungen' }].concat(ui.functionOptions(state, false)),
         onChange: function (value) { filters.functionId = value; app.scheduleRender(); }
       }),
       ui.selectField({
@@ -6842,7 +7435,7 @@ body { position: relative; }
     });
     node.addEventListener('dragend', function () {
       node.classList.remove('is-dragging');
-      util.$('.drop-before, .drop-after').forEach(function (el) { el.classList.remove('drop-before', 'drop-after'); });
+      util.$$('.drop-before, .drop-after').forEach(function (el) { el.classList.remove('drop-before', 'drop-after'); });
     });
     node.addEventListener('dragover', function (event) {
       event.preventDefault();
@@ -6879,7 +7472,7 @@ body { position: relative; }
       var payload;
       try { payload = JSON.parse(event.dataTransfer.getData('text/plain')); } catch (err) { return; }
       if (!payload || !payload.itemId) return;
-      var count = util.$('.bitem', node).length;
+      var count = util.$$('.bitem', node).length;
       moveItem(bankId, payload.sectionId, payload.itemId, sectionId, count);
     });
   }
@@ -7379,7 +7972,7 @@ body { position: relative; }
         : (session.copyMode ? 'Abschreibmodus – Seite bleibt stehen' : 'Automatik aus');
     }
     if (refs.sectionMap) {
-      util.$('.section-map__item', refs.sectionMap).forEach(function (node) {
+      util.$$('.section-map__item', refs.sectionMap).forEach(function (node) {
         node.setAttribute('aria-current', slide && node.dataset.sectionId === slide.sectionId ? 'true' : 'false');
       });
     }
@@ -7972,7 +8565,7 @@ body { position: relative; }
         style: { background: entry.color, 'border-color': entry.color, width: '34px', 'min-height': '30px' },
         onclick: function () {
           chosen = { color: entry.color, soft: entry.soft };
-          util.$('button', swatches).forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+          util.$$('button', swatches).forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
           button.setAttribute('aria-pressed', 'true');
         }
       });
@@ -8772,11 +9365,11 @@ body { position: relative; }
     select.functions(state).forEach(function (fn) {
       functions.appendChild(h('span.chip.chip--tag', {}, fn.label,
         h('button', {
-          type: 'button', text: '×', 'aria-label': 'Funktion entfernen: ' + fn.label,
+          type: 'button', text: '×', 'aria-label': 'Verwendung entfernen: ' + fn.label,
           onclick: function () {
             var used = state.starters.filter(function (s) { return s.functionId === fn.id; }).length;
             BAO.modal.confirm({
-              title: 'Funktion entfernen?',
+              title: 'Verwendung entfernen?',
               text: '„' + fn.label + '“ wird aus der Liste entfernt.',
               detail: used ? used + ' Satzanfänge verlieren ihre Zuordnung, bleiben aber erhalten.' : '',
               confirmLabel: 'Entfernen', danger: true
@@ -8792,9 +9385,9 @@ body { position: relative; }
       ));
     });
     functions.appendChild(h('button.btn.btn--sm', {
-      type: 'button', text: '+ Funktion',
+      type: 'button', text: '+ Verwendung',
       onclick: function () {
-        BAO.modal.prompt({ title: 'Neue kommunikative Funktion', label: 'Bezeichnung', placeholder: 'z. B. eine Vermutung äußern' })
+        BAO.modal.prompt({ title: 'Neue Verwendung', label: 'Bezeichnung', placeholder: 'z. B. eine Vermutung äußern' })
           .then(function (value) {
             if (!value) return;
             BAO.store.commit('Funktion ergänzt', function (draft) {
@@ -8813,7 +9406,10 @@ body { position: relative; }
           levelGrid
         ),
         h('div.field', {}, h('label', { text: 'Unterrichtsszenen' }), scenes),
-        h('div.field', {}, h('label', { text: 'Kommunikative Funktionen' }), functions)
+        h('div.field', {},
+          h('label', { text: 'Verwendungen der Satzanfänge' }),
+          h('span.hint', { text: 'Neue Bezeichnungen entstehen auch direkt beim Anlegen eines Satzanfangs.' }),
+          functions)
       )
     );
   }
@@ -9417,6 +10013,7 @@ body { position: relative; }
         return;
       }
       if (event.key === 'Escape') {
+        if (BAO.modal.consumeEscape()) { event.preventDefault(); return; }
         if (BAO.output.isOverlayOpen()) { BAO.output.closeOverlay(); return; }
       }
       if (isTyping(event)) return;

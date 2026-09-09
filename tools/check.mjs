@@ -59,6 +59,26 @@ for (const asset of assets.filter((a) => a.endsWith('.js') || a.endsWith('.css')
 }
 report(suspicious.length === 0, suspicious.length ? suspicious.join(' | ') : 'keine gefunden');
 
+console.log('\nPortable Einzeldatei (dist/boite-a-oublis.html):');
+try {
+  const dist = await readFile(join(root, 'dist', 'boite-a-oublis.html'), 'utf8');
+  const mangled = [];
+  for (const asset of assets.filter((a) => a.endsWith('.js') || a.endsWith('.css'))) {
+    let content = await readFile(join(appDir, asset), 'utf8');
+    if (asset.endsWith('.js')) content = content.replace(/<\/script>/gi, '<\\/script>');
+    if (!dist.includes(content)) mangled.push(asset);
+  }
+  // Genau hier lauerte ein Fehler: String.replace deutet "$$" im Ersatztext
+  // als ein einzelnes "$". Aus util.$$ wurde util.$ – die ausgelieferte Datei
+  // verhielt sich anders als der Quelltext.
+  report(mangled.length === 0, mangled.length
+    ? 'nicht unverändert enthalten: ' + mangled.join(', ') + ' (npm run build)'
+    : 'alle Dateien unverändert eingebettet');
+} catch (error) {
+  if (error.code === 'ENOENT') report(true, 'noch nicht gebaut – npm run build erzeugt sie');
+  else report(false, error.message);
+}
+
 console.log('');
 if (failures) {
   console.error(failures + ' Prüfung(en) fehlgeschlagen.');

@@ -4,6 +4,9 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Eigene display-Regeln dürfen [hidden] nicht aushebeln. */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 
 body {

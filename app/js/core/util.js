@@ -105,6 +105,23 @@
     });
   }
 
+  /**
+   * Fügt Text an der Cursorposition eines Eingabefelds ein und meldet die
+   * Änderung wie eine Tastatureingabe. caretOffset verschiebt den Cursor
+   * danach (z. B. -1, um zwischen zwei eben eingefügte Klammern zu springen).
+   */
+  function insertAtCursor(input, text, caretOffset) {
+    var start = input.selectionStart === null ? input.value.length : input.selectionStart;
+    var end = input.selectionEnd === null ? start : input.selectionEnd;
+    input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    var position = start + text.length + (caretOffset || 0);
+    // preventScroll: Ohne das springt die Ansicht bei jedem eingefügten
+    // Zeichen zum Feld zurück – bei einer Zeichentastatur unbrauchbar.
+    try { input.focus({ preventScroll: true }); } catch (err) { input.focus(); }
+    try { input.setSelectionRange(position, position); } catch (err) { /* Feldtyp ohne Auswahl */ }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   /* --- Text und Formate --------------------------------------------------- */
 
   function plural(n, one, many) { return n === 1 ? one : (many || one + 'e'); }
@@ -228,7 +245,7 @@
   BAO.util = {
     uid: uid, nowISO: nowISO, clone: clone, debounce: debounce, clamp: clamp,
     fold: fold, escapeHtml: escapeHtml,
-    h: h, append: append, clear: clear, $: $, $$: $$, on: on,
+    h: h, append: append, clear: clear, $: $, $$: $$, on: on, insertAtCursor: insertAtCursor,
     plural: plural, formatDate: formatDate, formatDateTime: formatDateTime, relativeDate: relativeDate,
     currentSchoolYear: currentSchoolYear, nextSchoolYear: nextSchoolYear,
     sortBy: sortBy, byOrder: byOrder, groupBy: groupBy, unique: unique, moveInArray: moveInArray,

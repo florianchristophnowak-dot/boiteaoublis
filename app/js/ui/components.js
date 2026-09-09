@@ -222,16 +222,22 @@
     return fragment;
   }
 
+  /* Als Leerstelle gilt, was Lehrkräfte üblicherweise schreiben: mehrere
+     Unterstriche, drei Punkte oder ein Auslassungszeichen. */
+  var GAP_SPLIT = /(_{2,}|\.{3,}|\u2026)/;
+  var GAP_MATCH = /^(_{2,}|\.{3,}|\u2026)$/;
+  var GAP_GLOBAL = /(_{2,}|\.{3,}|\u2026)/g;
+
   /**
-   * Wandelt Leerstellen ("___") in ruhige Linien um.
+   * Wandelt Leerstellen in ruhige Linien um.
    * Wird sowohl in der Lehreransicht als auch auf dem Beamer verwendet.
    */
   function gapText(text, doc) {
     doc = doc || document;
     var fragment = doc.createDocumentFragment();
-    String(text || '').split(/(_{2,})/).forEach(function (part) {
+    String(text || '').split(GAP_SPLIT).forEach(function (part) {
       if (!part) return;
-      if (/^_{2,}$/.test(part)) {
+      if (GAP_MATCH.test(part)) {
         var span = doc.createElement('span');
         span.className = 'gap';
         span.setAttribute('aria-label', 'Leerstelle');
@@ -244,8 +250,9 @@
     return fragment;
   }
 
+  /** Für kompakte Listen: Leerstellen als einzelnes Auslassungszeichen. */
   function plainStarterText(text) {
-    return String(text || '').replace(/_{2,}/g, '…');
+    return String(text || '').replace(GAP_GLOBAL, '\u2026');
   }
 
   /* --- Bausteine ----------------------------------------------------------- */
@@ -293,8 +300,25 @@
     if (config.multiline) input.value = config.value || '';
     if (config.onInput) input.addEventListener('input', function () { config.onInput(input.value, input); });
     if (config.name) input.name = config.name;
-    var field = h('div.field' + (config.full ? '.full' : ''), {},
-      config.label ? h('label', { text: config.label }) : null,
+
+    // Optionaler Knopf in der Beschriftungszeile, z. B. „Leerstelle einfügen“.
+    var labelNode = null;
+    if (config.label) {
+      labelNode = h('label', {}, h('span', { text: config.label }));
+      if (config.action) {
+        labelNode.appendChild(h('button.btn.btn--sm', {
+          type: 'button',
+          text: config.action.label,
+          title: config.action.title || config.action.label,
+          // Fokus im Feld lassen, damit die Cursorposition erhalten bleibt.
+          onmousedown: function (event) { event.preventDefault(); },
+          onclick: function () { config.action.onClick(input); }
+        }));
+      }
+    }
+
+    var field = h('div.field' + (config.full ? '.full' : '') + (config.action ? '.field--action' : ''), {},
+      labelNode,
       input,
       config.hint ? h('span.hint', { text: config.hint }) : null
     );
@@ -365,6 +389,56 @@
     return list;
   }
 
+  /**
+   * Eingabefeld für die Verwendung (kommunikative Funktion) eines
+   * Satzanfangs. Vorhandene Bezeichnungen lassen sich auswählen, neue
+   * einfach eintippen – sie werden beim Speichern angelegt.
+   */
+  function functionField(config) {
+    var functions = BAO.select.functions(config.state);
+    var current = functions.filter(function (f) { return f.id === config.value; })[0];
+    var listId = util.uid('fnlist');
+
+    var input = h('input', {
+      type: 'text',
+      value: current ? current.label : '',
+      list: listId,
+      autocomplete: 'off',
+      placeholder: config.placeholder || 'z. B. eine Meinung äußern'
+    });
+    var datalist = h('datalist', { id: listId });
+    functions.forEach(function (fn) { datalist.appendChild(h('option', { value: fn.label })); });
+
+    var field = h('div.field' + (config.full ? '.full' : ''), {},
+      h('label', { text: config.label || 'Verwendung' }),
+      input,
+      datalist,
+      h('span.hint', {
+        text: config.hint || 'Frei benennbar: vorhandene Bezeichnung wählen oder eine neue eintippen.'
+      })
+    );
+    field.input = input;
+
+    /**
+     * Sucht die Bezeichnung im Bestand und legt sie sonst an.
+     * Muss innerhalb eines commit-Mutators mit dem Entwurf aufgerufen werden.
+     */
+    field.resolve = function (draft) {
+      var label = input.value.trim();
+      if (!label) return '';
+      var needle = util.fold(label);
+      var match = (draft.functions || []).filter(function (fn) {
+        return util.fold(fn.label) === needle;
+      })[0];
+      if (match) return match.id;
+      var created = { id: util.uid('fn'), label: label, order: draft.functions.length };
+      draft.functions.push(created);
+      return created.id;
+    };
+
+    return field;
+  }
+
   function functionOptions(state, includeEmpty) {
     var list = BAO.select.functions(state).map(function (f) { return { value: f.id, label: f.label }; });
     if (includeEmpty) list.unshift({ value: '', label: '– ohne Funktion –' });
@@ -386,6 +460,7 @@
     genderFromGram: genderFromGram,
     gapText: gapText,
     plainStarterText: plainStarterText,
+    GAP_MATCH: GAP_MATCH,
     emptyState: emptyState,
     selectField: selectField,
     textField: textField,
@@ -393,6 +468,7 @@
     statusOptions: statusOptions,
     sceneOptions: sceneOptions,
     unitOptions: unitOptions,
+    functionField: functionField,
     functionOptions: functionOptions
   };
 })(window.BAO = window.BAO || {});

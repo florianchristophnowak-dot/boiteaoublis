@@ -10,6 +10,31 @@
   var h = util.h;
   var openStack = [];
 
+  /* Untergeordnete Einblendungen (z. B. die IPA-Tastatur) dürfen die
+     Esc-Taste zuerst bekommen – sonst schließt Esc gleich den ganzen Dialog
+     und eine halb fertige Eingabe wäre verloren. Der Handler meldet mit
+     true zurück, dass er die Taste verbraucht hat. */
+  var escapeStack = [];
+
+  function onEscape(handler) {
+    escapeStack.push(handler);
+    return function () {
+      var index = escapeStack.indexOf(handler);
+      if (index >= 0) escapeStack.splice(index, 1);
+    };
+  }
+
+  /** true, wenn eine Einblendung die Esc-Taste verbraucht hat. */
+  function consumeEscape() {
+    for (var i = escapeStack.length - 1; i >= 0; i--) {
+      var handled = false;
+      try { handled = escapeStack[i]() === true; }
+      catch (err) { console.error('Fehler beim Schließen einer Einblendung:', err); }
+      if (handled) return true;
+    }
+    return false;
+  }
+
   function focusables(node) {
     return util.$$('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', node)
       .filter(function (el) { return el.offsetParent !== null || el === document.activeElement; });
@@ -101,6 +126,7 @@
           // Nicht an die Projektionssteuerung durchreichen.
           event.preventDefault();
           event.stopPropagation();
+          if (consumeEscape()) return;
           if (config.dismissable === false) return;
           finish(null);
           return;
@@ -175,5 +201,5 @@
     });
   }
 
-  BAO.modal = { open: open, confirm: confirm, prompt: prompt };
+  BAO.modal = { open: open, confirm: confirm, prompt: prompt, onEscape: onEscape, consumeEscape: consumeEscape };
 })(window.BAO = window.BAO || {});

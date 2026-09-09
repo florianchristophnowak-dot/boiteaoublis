@@ -44,7 +44,14 @@
     var fieldChunk = ui.textField({ label: 'Chunk', value: data.chunk, placeholder: 'J’ai fait un stage chez …' });
     var fieldExplanation = ui.textField({ label: 'Erklärung in der Zielsprache', value: data.explanation, full: true, placeholder: 'une période de travail pour découvrir un métier' });
     var fieldExample = ui.textField({ label: 'Beispielsatz', value: data.example, full: true, placeholder: 'J’ai fait un stage dans une boulangerie.' });
-    var fieldPronunciation = ui.textField({ label: 'Aussprache / Betonung', value: data.pronunciation, placeholder: '[staʒ]' });
+    var fieldPronunciation = BAO.ipa.field({
+      label: 'Aussprache / Betonung',
+      value: data.pronunciation,
+      placeholder: '[staʒ]',
+      hint: 'Ein Klick ins Feld öffnet die IPA-Tastatur.',
+      subject: select.subject(state, data.subjectId),
+      full: true
+    });
     var fieldCefr = ui.textField({ label: 'Niveau', value: data.cefr, placeholder: 'A2, B1 …' });
 
     var topics = (data.topics || []).slice();
@@ -57,9 +64,9 @@
       label: 'Eingeführt in Reihe', value: data.introducedUnitId,
       options: ui.unitOptions(state, data.groupId)
     });
-    var fieldFunction = ui.selectField({
-      label: 'Kommunikative Funktion', value: data.functionId,
-      options: ui.functionOptions(state, true)
+    var fieldFunction = ui.functionField({
+      state: state, value: data.functionId,
+      label: 'Verwendung (kommunikative Funktion)'
     });
 
     function collect() {
@@ -77,14 +84,14 @@
         topics: topics,
         tags: tags,
         status: util.$('select', fieldStatus).value,
-        introducedUnitId: util.$('select', fieldUnit).value,
-        functionId: util.$('select', fieldFunction).value
+        introducedUnitId: util.$('select', fieldUnit).value
       };
     }
 
     function save(values) {
       var unit = values.introducedUnitId ? select.unit(BAO.store.getState(), values.introducedUnitId) : null;
       BAO.store.commit(isNew ? 'Eintrag angelegt' : 'Eintrag bearbeitet', function (draft) {
+        values.functionId = fieldFunction.resolve(draft);
         if (isNew) {
           draft.lexemes.push(Object.assign(data, values, {
             introducedSchoolYear: unit ? unit.schoolYear : data.introducedSchoolYear,
@@ -143,8 +150,8 @@
           fieldCollocation, fieldChunk, fieldExplanation, fieldExample),
         h('details.form-more', { open: isNew ? null : true },
           h('summary', { text: 'Weitere Angaben: Aussprache, Themen, Status, Reihe' }),
-          h('div.grid2.entry-form', {}, fieldPronunciation, fieldCefr, fieldFunction, fieldStatus,
-            fieldUnit, h('div'), fieldTopics, fieldTags)
+          h('div.grid2.entry-form', {}, fieldCefr, fieldFunction, fieldStatus, fieldUnit,
+            fieldTopics, fieldTags, fieldPronunciation)
         )
       ),
       actions: actions

@@ -422,6 +422,7 @@
         return;
       }
       if (event.key === 'Escape') {
+        if (BAO.modal.consumeEscape()) { event.preventDefault(); return; }
         if (BAO.output.isOverlayOpen()) { BAO.output.closeOverlay(); return; }
       }
       if (isTyping(event)) return;

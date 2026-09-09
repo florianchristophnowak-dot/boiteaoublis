@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const appUrl = pathToFileURL(join(root, 'app', 'index.html')).href;
+const distUrl = pathToFileURL(join(root, 'dist', 'boite-a-oublis.html')).href;
 const shotDir = join(root, 'tests', 'output');
 
 function loadPlaywright() {
@@ -160,6 +161,48 @@ async function run() {
   });
   check('mehrere Zeilen auf einmal eingefügt', bulk);
 
+  // Satzanfang über die Oberfläche, mit frei benannter Verwendung
+  await page.evaluate(() => BAO.app.go('satzanfaenge'));
+  await page.waitForTimeout(250);
+  await page.click('button:has-text("Neuer Satzanfang")');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input >> nth=0', 'Es könnte sein, dass ');
+  await page.click('.modal button:has-text("Leerstelle einfügen")');
+  await page.waitForTimeout(120);
+  check('Leerstelle wird per Knopf eingefügt',
+    (await page.inputValue('.modal input >> nth=0')) === 'Es könnte sein, dass ___',
+    await page.inputValue('.modal input >> nth=0'));
+  check('Vorschau zeigt die Leerstelle als Linie',
+    await page.evaluate(() => document.querySelectorAll('.modal .starter__text .gap').length === 1));
+
+  await page.fill('.modal input[list]', 'eine Vermutung äußern');
+  await page.click('.modal button:text-is("Speichern")');
+  await page.waitForTimeout(300);
+  const freeFunction = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const starter = state.starters.filter((s) => s.text.indexOf('Es könnte sein') === 0)[0];
+    const fn = starter ? state.functions.filter((f) => f.id === starter.functionId)[0] : null;
+    return { saved: !!starter, label: fn ? fn.label : '', count: state.functions.length };
+  });
+  check('Satzanfang mit frei benannter Verwendung gespeichert',
+    freeFunction.saved && freeFunction.label === 'eine Vermutung äußern', JSON.stringify(freeFunction));
+  check('die neue Verwendung steht jetzt im Bestand', freeFunction.count === 13, String(freeFunction.count));
+  check('der neue Satzanfang erscheint unter seiner Verwendung',
+    await page.evaluate(() => Array.prototype.some.call(
+      document.querySelectorAll('.func-group__head h3'), (h) => h.textContent === 'eine Vermutung äußern')));
+
+  const gapForms = await page.evaluate(() => {
+    const count = (text) => {
+      const wrap = document.createElement('div');
+      wrap.appendChild(BAO.ui.gapText(text, document));
+      return wrap.querySelectorAll('.gap').length;
+    };
+    return { unterstriche: count('A ___ B'), punkte: count('A ... B'), auslassung: count('A \u2026 B') };
+  });
+  check('Unterstriche, drei Punkte und Auslassungszeichen gelten als Leerstelle',
+    gapForms.unterstriche === 1 && gapForms.punkte === 1 && gapForms.auslassung === 1,
+    JSON.stringify(gapForms));
+
   // Satzanfang anlegen
   const starterCreated = await page.evaluate(() => {
     const before = BAO.store.getState().starters.length;
@@ -173,6 +216,74 @@ async function run() {
     return BAO.store.getState().starters.length === before + 1;
   });
   check('Satzanfang mit Leerstellen angelegt', starterCreated);
+
+  /* --- 3b. IPA-Tastatur ---------------------------------------------------- */
+  section('3b. Virtuelle IPA-Tastatur');
+  await page.evaluate(() => {
+    BAO.app.setContext('sub_fr', 'grp_fr9b');
+    const lex = BAO.store.getState().lexemes.filter((l) => l.term === 'stage')[0];
+    BAO.views.vocab.openEditor(lex);
+  });
+  await page.waitForSelector('.modal .ipa-field');
+  check('Tastatur ist zunächst eingeklappt',
+    (await page.isVisible('.modal .ipa-board')) === false);
+
+  await page.fill('.modal .ipa-field input', '');
+  await page.click('.modal .ipa-field input');
+  await page.waitForTimeout(500);
+  check('Klick ins Aussprachefeld öffnet die Tastatur', await page.isVisible('.modal .ipa-board'));
+  check('Sprache des Fachs ist vorgewählt',
+    (await page.textContent('.modal .ipa-board__tabs .btn[aria-selected="true"]')) === 'Französisch');
+
+  await page.click('.modal .ipa-key[aria-label^="[ ]"]');
+  await page.click('.modal .ipa-key[aria-label^="ʁ"]');
+  await page.click('.modal .ipa-key[aria-label^="ɛ̃"]');
+  await page.waitForTimeout(150);
+  check('Zeichen landen zwischen den Klammern',
+    (await page.inputValue('.modal .ipa-field input')) === '[ʁɛ̃]',
+    await page.inputValue('.modal .ipa-field input'));
+
+  await page.click('.modal .ipa-board__tabs .btn:has-text("Englisch")');
+  await page.waitForTimeout(150);
+  const englishKeys = await page.evaluate(() =>
+    Array.prototype.map.call(document.querySelectorAll('.modal .ipa-key'), (k) => k.textContent));
+  check('Englische Zeichen vorhanden (θ, ð, ŋ, æ, Diphthonge)',
+    ['θ', 'ð', 'ŋ', 'æ', 'eɪ', 'ɜː'].every((k) => englishKeys.includes(k)));
+  await page.click('.modal .ipa-board__tabs .btn:has-text("Spanisch")');
+  await page.waitForTimeout(150);
+  const spanishKeys = await page.evaluate(() =>
+    Array.prototype.map.call(document.querySelectorAll('.modal .ipa-key'), (k) => k.textContent));
+  check('Spanische Zeichen vorhanden (β, ɣ, ʎ, ɾ, x)',
+    ['β', 'ɣ', 'ʎ', 'ɾ', 'x'].every((k) => spanishKeys.includes(k)));
+
+  await page.click('.modal button:has-text("Löschen")');
+  await page.waitForTimeout(120);
+  check('Löschen nimmt ein ganzes Zeichen samt Kombinationszeichen zurück',
+    (await page.inputValue('.modal .ipa-field input')) === '[ʁ]',
+    await page.inputValue('.modal .ipa-field input'));
+
+  await page.click('.modal .ipa-field input');
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  check('Esc schließt zuerst die Tastatur, nicht den Dialog',
+    (await page.isVisible('.modal .ipa-board')) === false && (await page.isVisible('.modal')) === true);
+
+  await page.fill('.modal .ipa-field input', '[ʁɛ̃]');
+  await page.click('.modal button:text-is("Änderungen übernehmen")');
+  await page.waitForTimeout(250);
+  check('Lautschrift wird gespeichert',
+    await page.evaluate(() => {
+      const lex = BAO.store.getState().lexemes.filter((l) => l.term === 'stage')[0];
+      return lex && lex.pronunciation === '[ʁɛ̃]';
+    }));
+  await page.screenshot({ path: join(shotDir, 'ipa-tastatur.png') });
+
+  // Ursprünglichen Wert zurückschreiben, damit die Projektion später stimmt.
+  await page.evaluate(() => BAO.store.commit('Test: Lautschrift zurück', (draft) => {
+    const lex = draft.lexemes.filter((l) => l.term === 'stage')[0];
+    if (lex) lex.pronunciation = '[sta\u0292]';
+  }));
 
   /* --- 4. Wortbank zusammenstellen ---------------------------------------- */
   section('4. Wortbank zusammenstellen');
@@ -757,6 +868,54 @@ async function run() {
     return results.some((r) => BAO.util.fold(r.title).includes('experience'));
   });
   check('Suche ist akzentunempfindlich („experience“ findet „l’expérience“)', foldSearch);
+
+  /* --- 15. Portable Einzeldatei -------------------------------------------- */
+  section('15. Portable Einzeldatei (dist/boite-a-oublis.html)');
+  const portable = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+  const distPage = await portable.newPage();
+  const distErrors = [];
+  distPage.on('pageerror', (error) => distErrors.push('pageerror: ' + error.message));
+  distPage.on('console', (message) => {
+    if (message.type() === 'error') distErrors.push('console: ' + message.text());
+  });
+  await distPage.goto(distUrl);
+  await distPage.waitForFunction(() => window.BAO && window.BAO.store && window.BAO.store.getState());
+
+  // Der Einbettungsfehler machte aus util.$$ ein util.$ – seither liefert
+  // util.$ eine Liste statt eines Elements und jedes Formular bricht ab.
+  const helpers = await distPage.evaluate(() => {
+    const one = BAO.util.$('.rail__item');
+    const many = BAO.util.$$('.rail__item');
+    return {
+      singleIsElement: !!(one && one.tagName),
+      manyIsArray: Array.isArray(many) && many.length > 1
+    };
+  });
+  check('util.$ liefert in der Einzeldatei ein Element', helpers.singleIsElement, JSON.stringify(helpers));
+  check('util.$$ liefert in der Einzeldatei eine Liste', helpers.manyIsArray, JSON.stringify(helpers));
+
+  await distPage.evaluate(() => { BAO.app.setContext('sub_fr', 'grp_fr9b'); BAO.app.go('satzanfaenge'); });
+  await distPage.waitForTimeout(300);
+  await distPage.click('button:has-text("Neuer Satzanfang")');
+  await distPage.waitForSelector('.modal', { timeout: 5000 });
+  await distPage.fill('.modal input >> nth=0', 'Portable ___.');
+  await distPage.click('.modal button:text-is("Speichern")');
+  await distPage.waitForTimeout(300);
+  check('Satzanfang lässt sich auch in der Einzeldatei anlegen',
+    await distPage.evaluate(() => BAO.store.getState().starters.some((s) => s.text === 'Portable ___.')));
+
+  await distPage.evaluate(() => { BAO.app.go('wortschatz'); });
+  await distPage.waitForTimeout(300);
+  await distPage.click('button:has-text("Neuer Eintrag")');
+  await distPage.waitForSelector('.modal');
+  await distPage.fill('.modal input >> nth=0', 'la portabilité');
+  await distPage.click('.modal button:text-is("Speichern")');
+  await distPage.waitForTimeout(300);
+  check('Wortschatzeintrag lässt sich auch in der Einzeldatei anlegen',
+    await distPage.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'la portabilité')));
+
+  check('keine Fehler in der Einzeldatei', distErrors.length === 0, distErrors.slice(0, 3).join(' | '));
+  await portable.close();
 
   /* --- Abschluss ---------------------------------------------------------- */
   await browser.close();
