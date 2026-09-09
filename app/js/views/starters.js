@@ -29,11 +29,19 @@
     var fieldText = ui.textField({
       label: 'Satzanfang', value: data.text, full: true,
       placeholder: 'À mon avis, ___.',
-      hint: 'Drei Unterstriche „___“ erzeugen eine ruhige Leerstelle in der Projektion.'
+      hint: 'Die Leerstelle erscheint in der Projektion als ruhige Linie. '
+        + 'Auch „…“ oder „...“ werden als Leerstelle erkannt.',
+      action: {
+        label: 'Leerstelle einfügen',
+        title: 'Setzt eine Leerstelle an der Cursorposition ein',
+        onClick: function (input) { util.insertAtCursor(input, '___'); }
+      }
     });
     var fieldTranslation = ui.textField({ label: 'Deutsche Entsprechung (optional)', value: data.translation, full: true });
-    var fieldFunction = ui.selectField({
-      label: 'Kommunikative Funktion', value: data.functionId, options: ui.functionOptions(state, true)
+    var fieldFunction = ui.functionField({
+      state: state, value: data.functionId,
+      label: 'Verwendung (kommunikative Funktion)',
+      hint: 'Frei benennbar: vorhandene Bezeichnung wählen oder eine neue eintippen.'
     });
     var fieldVariant = ui.selectField({
       label: 'Anspruch', value: data.variant,
@@ -76,13 +84,14 @@
             var values = {
               text: text,
               translation: fieldTranslation.input.value.trim(),
-              functionId: util.$('select', fieldFunction).value,
               variant: util.$('select', fieldVariant).value,
               groupId: util.$('select', fieldScope).value === 'group' ? (data.groupId || defaults.groupId) : '',
               tags: tags,
               updatedAt: util.nowISO()
             };
             BAO.store.commit(isNew ? 'Satzanfang angelegt' : 'Satzanfang bearbeitet', function (draft) {
+              // Eine neu eingetippte Verwendung wird hier angelegt.
+              values.functionId = fieldFunction.resolve(draft);
               if (isNew) draft.starters.push(Object.assign(data, values));
               else {
                 var target = select.starter(draft, data.id);
@@ -185,6 +194,7 @@
     }
 
     var all = select.startersOfGroup(state, ctx.group.id, ctx.subject.id);
+    var usedFunctions = util.unique(all.map(function (s) { return s.functionId || ''; })).length;
     var needle = util.fold(filters.query);
     var visible = all.filter(function (starter) {
       if (filters.variant !== 'all' && starter.variant !== filters.variant) return false;
@@ -197,8 +207,9 @@
       h('div.view__title', {},
         h('h1', { text: 'Satzanfänge' }),
         h('span.sub', {
-          text: ctx.subject.name + ' · ' + ctx.group.name + ' · ' + all.length + ' Formulierungen in '
-            + select.functions(state).length + ' kommunikativen Funktionen'
+          text: ctx.subject.name + ' · ' + ctx.group.name + ' · '
+            + all.length + ' ' + util.plural(all.length, 'Formulierung', 'Formulierungen')
+            + ' in ' + usedFunctions + ' ' + util.plural(usedFunctions, 'Verwendung', 'Verwendungen')
         })
       ),
       h('div.spacer'),
@@ -222,8 +233,8 @@
         oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
       }),
       ui.selectField({
-        value: filters.functionId, ariaLabel: 'Nach Funktion filtern',
-        options: [{ value: 'all', label: 'Alle Funktionen' }].concat(ui.functionOptions(state, false)),
+        value: filters.functionId, ariaLabel: 'Nach Verwendung filtern',
+        options: [{ value: 'all', label: 'Alle Verwendungen' }].concat(ui.functionOptions(state, false)),
         onChange: function (value) { filters.functionId = value; app.scheduleRender(); }
       }),
       ui.selectField({

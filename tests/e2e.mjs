@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const appUrl = pathToFileURL(join(root, 'app', 'index.html')).href;
+const distUrl = pathToFileURL(join(root, 'dist', 'boite-a-oublis.html')).href;
 const shotDir = join(root, 'tests', 'output');
 
 function loadPlaywright() {
@@ -159,6 +160,48 @@ async function run() {
     return ['le contrat', 'la formation', 'le bilan'].every((t) => terms.includes(t));
   });
   check('mehrere Zeilen auf einmal eingefügt', bulk);
+
+  // Satzanfang über die Oberfläche, mit frei benannter Verwendung
+  await page.evaluate(() => BAO.app.go('satzanfaenge'));
+  await page.waitForTimeout(250);
+  await page.click('button:has-text("Neuer Satzanfang")');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input >> nth=0', 'Es könnte sein, dass ');
+  await page.click('.modal button:has-text("Leerstelle einfügen")');
+  await page.waitForTimeout(120);
+  check('Leerstelle wird per Knopf eingefügt',
+    (await page.inputValue('.modal input >> nth=0')) === 'Es könnte sein, dass ___',
+    await page.inputValue('.modal input >> nth=0'));
+  check('Vorschau zeigt die Leerstelle als Linie',
+    await page.evaluate(() => document.querySelectorAll('.modal .starter__text .gap').length === 1));
+
+  await page.fill('.modal input[list]', 'eine Vermutung äußern');
+  await page.click('.modal button:text-is("Speichern")');
+  await page.waitForTimeout(300);
+  const freeFunction = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const starter = state.starters.filter((s) => s.text.indexOf('Es könnte sein') === 0)[0];
+    const fn = starter ? state.functions.filter((f) => f.id === starter.functionId)[0] : null;
+    return { saved: !!starter, label: fn ? fn.label : '', count: state.functions.length };
+  });
+  check('Satzanfang mit frei benannter Verwendung gespeichert',
+    freeFunction.saved && freeFunction.label === 'eine Vermutung äußern', JSON.stringify(freeFunction));
+  check('die neue Verwendung steht jetzt im Bestand', freeFunction.count === 13, String(freeFunction.count));
+  check('der neue Satzanfang erscheint unter seiner Verwendung',
+    await page.evaluate(() => Array.prototype.some.call(
+      document.querySelectorAll('.func-group__head h3'), (h) => h.textContent === 'eine Vermutung äußern')));
+
+  const gapForms = await page.evaluate(() => {
+    const count = (text) => {
+      const wrap = document.createElement('div');
+      wrap.appendChild(BAO.ui.gapText(text, document));
+      return wrap.querySelectorAll('.gap').length;
+    };
+    return { unterstriche: count('A ___ B'), punkte: count('A ... B'), auslassung: count('A \u2026 B') };
+  });
+  check('Unterstriche, drei Punkte und Auslassungszeichen gelten als Leerstelle',
+    gapForms.unterstriche === 1 && gapForms.punkte === 1 && gapForms.auslassung === 1,
+    JSON.stringify(gapForms));
 
   // Satzanfang anlegen
   const starterCreated = await page.evaluate(() => {
@@ -825,6 +868,54 @@ async function run() {
     return results.some((r) => BAO.util.fold(r.title).includes('experience'));
   });
   check('Suche ist akzentunempfindlich („experience“ findet „l’expérience“)', foldSearch);
+
+  /* --- 15. Portable Einzeldatei -------------------------------------------- */
+  section('15. Portable Einzeldatei (dist/boite-a-oublis.html)');
+  const portable = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+  const distPage = await portable.newPage();
+  const distErrors = [];
+  distPage.on('pageerror', (error) => distErrors.push('pageerror: ' + error.message));
+  distPage.on('console', (message) => {
+    if (message.type() === 'error') distErrors.push('console: ' + message.text());
+  });
+  await distPage.goto(distUrl);
+  await distPage.waitForFunction(() => window.BAO && window.BAO.store && window.BAO.store.getState());
+
+  // Der Einbettungsfehler machte aus util.$$ ein util.$ – seither liefert
+  // util.$ eine Liste statt eines Elements und jedes Formular bricht ab.
+  const helpers = await distPage.evaluate(() => {
+    const one = BAO.util.$('.rail__item');
+    const many = BAO.util.$$('.rail__item');
+    return {
+      singleIsElement: !!(one && one.tagName),
+      manyIsArray: Array.isArray(many) && many.length > 1
+    };
+  });
+  check('util.$ liefert in der Einzeldatei ein Element', helpers.singleIsElement, JSON.stringify(helpers));
+  check('util.$$ liefert in der Einzeldatei eine Liste', helpers.manyIsArray, JSON.stringify(helpers));
+
+  await distPage.evaluate(() => { BAO.app.setContext('sub_fr', 'grp_fr9b'); BAO.app.go('satzanfaenge'); });
+  await distPage.waitForTimeout(300);
+  await distPage.click('button:has-text("Neuer Satzanfang")');
+  await distPage.waitForSelector('.modal', { timeout: 5000 });
+  await distPage.fill('.modal input >> nth=0', 'Portable ___.');
+  await distPage.click('.modal button:text-is("Speichern")');
+  await distPage.waitForTimeout(300);
+  check('Satzanfang lässt sich auch in der Einzeldatei anlegen',
+    await distPage.evaluate(() => BAO.store.getState().starters.some((s) => s.text === 'Portable ___.')));
+
+  await distPage.evaluate(() => { BAO.app.go('wortschatz'); });
+  await distPage.waitForTimeout(300);
+  await distPage.click('button:has-text("Neuer Eintrag")');
+  await distPage.waitForSelector('.modal');
+  await distPage.fill('.modal input >> nth=0', 'la portabilité');
+  await distPage.click('.modal button:text-is("Speichern")');
+  await distPage.waitForTimeout(300);
+  check('Wortschatzeintrag lässt sich auch in der Einzeldatei anlegen',
+    await distPage.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'la portabilité')));
+
+  check('keine Fehler in der Einzeldatei', distErrors.length === 0, distErrors.slice(0, 3).join(' | '));
+  await portable.close();
 
   /* --- Abschluss ---------------------------------------------------------- */
   await browser.close();

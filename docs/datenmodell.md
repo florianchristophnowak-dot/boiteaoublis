@@ -85,9 +85,9 @@ Pflichtfeld ist nur `term`.
 
 | Feld | Bedeutung |
 |---|---|
-| `text` | Formulierung; `___` markiert eine Leerstelle |
+| `text` | Formulierung; `___`, `...` oder `…` markieren eine Leerstelle |
 | `translation` | deutsche Entsprechung (optional) |
-| `functionId` | kommunikative Funktion |
+| `functionId` | Verwendung (kommunikative Funktion) – frei benennbar, siehe unten |
 | `variant` | `einfach` \| `standard` \| `anspruchsvoll` |
 | `groupId` | leer = im ganzen Fach verfügbar |
 | `subjectId`, `tags[]`, `status`, `note` | |
@@ -185,3 +185,11 @@ eingebauter Zeichentastatur. `BAO.ipa.LAYOUTS` enthält die Register; jede Taste
 
 Ein weiteres Register braucht nur einen zusätzlichen Eintrag in `LAYOUTS`. `layoutForSubject` wählt das
 Register anhand des Fachnamens vor.
+
+## Verwendungen (kommunikative Funktionen)
+
+`state.functions` ist eine gewöhnliche Liste `{ id, label, order }` – kein fester Vorrat im Programm.
+`BAO.ui.functionField({ state, value, label })` liefert ein Eingabefeld mit Vorschlagsliste; sein
+`resolve(draft)` sucht die eingetippte Bezeichnung (akzentunempfindlich) und legt sie andernfalls an.
+Aufgerufen wird es **innerhalb** des commit-Mutators, damit Anlegen und Zuordnen ein einziger,
+gemeinsam rückgängig zu machender Schritt sind.

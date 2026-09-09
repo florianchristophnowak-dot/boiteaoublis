@@ -27,6 +27,11 @@ async function build() {
   let html = await readFile(join(appDir, 'index.html'), 'utf8');
   const inlined = [];
 
+  // WICHTIG: Ersetzt wird immer über eine Funktion. Ein Ersatztext würde
+  // "$$", "$&" und "$`" als Sonderfolgen deuten – aus util.$$ würde util.$,
+  // und die ausgelieferte Datei verhielte sich anders als der Quelltext.
+  const replaceOnce = (haystack, needle, replacement) => haystack.replace(needle, () => replacement);
+
   // Stylesheets einbetten
   const linkPattern = /[ \t]*<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>\s*\n?/g;
   const links = [...html.matchAll(linkPattern)];
@@ -34,8 +39,8 @@ async function build() {
     const href = match[1];
     if (!isLocal(href)) continue;
     const css = await readFile(join(appDir, href), 'utf8');
-    inlined.push(href);
-    html = html.replace(match[0], `  <style>\n/* ${href} */\n${css}\n  </style>\n`);
+    inlined.push({ path: href, content: css });
+    html = replaceOnce(html, match[0], `  <style>\n/* ${href} */\n${css}\n  </style>\n`);
   }
 
   // Symbol als Daten-URL einbetten
@@ -43,8 +48,8 @@ async function build() {
   if (iconMatch && isLocal(iconMatch[1])) {
     const svg = await readFile(join(appDir, iconMatch[1]), 'utf8');
     const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
-    html = html.replace(iconMatch[0], `  <link rel="icon" href="${dataUrl}" type="image/svg+xml">\n`);
-    inlined.push(iconMatch[1]);
+    html = replaceOnce(html, iconMatch[0], `  <link rel="icon" href="${dataUrl}" type="image/svg+xml">\n`);
+    inlined.push({ path: iconMatch[1], content: null });
   }
 
   // Skripte einbetten (Reihenfolge bleibt erhalten)
@@ -56,8 +61,17 @@ async function build() {
     let js = await readFile(join(appDir, src), 'utf8');
     // Ein </script> im Quelltext würde die Einbettung zerreißen.
     js = js.replace(/<\/script>/gi, '<\\/script>');
-    inlined.push(src);
-    html = html.replace(match[0], `  <script>\n/* ${src} */\n${js}\n  </script>\n`);
+    inlined.push({ path: src, content: js });
+    html = replaceOnce(html, match[0], `  <script>\n/* ${src} */\n${js}\n  </script>\n`);
+  }
+
+  // Gegenprobe: Jede eingebettete Datei muss Zeichen für Zeichen enthalten
+  // sein. Das fängt jede Art von Verstümmelung beim Einbetten ab.
+  for (const file of inlined) {
+    if (file.content === null) continue;
+    if (!html.includes(file.content)) {
+      throw new Error('Der Inhalt von ' + file.path + ' steht nicht unverändert in der Ausgabe.');
+    }
   }
 
   const banner = `<!--\n  Boîte à Oublis ${version} – © Florian Nowak\n`
@@ -73,7 +87,8 @@ async function build() {
   await writeFile(outFile, html, 'utf8');
 
   const sizeKb = Math.round(Buffer.byteLength(html, 'utf8') / 1024);
-  console.log(`Fertig: dist/boite-a-oublis.html (${sizeKb} kB, ${inlined.length} Dateien eingebettet)`);
+  console.log(`Fertig: dist/boite-a-oublis.html (${sizeKb} kB, ${inlined.length} Dateien eingebettet,`
+    + ' Inhalt gegengeprüft)');
 }
 
 build().catch((error) => {

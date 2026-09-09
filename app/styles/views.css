@@ -340,9 +340,19 @@ table.mini tr:last-child td { border-bottom: 0; }
 
 .ipa-board__foot {
   display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
-  border-top: 1px solid var(--line); padding-top: var(--sp-2);
 }
 .ipa-board__hint {
-  font-size: var(--fs-sm); color: var(--muted); min-height: 1.3em;
-  flex: 1 1 200px; text-align: right;
+  font-size: var(--fs-sm); color: var(--muted);
+  /* Feste Höhe und kein Umbruch: Der Hinweis wechselt beim Überfahren der
+     Tasten ständig – die Tastatur darf dabei nicht springen. */
+  height: 1.4em; line-height: 1.4em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px solid var(--line); padding-top: var(--sp-2);
+  box-sizing: content-box;
 }
+
+/* Feld mit Knopf in der Beschriftungszeile (Leerstelle, IPA-Tastatur …) */
+.field--action > label,
+.ipa-field > label { display: flex; align-items: center; gap: var(--sp-2); }
+.field--action > label .btn,
+.ipa-field > label .btn { margin-left: auto; font-weight: 550; }

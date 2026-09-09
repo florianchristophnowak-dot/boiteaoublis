@@ -173,15 +173,7 @@
 
   /* --- Einfügen ------------------------------------------------------------ */
 
-  function insert(input, text, caretOffset) {
-    var start = input.selectionStart === null ? input.value.length : input.selectionStart;
-    var end = input.selectionEnd === null ? start : input.selectionEnd;
-    input.value = input.value.slice(0, start) + text + input.value.slice(end);
-    var position = start + text.length + (caretOffset || 0);
-    input.focus();
-    try { input.setSelectionRange(position, position); } catch (err) { /* Feldtyp ohne Auswahl */ }
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }
+  var insert = util.insertAtCursor;
 
   /** Kombinierende Zeichen (Tilde, Ring, Bogen …) gehören zum Laut davor. */
   function isCombining(code) {
@@ -239,6 +231,9 @@
     var board = h('div.ipa-board', { hidden: true },
       tabs,
       groups,
+      // Eigene Zeile mit fester Höhe: Sonst ändert der Hinweis beim Überfahren
+      // der Tasten die Höhe der Tastatur und alles springt.
+      hintLine,
       h('div.ipa-board__foot', {},
         h('button.btn.btn--sm', {
           type: 'button', title: 'Leerzeichen einfügen',
@@ -251,7 +246,6 @@
           onclick: function () { backspace(input); }
         }, '⌫ Löschen'),
         h('span.spacer'),
-        hintLine,
         h('button.btn.btn--sm.btn--ghost', {
           type: 'button', text: 'Fertig',
           onclick: function () { close(); input.focus(); }
@@ -321,12 +315,8 @@
       toggle.setAttribute('aria-expanded', 'true');
       // Im Dialog steht das Feld weit unten – die Tastatur muss sichtbar werden.
       window.requestAnimationFrame(function () {
-        try {
-          board.scrollIntoView({
-            block: 'end',
-            behavior: util.prefersReducedMotion() ? 'auto' : 'smooth'
-          });
-        } catch (err) { board.scrollIntoView(false); }
+        try { board.scrollIntoView({ block: 'end' }); }
+        catch (err) { board.scrollIntoView(false); }
       });
       if (BAO.modal && BAO.modal.onEscape) {
         releaseEscape = BAO.modal.onEscape(function () {
@@ -365,14 +355,25 @@
       board
     );
 
-    // Ein Klick weit außerhalb schließt die Tastatur wieder.
-    wrapper.addEventListener('focusout', function (event) {
-      if (!event.relatedTarget || !wrapper.contains(event.relatedTarget)) {
-        window.setTimeout(function () {
-          if (!wrapper.contains(document.activeElement)) close();
-        }, 0);
-      }
+    // Die Tastatur schließt, wenn der Fokus tatsächlich in einem anderen
+    // Bedienelement landet. Ein vorübergehender Fokusverlust (etwa beim
+    // Scrollen) darf sie nicht zuklappen – sonst bricht die Eingabe mitten
+    // im Wort ab.
+    wrapper.addEventListener('focusout', function () {
+      window.setTimeout(function () {
+        var active = document.activeElement;
+        if (!active || active === document.body) return;
+        if (!wrapper.contains(active)) close();
+      }, 0);
     });
+
+    // Ein Klick irgendwo außerhalb schließt sie ebenfalls.
+    function onOutsidePointer(event) {
+      if (board.hidden) return;
+      if (wrapper.contains(event.target)) return;
+      close();
+    }
+    document.addEventListener('mousedown', onOutsidePointer, true);
 
     wrapper.input = input;
     wrapper.openBoard = open;

@@ -301,11 +301,11 @@
     select.functions(state).forEach(function (fn) {
       functions.appendChild(h('span.chip.chip--tag', {}, fn.label,
         h('button', {
-          type: 'button', text: '×', 'aria-label': 'Funktion entfernen: ' + fn.label,
+          type: 'button', text: '×', 'aria-label': 'Verwendung entfernen: ' + fn.label,
           onclick: function () {
             var used = state.starters.filter(function (s) { return s.functionId === fn.id; }).length;
             BAO.modal.confirm({
-              title: 'Funktion entfernen?',
+              title: 'Verwendung entfernen?',
               text: '„' + fn.label + '“ wird aus der Liste entfernt.',
               detail: used ? used + ' Satzanfänge verlieren ihre Zuordnung, bleiben aber erhalten.' : '',
               confirmLabel: 'Entfernen', danger: true
@@ -321,9 +321,9 @@
       ));
     });
     functions.appendChild(h('button.btn.btn--sm', {
-      type: 'button', text: '+ Funktion',
+      type: 'button', text: '+ Verwendung',
       onclick: function () {
-        BAO.modal.prompt({ title: 'Neue kommunikative Funktion', label: 'Bezeichnung', placeholder: 'z. B. eine Vermutung äußern' })
+        BAO.modal.prompt({ title: 'Neue Verwendung', label: 'Bezeichnung', placeholder: 'z. B. eine Vermutung äußern' })
           .then(function (value) {
             if (!value) return;
             BAO.store.commit('Funktion ergänzt', function (draft) {
@@ -342,7 +342,10 @@
           levelGrid
         ),
         h('div.field', {}, h('label', { text: 'Unterrichtsszenen' }), scenes),
-        h('div.field', {}, h('label', { text: 'Kommunikative Funktionen' }), functions)
+        h('div.field', {},
+          h('label', { text: 'Verwendungen der Satzanfänge' }),
+          h('span.hint', { text: 'Neue Bezeichnungen entstehen auch direkt beim Anlegen eines Satzanfangs.' }),
+          functions)
       )
     );
   }

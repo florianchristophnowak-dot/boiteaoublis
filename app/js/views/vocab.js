@@ -64,9 +64,9 @@
       label: 'Eingeführt in Reihe', value: data.introducedUnitId,
       options: ui.unitOptions(state, data.groupId)
     });
-    var fieldFunction = ui.selectField({
-      label: 'Kommunikative Funktion', value: data.functionId,
-      options: ui.functionOptions(state, true)
+    var fieldFunction = ui.functionField({
+      state: state, value: data.functionId,
+      label: 'Verwendung (kommunikative Funktion)'
     });
 
     function collect() {
@@ -84,14 +84,14 @@
         topics: topics,
         tags: tags,
         status: util.$('select', fieldStatus).value,
-        introducedUnitId: util.$('select', fieldUnit).value,
-        functionId: util.$('select', fieldFunction).value
+        introducedUnitId: util.$('select', fieldUnit).value
       };
     }
 
     function save(values) {
       var unit = values.introducedUnitId ? select.unit(BAO.store.getState(), values.introducedUnitId) : null;
       BAO.store.commit(isNew ? 'Eintrag angelegt' : 'Eintrag bearbeitet', function (draft) {
+        values.functionId = fieldFunction.resolve(draft);
         if (isNew) {
           draft.lexemes.push(Object.assign(data, values, {
             introducedSchoolYear: unit ? unit.schoolYear : data.introducedSchoolYear,
