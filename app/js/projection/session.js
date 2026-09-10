@@ -131,6 +131,10 @@
     var store = BAO.store.getState();
     var bank = bankId ? select.bank(store, bankId) : null;
 
+    // Es gibt nur eine Leinwand: Eine laufende Tafel gibt sie hier ab.
+    if (BAO.board && BAO.board.isActive()) BAO.board.stop();
+    output.setHint(output.DEFAULT_HINT);
+
     state.active = true;
     state.bankId = bank ? bank.id : '';
     state.level = options.level || (bank && bank.defaultLevel) || 2;

@@ -59,6 +59,14 @@
         meta: 'Wortbank · ' + b.scene + (g ? ' · ' + g.name : ''), id: b.id, groupId: b.groupId, subjectId: b.subjectId });
     });
 
+    (state.boards || []).forEach(function (b) {
+      var g = select.group(state, b.groupId);
+      var s = score(b.title + ' ' + (b.note || ''), needle);
+      if (s) results.push({ type: 'board', score: s + 16, title: b.title,
+        meta: 'Tafel · ' + (b.items || []).length + ' Elemente' + (g ? ' · ' + g.name : ''),
+        id: b.id, groupId: b.groupId, subjectId: b.subjectId });
+    });
+
     state.units.forEach(function (u) {
       var g = select.group(state, u.groupId);
       var s = score(u.title + ' ' + (u.description || ''), needle);

@@ -5,14 +5,20 @@
              dem Fach – Wortbanken verweisen nur darauf. Dadurch wächst ein
              Bestand über Schuljahre hinweg, ohne dass Einträge dupliziert
              werden.
+
+   Daneben steht die Tafel: die einfache Grundform. Sie kennt nur „Elemente“
+   an frei gewählten Stellen der Fläche und unterscheidet nicht zwischen Wort
+   und Satz. Ein dort angelegtes Element ist ein gewöhnlicher Eintrag des
+   Bestands und lässt sich jederzeit um Artikel, Übersetzung, Beispiel und
+   alles Weitere ergänzen.
    ========================================================================== */
 (function (BAO) {
   'use strict';
 
   var util = BAO.util;
 
-  var APP_VERSION = '1.0.0';
-  var SCHEMA_VERSION = 1;
+  var APP_VERSION = '1.1.0';
+  var SCHEMA_VERSION = 2;
   var EXPORT_KIND = 'boite-a-oublis.backup';
 
   /* --- Status eines Wortschatzeintrags ------------------------------------ */
@@ -212,10 +218,50 @@
     }, data || {});
   }
 
+  /* --- Tafel: die einfache Grundform ---------------------------------------
+     Eine Tafel ist eine Fläche mit frei platzierten Elementen. Ein Element ist
+     ein Verweis auf einen Eintrag des Bestands – ob dieser aus einem Wort oder
+     aus einem ganzen Satz besteht, spielt hier bewusst keine Rolle.
+     x und y sind Anteile der Fläche (0…1) und bezeichnen die Mitte des
+     Elements. Dadurch sitzt es auf jeder Auflösung an derselben Stelle. */
+
+  function makeBoardItem(data) {
+    return Object.assign({
+      id: util.uid('bit'),
+      kind: 'lex',            // 'lex' | 'starter' – für die Bedienung ohne Bedeutung
+      refId: '',
+      x: 0.5,
+      y: 0.5,
+      scale: 1                // 0,5 … 2 – einzelne Elemente hervorheben
+    }, data || {});
+  }
+
+  function makeBoard(data) {
+    return Object.assign({
+      id: util.uid('brd'),
+      subjectId: '',
+      groupId: '',
+      unitId: '',
+      title: 'Neue Tafel',
+      note: '',
+      favorite: false,
+      showArticle: true,      // vorhandene Artikel farbig mitzeigen
+      showTranslation: false, // deutsche Entsprechung einblenden
+      items: [],
+      createdAt: util.nowISO(),
+      updatedAt: util.nowISO(),
+      lastUsedAt: ''
+    }, data || {});
+  }
+
   /* --- Voreinstellungen ---------------------------------------------------- */
   function defaultSettings() {
     return {
       theme: 'auto',
+      // Einfacher Modus: Die Oberfläche zeigt nur Tafeln, Elemente,
+      // Lerngruppen und Daten. Alles Weitere bleibt vorhanden und ist über
+      // die vollständige Ansicht wieder erreichbar.
+      simpleMode: false,
       stageTheme: 'light',
       stageScale: 1,
       autoAdvanceSeconds: 45,
@@ -244,11 +290,12 @@
       units: [],
       lexemes: [],
       starters: [],
-      banks: []
+      banks: [],
+      boards: []
     };
   }
 
-  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'functions'];
+  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'functions'];
 
   /* --- Prüfung und Reparatur ----------------------------------------------- */
 
@@ -313,6 +360,25 @@
     });
     if (removed) warnings.push(removed + ' Wortbank-Einträge verwiesen ins Leere und wurden entfernt.');
 
+    // Dasselbe für die Tafeln, zusätzlich werden Positionen auf die Fläche
+    // zurückgeholt: Ein Element außerhalb von 0…1 wäre nicht mehr sichtbar.
+    var lostOnBoards = 0;
+    state.boards.forEach(function (board) {
+      if (!Array.isArray(board.items)) board.items = [];
+      board.items = board.items.filter(function (item) {
+        if (!item || (item.kind !== 'lex' && item.kind !== 'starter')) return false;
+        var exists = item.kind === 'lex' ? lexIds.has(item.refId) : staIds.has(item.refId);
+        if (!exists) lostOnBoards += 1;
+        return exists;
+      }).map(function (item) {
+        item.x = util.clamp(typeof item.x === 'number' ? item.x : 0.5, 0, 1);
+        item.y = util.clamp(typeof item.y === 'number' ? item.y : 0.5, 0, 1);
+        item.scale = util.clamp(typeof item.scale === 'number' ? item.scale : 1, 0.5, 2);
+        return item;
+      });
+    });
+    if (lostOnBoards) warnings.push(lostOnBoards + ' Tafel-Elemente verwiesen ins Leere und wurden entfernt.');
+
     if (typeof state.schemaVersion !== 'number') {
       state.schemaVersion = SCHEMA_VERSION;
       warnings.push('Die Versionsangabe fehlte und wurde ergänzt.');
@@ -349,6 +415,8 @@
     makeStarter: makeStarter,
     makeBank: makeBank,
     makeSection: makeSection,
-    makeBankItem: makeBankItem
+    makeBankItem: makeBankItem,
+    makeBoard: makeBoard,
+    makeBoardItem: makeBoardItem
   };
 })(window.BAO = window.BAO || {});

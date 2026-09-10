@@ -11,16 +11,29 @@
   var ui = BAO.ui;
   var select = BAO.select;
 
+  /* Der einfache Modus zeigt nur, was für die Grundform gebraucht wird:
+     Tafeln, Elemente, Lerngruppen, Daten. Erreichbar bleibt alles – die
+     Adressen ändern sich nicht, nur die Navigationsleiste wird kürzer. */
   var ROUTES = [
     { path: 'start',        view: 'dashboard',  label: 'Start',        icon: 'home',   key: '1' },
-    { path: 'wortschatz',   view: 'vocab',      label: 'Wortschatz',   icon: 'list',   key: '2' },
-    { path: 'satzanfaenge', view: 'starters',   label: 'Satzanfänge',  icon: 'quote',  key: '3' },
-    { path: 'wortbanken',   view: 'banks',      label: 'Wortbanken',   icon: 'grid',   key: '4' },
-    { path: 'projektion',   view: 'present',    label: 'Projektion',   icon: 'play',   key: '5' },
+    { path: 'tafeln',       view: 'boards',     label: 'Tafeln',       icon: 'beamer', key: '2', simple: true },
+    { path: 'wortschatz',   view: 'vocab',      label: 'Wortschatz',   icon: 'list',   key: '3',
+      simple: true, simpleLabel: 'Elemente' },
+    { path: 'satzanfaenge', view: 'starters',   label: 'Satzanfänge',  icon: 'quote',  key: '4' },
+    { path: 'wortbanken',   view: 'banks',      label: 'Wortbanken',   icon: 'grid',   key: '5' },
+    { path: 'projektion',   view: 'present',    label: 'Projektion',   icon: 'play',   key: '6' },
+    { path: 'tafel',        view: 'board',      label: 'Tafel',        icon: 'beamer', hidden: true },
     { path: 'wortbank',     view: 'bankEditor', label: 'Wortbank',     icon: 'grid',   hidden: true },
-    { path: 'verwaltung',   view: 'manage',     label: 'Lerngruppen',  icon: 'school', key: '6' },
-    { path: 'daten',        view: 'data',       label: 'Daten',        icon: 'data',   key: '7' }
+    { path: 'verwaltung',   view: 'manage',     label: 'Lerngruppen',  icon: 'school', key: '7', simple: true },
+    { path: 'daten',        view: 'data',       label: 'Daten',        icon: 'data',   key: '8', simple: true }
   ];
+
+  /* Änderungen, die nur die Leinwand betreffen. Ein vollständiger Neuaufbau
+     der Lehreransicht wäre hier störend – beim Ziehen sogar sichtbar. */
+  var QUIET_LABELS = {
+    'Wortbank geöffnet': true, 'Tafel geöffnet': true,
+    'Element verschoben': true, 'Elementgröße geändert': true
+  };
 
   var current = { path: 'start', params: [] };
   var renderScheduled = false;
@@ -28,12 +41,25 @@
 
   /* --- Routen --------------------------------------------------------------- */
 
+  /** Läuft die Oberfläche in der einfachen Grundform? */
+  function isSimple() {
+    var state = BAO.store.getState();
+    return !!(state && state.settings && state.settings.simpleMode);
+  }
+
+  function homePath() { return isSimple() ? 'tafeln' : 'start'; }
+
+  /** Beschriftung einer Route – in der Grundform teils schlichter. */
+  function routeLabel(route) {
+    return (isSimple() && route.simpleLabel) ? route.simpleLabel : route.label;
+  }
+
   function parseHash() {
     var hash = String(window.location.hash || '').replace(/^#\/?/, '');
     var parts = hash.split('/').filter(Boolean).map(decodeURIComponent);
-    var path = parts[0] || 'start';
+    var path = parts[0] || homePath();
     var route = ROUTES.filter(function (r) { return r.path === path; })[0];
-    if (!route) route = ROUTES[0];
+    if (!route) route = ROUTES.filter(function (r) { return r.path === homePath(); })[0] || ROUTES[0];
     return { path: route.path, route: route, params: parts.slice(1) };
   }
 
@@ -126,27 +152,36 @@
     var counts = {
       vocab: ctx.group ? select.lexemesOfGroup(state, ctx.group.id).length : 0,
       starters: ctx.group ? select.startersOfGroup(state, ctx.group.id, ctx.subject ? ctx.subject.id : '').length : 0,
-      banks: ctx.group ? select.banksOfGroup(state, ctx.group.id).length : 0
+      banks: ctx.group ? select.banksOfGroup(state, ctx.group.id).length : 0,
+      boards: ctx.group ? select.boardsOfGroup(state, ctx.group.id).length : 0
     };
 
-    ROUTES.filter(function (route) { return !route.hidden; }).forEach(function (route, index) {
+    // Welche Ansicht ist im Untermenü einer anderen zu Hause?
+    var PARENT = { wortbank: 'wortbanken', tafel: 'tafeln' };
+    var simple = isSimple();
+
+    ROUTES.filter(function (route) {
+      return !route.hidden && (!simple || route.simple);
+    }).forEach(function (route) {
+      if (route.path === 'wortschatz') rail.appendChild(h('div.rail__title', { text: 'Bestand' }));
       if (route.path === 'verwaltung') rail.appendChild(h('div.rail__sep'));
       var count = route.view === 'vocab' ? counts.vocab
         : route.view === 'starters' ? counts.starters
-        : route.view === 'banks' ? counts.banks : null;
+        : route.view === 'banks' ? counts.banks
+        : route.view === 'boards' ? counts.boards : null;
 
+      var label = routeLabel(route);
       var item = h('button.rail__item', {
         type: 'button',
-        'aria-current': current.path === route.path || (current.path === 'wortbank' && route.path === 'wortbanken') ? 'page' : null,
-        title: route.label + (route.key ? '  (Alt + ' + route.key + ')' : ''),
+        'aria-current': current.path === route.path || PARENT[current.path] === route.path ? 'page' : null,
+        title: label + (route.key ? '  (Alt + ' + route.key + ')' : ''),
         onclick: function () { go(route.path); }
       },
         h('span.rail__icon', {}, ui.icon(route.icon, 18)),
-        h('span.rail__label', { text: route.label }),
+        h('span.rail__label', { text: label }),
         count !== null ? h('span.rail__count', { text: String(count) }) : null
       );
       rail.appendChild(item);
-      if (index === 0) rail.appendChild(h('div.rail__title', { text: 'Bestand' }));
     });
 
     rail.appendChild(h('div.spacer'));
@@ -247,7 +282,8 @@
     var results = [];
     var activeIndex = 0;
 
-    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', unit: 'Unterrichtsreihe', lexeme: 'Wortschatz', starter: 'Satzanfang' };
+    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', board: 'Tafel',
+      unit: 'Unterrichtsreihe', lexeme: 'Wortschatz', starter: 'Satzanfang' };
 
     function draw(query) {
       util.clear(list);
@@ -295,6 +331,7 @@
       if (!result) return;
       if (result.subjectId) setContext(result.subjectId, result.groupId || undefined);
       if (result.type === 'bank') { go('wortbank/' + result.id); return; }
+      if (result.type === 'board') { go('tafel/' + result.id); return; }
       if (result.type === 'group') { go('wortschatz'); return; }
       if (result.type === 'unit') { go('verwaltung'); return; }
       if (result.type === 'lexeme') { go('wortschatz/' + result.id); return; }
@@ -384,6 +421,14 @@
     go('projektion');
   }
 
+  /** Dasselbe für eine Tafel. */
+  function projectBoard(boardId, options) {
+    options = options || {};
+    if (!BAO.board.start(boardId)) return;
+    if (options.openOutput !== false) ensureOutput();
+    go('tafel/' + boardId);
+  }
+
   /* --- Tastenkürzel ----------------------------------------------------------- */
 
   function isTyping(event) {
@@ -416,7 +461,7 @@
         if (BAO.output.isWindowOpen()) BAO.output.closeWindow(); else ensureOutput();
         return;
       }
-      if (event.altKey && !mod && /^[1-7]$/.test(event.key)) {
+      if (event.altKey && !mod && /^[1-8]$/.test(event.key)) {
         var route = ROUTES.filter(function (r) { return r.key === event.key; })[0];
         if (route) { event.preventDefault(); go(route.path); }
         return;
@@ -439,6 +484,17 @@
   function bindChrome() {
     util.on(document, 'click', '[data-action="open-search"]', function () { openSearch(); });
     util.on(document, 'click', '[data-action="open-live"]', function () { openLiveHelp(); });
+    util.on(document, 'click', '[data-action="toggle-simple"]', function () {
+      var next = !isSimple();
+      BAO.store.commit('Ansichtsumfang', function (draft) { draft.settings.simpleMode = next; }, { undoable: false });
+      // In der Grundform gibt es manche Ansicht nicht mehr in der Leiste –
+      // dann führt der Weg zurück auf die Tafeln.
+      var route = ROUTES.filter(function (r) { return r.path === current.path; })[0];
+      if (next && route && !route.simple && route.path !== 'tafel') go('tafeln'); else renderView();
+      BAO.toast.show(next
+        ? 'Einfache Grundform: Tafeln, Elemente, Lerngruppen, Daten.'
+        : 'Vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion.', { timeout: 3200 });
+    });
     util.on(document, 'click', '[data-action="toggle-theme"]', function () {
       var order = ['auto', 'light', 'dark'];
       var state = BAO.store.getState();
@@ -488,7 +544,7 @@
           ? ctx.group.name + ' · ' + (ctx.subject ? ctx.subject.name : '') + ' · Jg. ' + ctx.group.grade
           : 'Wortschatz für den Unterricht';
       }
-      if (meta.reason === 'commit' && meta.undoable === false && meta.label === 'Wortbank geöffnet') return;
+      if (meta.reason === 'commit' && QUIET_LABELS[meta.label]) return;
       scheduleRender();
     });
 
@@ -516,6 +572,8 @@
     openLiveHelp: openLiveHelp,
     ensureOutput: ensureOutput,
     projectBank: projectBank,
+    projectBoard: projectBoard,
+    isSimple: isSimple,
     applyTheme: applyTheme
   };
 })(window.BAO = window.BAO || {});

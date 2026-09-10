@@ -398,14 +398,15 @@
         h('div.card__body.stack', {},
           h('p', {
             text: 'Der Export enthält alle Fächer, Lerngruppen, Reihen, Wortschatzeinträge, Satzanfänge, '
-              + 'Wortbanken und Einstellungen in einer einzigen Datei.'
+              + 'Wortbanken, Tafeln und Einstellungen in einer einzigen Datei.'
           }),
           h('dl.kv', {},
             h('dt', { text: 'Fächer' }), h('dd', { text: String(totals.subjects) }),
             h('dt', { text: 'Lerngruppen' }), h('dd', { text: String(totals.groups) }),
             h('dt', { text: 'Wortschatz' }), h('dd', { text: String(totals.lexemes) }),
             h('dt', { text: 'Satzanfänge' }), h('dd', { text: String(totals.starters) }),
-            h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) })
+            h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) }),
+            h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) })
           ),
           h('button.btn.btn--primary.btn--wide', { type: 'button', text: 'Alle Daten exportieren', onclick: exportAll }),
           h('button.btn.btn--wide', {

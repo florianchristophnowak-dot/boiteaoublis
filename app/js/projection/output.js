@@ -68,15 +68,20 @@
       + ',menubar=no,toolbar=no,location=no,status=no,scrollbars=no,resizable=yes';
   }
 
+  /* Die Kurzhilfe auf der Leinwand nennt nur, was gerade wirklich gilt:
+     eine Wortbank wird geblättert, eine Tafel wird beschriftet und gezogen. */
+  var DEFAULT_HINT = [
+    ['F', 'Vollbild'],
+    ['← →', 'Blättern'],
+    ['Leertaste', 'Automatik'],
+    ['B', 'Bildschirm leeren']
+  ];
+  var hintPairs = DEFAULT_HINT;
+
   function buildHint(doc) {
     var hint = doc.createElement('div');
     hint.className = 'stage__hint';
-    [
-      ['F', 'Vollbild'],
-      ['← →', 'Blättern'],
-      ['Leertaste', 'Automatik'],
-      ['B', 'Bildschirm leeren']
-    ].forEach(function (pair) {
+    hintPairs.forEach(function (pair) {
       var span = doc.createElement('span');
       var kbd = doc.createElement('kbd');
       kbd.textContent = pair[0];
@@ -85,6 +90,19 @@
       hint.appendChild(span);
     });
     return hint;
+  }
+
+  /** Wechselt die Kurzhilfe – auch auf bereits offenen Flächen. */
+  function setHint(pairs) {
+    hintPairs = (pairs && pairs.length) ? pairs : DEFAULT_HINT;
+    surfaces.forEach(function (surface) {
+      var old = surface.stage.hint;
+      if (!old || !old.parentNode) return;
+      var fresh = buildHint(surface.doc);
+      fresh.dataset.hidden = old.dataset.hidden || 'false';
+      old.parentNode.replaceChild(fresh, old);
+      surface.stage.hint = fresh;
+    });
   }
 
   function showHint(stage, milliseconds) {
@@ -266,6 +284,8 @@
     toggleOverlayFullscreen: toggleOverlayFullscreen,
     attachPreview: attachPreview,
     detachPreview: detachPreview,
+    setHint: setHint,
+    DEFAULT_HINT: DEFAULT_HINT,
     surfaces: all,
     getSurface: getSurface,
     showHint: showHint,

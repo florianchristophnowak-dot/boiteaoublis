@@ -20,6 +20,7 @@
   function lexeme(state, id) { return byId(state.lexemes, id); }
   function starter(state, id) { return byId(state.starters, id); }
   function bank(state, id) { return byId(state.banks, id); }
+  function board(state, id) { return byId(state.boards || [], id); }
 
   function functions(state) { return util.sortBy(state.functions, function (f) { return f.order; }); }
   function functionLabel(state, id) {
@@ -71,6 +72,47 @@
         var lb = b.lastUsedAt || b.updatedAt || '';
         return lb.localeCompare(la);
       });
+  }
+
+  function boardsOfGroup(state, groupId) {
+    return (state.boards || []).filter(function (b) { return b.groupId === groupId; })
+      .sort(function (a, b) {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+        var la = a.lastUsedAt || a.updatedAt || '';
+        var lb = b.lastUsedAt || b.updatedAt || '';
+        return lb.localeCompare(la);
+      });
+  }
+
+  /**
+   * Löst ein Tafel-Element in den Datensatz auf und liefert gleich den Text,
+   * unabhängig davon, ob dahinter ein Wortschatzeintrag oder ein Satzanfang
+   * steht. Genau diese Gleichbehandlung macht die Tafel einfach.
+   */
+  function resolveBoardItem(state, item) {
+    if (!item) return null;
+    var ref = item.kind === 'starter' ? starter(state, item.refId) : lexeme(state, item.refId);
+    if (!ref) return null;
+    return {
+      kind: item.kind,
+      item: item,
+      ref: ref,
+      text: item.kind === 'starter' ? (ref.text || '') : (ref.term || '')
+    };
+  }
+
+  function boardEntries(state, boardObj) {
+    if (!boardObj) return [];
+    return (boardObj.items || []).map(function (item) { return resolveBoardItem(state, item); })
+      .filter(Boolean);
+  }
+
+  /** Trägt ein Eintrag außer dem Text schon weitere Angaben? */
+  function isBareEntry(ref) {
+    if (!ref) return true;
+    var extras = ['article', 'gram', 'collocation', 'chunk', 'explanation',
+      'translation', 'example', 'pronunciation', 'functionId'];
+    return !extras.some(function (key) { return String(ref[key] || '').trim(); });
   }
 
   function statusCounts(state, groupId) {
@@ -130,6 +172,11 @@
         });
       });
     });
+    (state.boards || []).forEach(function (b) {
+      (b.items || []).forEach(function (item) {
+        if (item.kind === kind && item.refId === id) used.push({ board: b });
+      });
+    });
     return used;
   }
 
@@ -169,17 +216,20 @@
       units: state.units.length,
       lexemes: state.lexemes.length,
       starters: state.starters.length,
-      banks: state.banks.length
+      banks: state.banks.length,
+      boards: (state.boards || []).length
     };
   }
 
   BAO.select = {
     byId: byId,
     subjects: subjects, subject: subject, group: group, unit: unit,
-    lexeme: lexeme, starter: starter, bank: bank,
+    lexeme: lexeme, starter: starter, bank: bank, board: board,
     functions: functions, functionLabel: functionLabel,
     groupsOfSubject: groupsOfSubject, unitsOfGroup: unitsOfGroup, currentUnit: currentUnit,
     lexemesOfGroup: lexemesOfGroup, startersOfGroup: startersOfGroup, banksOfGroup: banksOfGroup,
+    boardsOfGroup: boardsOfGroup, resolveBoardItem: resolveBoardItem, boardEntries: boardEntries,
+    isBareEntry: isBareEntry,
     statusCounts: statusCounts, bankItemCount: bankItemCount, resolveItem: resolveItem, bankIsEmpty: bankIsEmpty,
     topicsOfGroup: topicsOfGroup, tagsOfGroup: tagsOfGroup, usageOfEntry: usageOfEntry,
     context: context, recentBanks: recentBanks, favouriteBanks: favouriteBanks, totals: totals

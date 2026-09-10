@@ -839,9 +839,248 @@ async function run() {
   check('gleiche Genusfarben in der Wortschatzliste',
     !!listM && !!listF && listM.b > listM.r + 40 && listF.r > listF.b + 40, JSON.stringify(listColours));
 
+  /* --- 12c. Tafel ---------------------------------------------------------- */
+  section('12c. Tafel: die einfache Grundform');
+  await page.evaluate(() => { BAO.app.setContext('sub_fr', 'grp_fr9b'); BAO.app.go('tafeln'); });
+  await page.waitForTimeout(300);
+  check('Beispieltafel vorhanden', await page.evaluate(() => BAO.store.getState().boards.length >= 1),
+    String(await page.evaluate(() => BAO.store.getState().boards.length)));
+
+  await page.click('button:has-text("Neue Tafel")');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input >> nth=0', 'Prüftafel');
+  await page.click('.modal button:text-is("Anlegen und öffnen")');
+  await page.waitForTimeout(500);
+  const boardId = await page.evaluate(() => BAO.board.getState().boardId);
+  check('Tafel angelegt und geöffnet', !!boardId && await page.evaluate(() => BAO.board.isActive()));
+  check('leere Tafel lädt zum Doppelklick ein',
+    (await page.textContent('.stage-frame')).includes('Doppelklick'));
+
+  // Anlegen unmittelbar auf der Fläche
+  const frameBox = await page.locator('.stage-frame').boundingBox();
+  await page.mouse.dblclick(frameBox.x + frameBox.width * 0.3, frameBox.y + frameBox.height * 0.3);
+  await page.waitForTimeout(250);
+  check('Doppelklick öffnet die Eingabe auf der Fläche',
+    await page.locator('.stage-frame .bcomposer__input').count() === 1);
+  await page.keyboard.type('la craie');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+
+  // Ein ganzer Satz – dieselbe Bedienung, dieselbe Darstellung
+  await page.mouse.dblclick(frameBox.x + frameBox.width * 0.62, frameBox.y + frameBox.height * 0.68);
+  await page.waitForTimeout(250);
+  await page.keyboard.type('Je voudrais expliquer que ___.');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+
+  const boardCreated = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const board = BAO.select.board(state, BAO.board.getState().boardId);
+    const word = state.lexemes.filter((l) => l.term === 'la craie')[0];
+    const sentence = state.lexemes.filter((l) => l.term === 'Je voudrais expliquer que ___.')[0];
+    const classes = BAO.util.$$('.stage-frame .bcard').map((n) => n.className);
+    return {
+      wordInStock: !!word,
+      sentenceInStock: !!sentence,
+      onBoard: board.items.length,
+      sameGroup: !!word && word.groupId === board.groupId && word.subjectId === board.subjectId,
+      classes: classes,
+      gaps: document.querySelectorAll('.stage-frame .bcard .gap').length
+    };
+  });
+  check('auf der Fläche angelegtes Wort steht im Bestand', boardCreated.wordInStock);
+  check('ein ganzer Satz entsteht genauso', boardCreated.sentenceInStock);
+  check('beide liegen auf der Tafel', boardCreated.onBoard === 2, String(boardCreated.onBoard));
+  check('neues Element gehört der Lerngruppe des Fachs', boardCreated.sameGroup);
+  check('Wort und Satz sind auf der Tafel dieselbe Art von Element',
+    boardCreated.classes.length === 2 && boardCreated.classes.every((c) => c.trim() === 'bcard'),
+    boardCreated.classes.join(' | '));
+  check('Leerstellen werden auch auf der Tafel als Linie gezeigt', boardCreated.gaps === 1, String(boardCreated.gaps));
+
+  // Verschieben in der Vorschau
+  const firstCard = page.locator('.stage-frame .bcard').first();
+  const cardId = await firstCard.getAttribute('data-item-id');
+  const cardBox = await firstCard.boundingBox();
+  const posBefore = await page.evaluate((id) => {
+    const board = BAO.select.board(BAO.store.getState(), BAO.board.getState().boardId);
+    return board.items.filter((i) => i.id === id)[0];
+  }, cardId);
+  await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cardBox.x + cardBox.width / 2 + 150, cardBox.y + cardBox.height / 2 + 90, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(350);
+  const posAfter = await page.evaluate((id) => {
+    const board = BAO.select.board(BAO.store.getState(), BAO.board.getState().boardId);
+    return board.items.filter((i) => i.id === id)[0];
+  }, cardId);
+  check('Ziehen verschiebt das Element dauerhaft',
+    Math.abs(posAfter.x - posBefore.x) > 0.03 && Math.abs(posAfter.y - posBefore.y) > 0.03,
+    JSON.stringify(posBefore) + ' -> ' + JSON.stringify(posAfter));
+  check('die Position bleibt innerhalb der Fläche',
+    posAfter.x >= 0 && posAfter.x <= 1 && posAfter.y >= 0 && posAfter.y <= 1, JSON.stringify(posAfter));
+
+  // Verschieben und Anlegen im eigenen Beamerfenster
+  const [boardBeamer] = await Promise.all([
+    context.waitForEvent('page').catch(() => null),
+    page.evaluate(() => BAO.output.openWindow())
+  ]);
+  if (boardBeamer) {
+    await boardBeamer.setViewportSize({ width: 1280, height: 760 });
+    await boardBeamer.waitForTimeout(500);
+    check('Beamerfenster zeigt dieselbe Tafel',
+      await boardBeamer.locator('.bcard').count() === 2,
+      String(await boardBeamer.locator('.bcard').count()));
+
+    const beamerCard = boardBeamer.locator('.bcard').first();
+    const beamerId = await beamerCard.getAttribute('data-item-id');
+    const beamerBox = await beamerCard.boundingBox();
+    const beforeBeamer = await page.evaluate((id) => {
+      const board = BAO.select.board(BAO.store.getState(), BAO.board.getState().boardId);
+      return board.items.filter((i) => i.id === id)[0].x;
+    }, beamerId);
+    await boardBeamer.mouse.move(beamerBox.x + beamerBox.width / 2, beamerBox.y + beamerBox.height / 2);
+    await boardBeamer.mouse.down();
+    await boardBeamer.mouse.move(beamerBox.x + beamerBox.width / 2 - 220, beamerBox.y + beamerBox.height / 2 + 120, { steps: 10 });
+    await boardBeamer.mouse.up();
+    await page.waitForTimeout(400);
+    const afterBeamer = await page.evaluate((id) => {
+      const board = BAO.select.board(BAO.store.getState(), BAO.board.getState().boardId);
+      return board.items.filter((i) => i.id === id)[0].x;
+    }, beamerId);
+    check('Ziehen funktioniert auch auf dem Beamerbild',
+      Math.abs(afterBeamer - beforeBeamer) > 0.05, beforeBeamer + ' -> ' + afterBeamer);
+    const mirroredLeft = await page.evaluate((id) => {
+      const node = document.querySelector('.stage-frame .bcard[data-item-id="' + id + '"]');
+      return node ? parseFloat(node.style.left) / 100 : -1;
+    }, beamerId);
+    check('die Vorschau folgt dem Beamerbild', Math.abs(mirroredLeft - afterBeamer) < 0.06,
+      mirroredLeft + ' vs ' + afterBeamer);
+
+    const stageBox = await boardBeamer.locator('.stage__body').boundingBox();
+    await boardBeamer.mouse.dblclick(stageBox.x + stageBox.width * 0.82, stageBox.y + stageBox.height * 0.2);
+    await boardBeamer.waitForTimeout(250);
+    check('im Beamerfenster öffnet sich die Eingabe',
+      await boardBeamer.locator('.bcomposer__input').count() === 1);
+    await boardBeamer.keyboard.type('le tableau');
+    await boardBeamer.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+    check('unmittelbar am Beamer angelegtes Element steht im Bestand',
+      await page.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'le tableau')));
+    await boardBeamer.screenshot({ path: join(shotDir, 'tafel-beamer.png') });
+    await page.evaluate(() => BAO.output.closeWindow());
+    await page.waitForTimeout(250);
+  } else {
+    check('Beamerfenster für die Tafel konnte geöffnet werden', false, 'kein zweites Fenster erhalten');
+  }
+
+  // Später ergänzen: aus dem Text wird ein vollständiger Eintrag
+  const enriched = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const lex = state.lexemes.filter((l) => l.term === 'la craie')[0];
+    const bareBefore = BAO.select.isBareEntry(lex);
+    BAO.store.commit('Prüfung: ergänzen', (draft) => {
+      const target = BAO.select.lexeme(draft, lex.id);
+      target.term = 'craie';
+      target.article = 'la';
+      target.translation = 'die Kreide';
+      const board = BAO.select.board(draft, BAO.board.getState().boardId);
+      board.showTranslation = true;
+    });
+    return { bareBefore: bareBefore, bareAfter: BAO.select.isBareEntry(BAO.select.lexeme(BAO.store.getState(), lex.id)) };
+  });
+  await page.waitForTimeout(350);
+  check('ein nur getipptes Element gilt als „nur Text“', enriched.bareBefore && !enriched.bareAfter,
+    JSON.stringify(enriched));
+  const afterEnrich = await page.evaluate(() => ({
+    article: (document.querySelector('.stage-frame .bcard .art__part[data-gender="f"]') || {}).textContent || '',
+    german: BAO.util.$$('.stage-frame .bcard__de').map((n) => n.textContent)
+  }));
+  check('ergänzter Artikel erscheint farbig auf der Tafel', afterEnrich.article === 'la', afterEnrich.article);
+  check('ergänzte Übersetzung lässt sich einblenden',
+    afterEnrich.german.includes('die Kreide'), afterEnrich.german.join(' | '));
+
+  // Vorhandene Satzanfänge liegen gleichberechtigt daneben
+  const placed = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const starter = BAO.select.startersOfGroup(state, 'grp_fr9b', 'sub_fr')[0];
+    BAO.board.place('starter', starter.id);
+    return starter.id;
+  });
+  await page.waitForTimeout(350);
+  check('ein vorhandener Satzanfang lässt sich auf die Tafel legen',
+    await page.evaluate((id) => {
+      const board = BAO.select.board(BAO.store.getState(), BAO.board.getState().boardId);
+      return board.items.some((i) => i.kind === 'starter' && i.refId === id);
+    }, placed));
+  check('auch er ist auf der Fläche ein Element wie jedes andere',
+    await page.evaluate(() => BAO.util.$$('.stage-frame .bcard')
+      .every((n) => n.className.trim() === 'bcard')));
+
+  // Tastatur: rücken, vergrößern, von der Tafel nehmen
+  const keyboard = await page.evaluate(async (id) => {
+    BAO.board.select(id);
+    const board = () => BAO.select.board(BAO.store.getState(), BAO.board.getState().boardId);
+    const item = () => board().items.filter((i) => i.id === id)[0];
+    const startX = item().x;
+    const startScale = item().scale;
+    const fire = (key) => document.dispatchEvent(new KeyboardEvent('keydown', { key: key, bubbles: true, cancelable: true }));
+    fire('ArrowRight');
+    const afterMove = item().x;
+    fire('+');
+    const afterScale = item().scale;
+    fire('Delete');
+    return {
+      moved: afterMove - startX,
+      scaled: afterScale - startScale,
+      stillOnBoard: !!item(),
+      stillInStock: !!BAO.select.lexeme(BAO.store.getState(), (BAO.store.getState().lexemes.filter((l) => l.term === 'craie')[0] || {}).id)
+    };
+  }, cardId);
+  check('Pfeiltaste rückt das ausgewählte Element', keyboard.moved > 0.005, String(keyboard.moved));
+  check('Plustaste vergrößert es', keyboard.scaled > 0.05, String(keyboard.scaled));
+  check('Entf nimmt es von der Tafel', !keyboard.stillOnBoard);
+  check('der Eintrag selbst bleibt im Bestand', keyboard.stillInStock);
+
+  // Ordnen
+  const arranged = await page.evaluate(() => {
+    BAO.board.arrange();
+    const board = BAO.select.board(BAO.store.getState(), BAO.board.getState().boardId);
+    return board.items.map((i) => [Math.round(i.x * 1000) / 1000, Math.round(i.y * 1000) / 1000]);
+  });
+  await page.waitForTimeout(250);
+  check('„Ordnen“ verteilt die Elemente gleichmäßig',
+    arranged.length > 1 && new Set(arranged.map((p) => p.join(','))).size === arranged.length,
+    JSON.stringify(arranged));
+  await page.screenshot({ path: join(shotDir, 'tafel.png') });
+
+  // Einfache Grundform
+  const modes = await page.evaluate(() => {
+    const labels = () => BAO.util.$$('.rail__item .rail__label').map((n) => n.textContent);
+    BAO.store.commit('Prüfung: Grundform', (d) => { d.settings.simpleMode = true; }, { undoable: false });
+    BAO.app.renderView();
+    const simple = labels();
+    BAO.store.commit('Prüfung: vollständig', (d) => { d.settings.simpleMode = false; }, { undoable: false });
+    BAO.app.renderView();
+    return { simple: simple, full: labels() };
+  });
+  check('die einfache Grundform zeigt nur Tafeln, Elemente, Lerngruppen und Daten',
+    modes.simple.includes('Tafeln') && modes.simple.includes('Elemente')
+    && !modes.simple.includes('Wortbanken') && !modes.simple.includes('Satzanfänge'),
+    modes.simple.join(', '));
+  check('die vollständige Ansicht bringt alles zurück',
+    modes.full.includes('Wortbanken') && modes.full.includes('Satzanfänge') && modes.full.includes('Tafeln'),
+    modes.full.join(', '));
+
+  // Eine Wortbank-Projektion löst die Tafel ab – es gibt nur eine Leinwand.
+  await page.evaluate(() => BAO.session.start('bnk_fr_stage', { level: 2 }));
+  await page.waitForTimeout(300);
+  check('eine Wortbank-Projektion beendet die Tafel',
+    await page.evaluate(() => BAO.board.isActive() === false && BAO.session.getState().active === true));
+
   /* --- 13. Alle Ansichten zeichnen sich fehlerfrei ------------------------ */
   section('13. Alle Ansichten');
-  for (const route of ['start', 'wortschatz', 'satzanfaenge', 'wortbanken', 'projektion', 'verwaltung', 'daten']) {
+  for (const route of ['start', 'tafeln', 'wortschatz', 'satzanfaenge', 'wortbanken', 'projektion', 'verwaltung', 'daten']) {
     await page.evaluate((r) => BAO.app.go(r), route);
     await page.waitForTimeout(220);
     const ok = await page.evaluate(() => {
@@ -913,6 +1152,19 @@ async function run() {
   await distPage.waitForTimeout(300);
   check('Wortschatzeintrag lässt sich auch in der Einzeldatei anlegen',
     await distPage.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'la portabilité')));
+
+  await distPage.evaluate(() => { BAO.app.go('tafel/brd_fr_stage'); });
+  await distPage.waitForTimeout(500);
+  const distFrame = await distPage.locator('.stage-frame').boundingBox();
+  check('Tafel zeichnet sich auch in der Einzeldatei',
+    await distPage.locator('.stage-frame .bcard').count() > 0);
+  await distPage.mouse.dblclick(distFrame.x + distFrame.width * 0.5, distFrame.y + distFrame.height * 0.85);
+  await distPage.waitForTimeout(250);
+  await distPage.keyboard.type('le classeur');
+  await distPage.keyboard.press('Enter');
+  await distPage.waitForTimeout(350);
+  check('Element lässt sich auch in der Einzeldatei auf der Fläche anlegen',
+    await distPage.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'le classeur')));
 
   check('keine Fehler in der Einzeldatei', distErrors.length === 0, distErrors.slice(0, 3).join(' | '));
   await portable.close();

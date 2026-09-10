@@ -8,8 +8,8 @@ Quelle der Wahrheit ist `app/js/core/schema.js`.
 ```json
 {
   "kind": "boite-a-oublis.backup",
-  "appVersion": "1.0.0",
-  "schemaVersion": 1,
+  "appVersion": "1.1.0",
+  "schemaVersion": 2,
   "exportedAt": "2026-09-07T18:12:00.000Z",
   "counts": { "subjects": 2, "groups": 2, "…": 0 },
   "data": { /* der vollständige Zustand, siehe unten */ }
@@ -22,13 +22,13 @@ Ein Import akzeptiert auch den bloßen Zustand (ohne Hülle), sofern er `schemaV
 
 ```js
 {
-  schemaVersion: 1,
+  schemaVersion: 2,
   meta:     { appVersion, createdAt, updatedAt, seededAt },
   settings: { … },                 // siehe unten
   ui:       { subjectId, groupId, recentBanks[], recentGroups[] },
   functions: [ { id, label, order } ],   // kommunikative Funktionen
   subjects:  [ … ], groups: [ … ], units: [ … ],
-  lexemes:   [ … ], starters: [ … ], banks: [ … ]
+  lexemes:   [ … ], starters: [ … ], banks: [ … ], boards: [ … ]
 }
 ```
 
@@ -114,11 +114,42 @@ Pflichtfeld ist nur `term`.
 Beim Laden entfernt die Prüfung in `schema.validateState` Positionen, deren Ziel es nicht mehr gibt, und
 meldet das als Hinweis.
 
+### `boards` – Tafel (die einfache Grundform)
+
+```js
+{
+  id, subjectId, groupId, unitId, title, note,
+  favorite, showArticle, showTranslation,
+  createdAt, updatedAt, lastUsedAt,
+  items: [ { id, kind: "lex" | "starter", refId, x, y, scale } ]
+}
+```
+
+Eine Tafel ist eine Fläche mit frei platzierten Elementen. `kind` unterscheidet zwar weiterhin, woher ein
+Element stammt, aber **nur für die Auflösung des Verweises** – in Bedienung und Darstellung sind Wort und
+Satz dasselbe. Neu auf der Fläche angelegte Elemente entstehen immer als Wortschatzeintrag (`kind: "lex"`)
+und lassen sich deshalb später mit dem gewöhnlichen Eintragseditor vervollständigen.
+
+| Feld | Bedeutung |
+|---|---|
+| `x`, `y` | **Mitte** des Elements als Anteil der Fläche (0…1) – auflösungsunabhängig |
+| `scale` | 0,5…2; hebt einzelne Elemente hervor |
+| `showArticle` | vorhandene Artikel farbig nach Genus mitzeigen |
+| `showTranslation` | deutsche Entsprechung unter dem Element einblenden |
+
+Beim Laden werden Positionen auf 0…1 zurückgeholt und Verweise ins Leere entfernt (`schema.validateState`).
+Die Anzeige korrigiert zusätzlich nach dem Messen: Ein Element, das mit seiner tatsächlichen Breite über den
+Rand ragen würde, rückt in die Fläche – der gespeicherte Wert bleibt davon unberührt.
+
+`BAO.select.isBareEntry(ref)` beantwortet, ob ein Eintrag außer dem Text schon weitere Angaben trägt. Die
+Tafelansicht kennzeichnet solche Elemente mit „nur Text“.
+
 ### `settings`
 
 | Feld | Bedeutung |
 |---|---|
 | `theme` | `auto` \| `light` \| `dark` (Lehreransicht) |
+| `simpleMode` | einfache Grundform: nur Tafeln, Elemente, Lerngruppen, Daten |
 | `stageTheme`, `stageScale` | Projektion: hell/dunkel, Schriftfaktor |
 | `autoAdvanceSeconds`, `autoAdvanceLoop` | Automatik |
 | `maxItemsPerSlide` | didaktische Obergrenze je Projektionsseite |
@@ -143,7 +174,8 @@ in der Steuerung einzelne Felder übersteuern; ein Stufenwechsel setzt die Über
 ## Migrationen
 
 `app/js/core/migrations.js` enthält eine geordnete Liste von Schritten, die den Bestand jeweils um genau
-eine Version anheben. Eine neue Version bedeutet:
+eine Version anheben. Version 2 hat `boards` und `settings.simpleMode` ergänzt; ein vorhandener Bestand
+behält dabei die vollständige Ansicht, ein frisch angelegter startet in der Grundform. Eine neue Version bedeutet:
 
 1. `SCHEMA_VERSION` in `schema.js` erhöhen,
 2. einen Schritt `{ to: n, describe, run(state) }` an `STEPS` anhängen,
