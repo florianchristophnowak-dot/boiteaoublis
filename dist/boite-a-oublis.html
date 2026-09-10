@@ -1,6 +1,6 @@
 <!--
-  Boîte à Oublis 1.0.0 – © Florian Nowak
-  Erzeugt am 2026-09-09T03:54:32.974Z aus app/index.html.
+  Boîte à Oublis 1.1.0 – © Florian Nowak
+  Erzeugt am 2026-09-10T21:17:08.056Z aus app/index.html.
   Diese Datei ist vollständig eigenständig: einfach im Browser öffnen.
 -->
 <!doctype html>
@@ -808,6 +808,20 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 .section-map__idx { font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--fs-xs); min-width: 3ch; }
 .section-map__count { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
 
+/* Elemente einer Tafel – die Liste neben der Fläche */
+.belem-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; margin-bottom: var(--sp-2); }
+.belem {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%;
+  padding: 5px var(--sp-2); border: 1px solid transparent; border-radius: var(--r-sm);
+  font-size: var(--fs-sm); cursor: pointer; text-align: left;
+}
+.belem:hover { background: var(--surface-sunken); }
+.belem[data-selected="true"] { background: var(--brand-soft); border-color: var(--brand); }
+.belem__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.belem .spacer { flex: 1 1 auto; }
+.belem__actions { display: flex; gap: 2px; opacity: .4; transition: opacity .12s ease; }
+.belem:hover .belem__actions, .belem:focus-within .belem__actions { opacity: 1; }
+
 .live-form { display: flex; flex-direction: column; gap: var(--sp-2); }
 .live-list { display: flex; flex-direction: column; gap: 4px; margin-top: var(--sp-2); }
 .live-item {
@@ -1000,6 +1014,9 @@ body[data-projecting="true"] .toast-root { display: none; }
         </button>
         <button class="btn btn--ghost" type="button" data-action="open-live" title="Live-Hilfe (Strg + L)">
           <span class="ico" aria-hidden="true">✎</span><span class="btn__label">Live-Hilfe</span>
+        </button>
+        <button class="btn btn--ghost" type="button" data-action="toggle-simple" title="Zwischen einfacher Grundform und vollständiger Ansicht wechseln">
+          <span class="ico" aria-hidden="true">◱</span><span class="btn__label">Ansicht</span>
         </button>
         <button class="btn btn--ghost btn--icon" type="button" data-action="toggle-theme" title="Helligkeit umschalten" aria-label="Helligkeit umschalten">
           <span class="ico" aria-hidden="true">◐</span>
@@ -1396,14 +1413,20 @@ body[data-projecting="true"] .toast-root { display: none; }
              dem Fach – Wortbanken verweisen nur darauf. Dadurch wächst ein
              Bestand über Schuljahre hinweg, ohne dass Einträge dupliziert
              werden.
+
+   Daneben steht die Tafel: die einfache Grundform. Sie kennt nur „Elemente“
+   an frei gewählten Stellen der Fläche und unterscheidet nicht zwischen Wort
+   und Satz. Ein dort angelegtes Element ist ein gewöhnlicher Eintrag des
+   Bestands und lässt sich jederzeit um Artikel, Übersetzung, Beispiel und
+   alles Weitere ergänzen.
    ========================================================================== */
 (function (BAO) {
   'use strict';
 
   var util = BAO.util;
 
-  var APP_VERSION = '1.0.0';
-  var SCHEMA_VERSION = 1;
+  var APP_VERSION = '1.1.0';
+  var SCHEMA_VERSION = 2;
   var EXPORT_KIND = 'boite-a-oublis.backup';
 
   /* --- Status eines Wortschatzeintrags ------------------------------------ */
@@ -1603,10 +1626,50 @@ body[data-projecting="true"] .toast-root { display: none; }
     }, data || {});
   }
 
+  /* --- Tafel: die einfache Grundform ---------------------------------------
+     Eine Tafel ist eine Fläche mit frei platzierten Elementen. Ein Element ist
+     ein Verweis auf einen Eintrag des Bestands – ob dieser aus einem Wort oder
+     aus einem ganzen Satz besteht, spielt hier bewusst keine Rolle.
+     x und y sind Anteile der Fläche (0…1) und bezeichnen die Mitte des
+     Elements. Dadurch sitzt es auf jeder Auflösung an derselben Stelle. */
+
+  function makeBoardItem(data) {
+    return Object.assign({
+      id: util.uid('bit'),
+      kind: 'lex',            // 'lex' | 'starter' – für die Bedienung ohne Bedeutung
+      refId: '',
+      x: 0.5,
+      y: 0.5,
+      scale: 1                // 0,5 … 2 – einzelne Elemente hervorheben
+    }, data || {});
+  }
+
+  function makeBoard(data) {
+    return Object.assign({
+      id: util.uid('brd'),
+      subjectId: '',
+      groupId: '',
+      unitId: '',
+      title: 'Neue Tafel',
+      note: '',
+      favorite: false,
+      showArticle: true,      // vorhandene Artikel farbig mitzeigen
+      showTranslation: false, // deutsche Entsprechung einblenden
+      items: [],
+      createdAt: util.nowISO(),
+      updatedAt: util.nowISO(),
+      lastUsedAt: ''
+    }, data || {});
+  }
+
   /* --- Voreinstellungen ---------------------------------------------------- */
   function defaultSettings() {
     return {
       theme: 'auto',
+      // Einfacher Modus: Die Oberfläche zeigt nur Tafeln, Elemente,
+      // Lerngruppen und Daten. Alles Weitere bleibt vorhanden und ist über
+      // die vollständige Ansicht wieder erreichbar.
+      simpleMode: false,
       stageTheme: 'light',
       stageScale: 1,
       autoAdvanceSeconds: 45,
@@ -1635,11 +1698,12 @@ body[data-projecting="true"] .toast-root { display: none; }
       units: [],
       lexemes: [],
       starters: [],
-      banks: []
+      banks: [],
+      boards: []
     };
   }
 
-  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'functions'];
+  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'functions'];
 
   /* --- Prüfung und Reparatur ----------------------------------------------- */
 
@@ -1704,6 +1768,25 @@ body[data-projecting="true"] .toast-root { display: none; }
     });
     if (removed) warnings.push(removed + ' Wortbank-Einträge verwiesen ins Leere und wurden entfernt.');
 
+    // Dasselbe für die Tafeln, zusätzlich werden Positionen auf die Fläche
+    // zurückgeholt: Ein Element außerhalb von 0…1 wäre nicht mehr sichtbar.
+    var lostOnBoards = 0;
+    state.boards.forEach(function (board) {
+      if (!Array.isArray(board.items)) board.items = [];
+      board.items = board.items.filter(function (item) {
+        if (!item || (item.kind !== 'lex' && item.kind !== 'starter')) return false;
+        var exists = item.kind === 'lex' ? lexIds.has(item.refId) : staIds.has(item.refId);
+        if (!exists) lostOnBoards += 1;
+        return exists;
+      }).map(function (item) {
+        item.x = util.clamp(typeof item.x === 'number' ? item.x : 0.5, 0, 1);
+        item.y = util.clamp(typeof item.y === 'number' ? item.y : 0.5, 0, 1);
+        item.scale = util.clamp(typeof item.scale === 'number' ? item.scale : 1, 0.5, 2);
+        return item;
+      });
+    });
+    if (lostOnBoards) warnings.push(lostOnBoards + ' Tafel-Elemente verwiesen ins Leere und wurden entfernt.');
+
     if (typeof state.schemaVersion !== 'number') {
       state.schemaVersion = SCHEMA_VERSION;
       warnings.push('Die Versionsangabe fehlte und wurde ergänzt.');
@@ -1740,7 +1823,9 @@ body[data-projecting="true"] .toast-root { display: none; }
     makeStarter: makeStarter,
     makeBank: makeBank,
     makeSection: makeSection,
-    makeBankItem: makeBankItem
+    makeBankItem: makeBankItem,
+    makeBoard: makeBoard,
+    makeBoardItem: makeBoardItem
   };
 })(window.BAO = window.BAO || {});
 
@@ -1780,6 +1865,18 @@ body[data-projecting="true"] .toast-root { display: none; }
         (state.groups || []).forEach(function (group) {
           if (!Array.isArray(group.history)) group.history = [];
         });
+        return state;
+      }
+    },
+    {
+      to: 2,
+      describe: 'Tafeln und einfacher Modus ergänzt',
+      run: function (state) {
+        if (!Array.isArray(state.boards)) state.boards = [];
+        if (!state.settings) state.settings = {};
+        // Ein bestehender Bestand behält die vollständige Oberfläche. Wer die
+        // einfache Grundform sehen möchte, schaltet sie in der Kopfzeile um.
+        if (typeof state.settings.simpleMode !== 'boolean') state.settings.simpleMode = false;
         return state;
       }
     }
@@ -2380,7 +2477,52 @@ body[data-projecting="true"] .toast-root { display: none; }
       })
     ];
 
+    /* --- Tafeln -----------------------------------------------------------
+       Die einfache Grundform: eine Fläche, Elemente darauf. Wort oder Satz
+       spielt keine Rolle – beides steht gleichberechtigt nebeneinander. */
+    function scatter(entries) {
+      return entries.map(function (entry) {
+        return schema.makeBoardItem({
+          kind: entry[0], refId: entry[1], x: entry[2], y: entry[3],
+          scale: entry[4] === undefined ? 1 : entry[4]
+        });
+      });
+    }
+
+    state.boards = [
+      schema.makeBoard({
+        id: 'brd_fr_stage', subjectId: 'sub_fr', groupId: 'grp_fr9b', unitId: 'unt_fr_stage',
+        title: 'Mon stage – Wortfeld an der Tafel', favorite: true,
+        note: 'Ausgangspunkt für das Partnergespräch. Elemente lassen sich während der Stunde umsortieren.',
+        items: scatter([
+          ['lex', 'lex_fr_8', 0.22, 0.24, 1.25],
+          ['lex', 'lex_fr_9', 0.58, 0.19],
+          ['lex', 'lex_fr_10', 0.83, 0.3],
+          ['lex', 'lex_fr_14', 0.18, 0.55],
+          ['lex', 'lex_fr_15', 0.45, 0.47],
+          ['lex', 'lex_fr_16', 0.75, 0.6],
+          ['starter', 'sta_fr_0', 0.35, 0.79, 0.85],
+          ['starter', 'sta_fr_3', 0.72, 0.86, 0.85]
+        ])
+      }),
+      schema.makeBoard({
+        id: 'brd_en_debate', subjectId: 'sub_en', groupId: 'grp_en10a', unitId: 'unt_en_social',
+        title: 'Social media – arguments on the board',
+        showTranslation: true,
+        items: scatter([
+          ['lex', 'lex_en_12', 0.24, 0.26],
+          ['lex', 'lex_en_13', 0.6, 0.22],
+          ['lex', 'lex_en_14', 0.82, 0.44],
+          ['lex', 'lex_en_15', 0.3, 0.55],
+          ['lex', 'lex_en_16', 0.58, 0.66]
+        ])
+      })
+    ];
+
     /* --- Ausgangslage der Oberfläche -------------------------------------- */
+    // Ein frischer Bestand startet in der einfachen Grundform. Die
+    // vollständige Ansicht ist einen Klick in der Kopfzeile entfernt.
+    state.settings.simpleMode = true;
     state.ui.subjectId = 'sub_fr';
     state.ui.groupId = 'grp_fr9b';
     state.ui.recentBanks = ['bnk_fr_stage', 'bnk_en_debate', 'bnk_fr_photo'];
@@ -2417,6 +2559,7 @@ body[data-projecting="true"] .toast-root { display: none; }
   function lexeme(state, id) { return byId(state.lexemes, id); }
   function starter(state, id) { return byId(state.starters, id); }
   function bank(state, id) { return byId(state.banks, id); }
+  function board(state, id) { return byId(state.boards || [], id); }
 
   function functions(state) { return util.sortBy(state.functions, function (f) { return f.order; }); }
   function functionLabel(state, id) {
@@ -2468,6 +2611,47 @@ body[data-projecting="true"] .toast-root { display: none; }
         var lb = b.lastUsedAt || b.updatedAt || '';
         return lb.localeCompare(la);
       });
+  }
+
+  function boardsOfGroup(state, groupId) {
+    return (state.boards || []).filter(function (b) { return b.groupId === groupId; })
+      .sort(function (a, b) {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+        var la = a.lastUsedAt || a.updatedAt || '';
+        var lb = b.lastUsedAt || b.updatedAt || '';
+        return lb.localeCompare(la);
+      });
+  }
+
+  /**
+   * Löst ein Tafel-Element in den Datensatz auf und liefert gleich den Text,
+   * unabhängig davon, ob dahinter ein Wortschatzeintrag oder ein Satzanfang
+   * steht. Genau diese Gleichbehandlung macht die Tafel einfach.
+   */
+  function resolveBoardItem(state, item) {
+    if (!item) return null;
+    var ref = item.kind === 'starter' ? starter(state, item.refId) : lexeme(state, item.refId);
+    if (!ref) return null;
+    return {
+      kind: item.kind,
+      item: item,
+      ref: ref,
+      text: item.kind === 'starter' ? (ref.text || '') : (ref.term || '')
+    };
+  }
+
+  function boardEntries(state, boardObj) {
+    if (!boardObj) return [];
+    return (boardObj.items || []).map(function (item) { return resolveBoardItem(state, item); })
+      .filter(Boolean);
+  }
+
+  /** Trägt ein Eintrag außer dem Text schon weitere Angaben? */
+  function isBareEntry(ref) {
+    if (!ref) return true;
+    var extras = ['article', 'gram', 'collocation', 'chunk', 'explanation',
+      'translation', 'example', 'pronunciation', 'functionId'];
+    return !extras.some(function (key) { return String(ref[key] || '').trim(); });
   }
 
   function statusCounts(state, groupId) {
@@ -2527,6 +2711,11 @@ body[data-projecting="true"] .toast-root { display: none; }
         });
       });
     });
+    (state.boards || []).forEach(function (b) {
+      (b.items || []).forEach(function (item) {
+        if (item.kind === kind && item.refId === id) used.push({ board: b });
+      });
+    });
     return used;
   }
 
@@ -2566,17 +2755,20 @@ body[data-projecting="true"] .toast-root { display: none; }
       units: state.units.length,
       lexemes: state.lexemes.length,
       starters: state.starters.length,
-      banks: state.banks.length
+      banks: state.banks.length,
+      boards: (state.boards || []).length
     };
   }
 
   BAO.select = {
     byId: byId,
     subjects: subjects, subject: subject, group: group, unit: unit,
-    lexeme: lexeme, starter: starter, bank: bank,
+    lexeme: lexeme, starter: starter, bank: bank, board: board,
     functions: functions, functionLabel: functionLabel,
     groupsOfSubject: groupsOfSubject, unitsOfGroup: unitsOfGroup, currentUnit: currentUnit,
     lexemesOfGroup: lexemesOfGroup, startersOfGroup: startersOfGroup, banksOfGroup: banksOfGroup,
+    boardsOfGroup: boardsOfGroup, resolveBoardItem: resolveBoardItem, boardEntries: boardEntries,
+    isBareEntry: isBareEntry,
     statusCounts: statusCounts, bankItemCount: bankItemCount, resolveItem: resolveItem, bankIsEmpty: bankIsEmpty,
     topicsOfGroup: topicsOfGroup, tagsOfGroup: tagsOfGroup, usageOfEntry: usageOfEntry,
     context: context, recentBanks: recentBanks, favouriteBanks: favouriteBanks, totals: totals
@@ -2645,6 +2837,14 @@ body[data-projecting="true"] .toast-root { display: none; }
       var s = score(b.title + ' ' + b.scene + ' ' + (b.note || ''), needle);
       if (s) results.push({ type: 'bank', score: s + 16, title: b.title,
         meta: 'Wortbank · ' + b.scene + (g ? ' · ' + g.name : ''), id: b.id, groupId: b.groupId, subjectId: b.subjectId });
+    });
+
+    (state.boards || []).forEach(function (b) {
+      var g = select.group(state, b.groupId);
+      var s = score(b.title + ' ' + (b.note || ''), needle);
+      if (s) results.push({ type: 'board', score: s + 16, title: b.title,
+        meta: 'Tafel · ' + (b.items || []).length + ' Elemente' + (g ? ' · ' + g.name : ''),
+        id: b.id, groupId: b.groupId, subjectId: b.subjectId });
     });
 
     state.units.forEach(function (u) {
@@ -2954,13 +3154,15 @@ body[data-projecting="true"] .toast-root { display: none; }
       units: (state.units || []).length,
       lexemes: (state.lexemes || []).length,
       starters: (state.starters || []).length,
-      banks: (state.banks || []).length
+      banks: (state.banks || []).length,
+      boards: (state.boards || []).length
     };
   }
 
   var COUNT_LABELS = {
     subjects: 'Fächer', groups: 'Lerngruppen', units: 'Unterrichtsreihen',
-    lexemes: 'Wortschatzeinträge', starters: 'Satzanfänge', banks: 'Wortbanken'
+    lexemes: 'Wortschatzeinträge', starters: 'Satzanfänge', banks: 'Wortbanken',
+    boards: 'Tafeln'
   };
 
   function buildExport(state) {
@@ -3042,7 +3244,7 @@ body[data-projecting="true"] .toast-root { display: none; }
 
   /* --- Zusammenführen ------------------------------------------------------ */
 
-  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'functions'];
+  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'functions'];
 
   function newerThan(a, b) {
     var ta = (a && (a.updatedAt || a.createdAt)) || '';
@@ -4477,6 +4679,70 @@ body[data-projecting="true"] .toast-root { display: none; }
   color: var(--stage-muted); font-size: var(--fs-title); max-width: 26ch; line-height: 1.4;
 }
 
+/* --- Tafel: frei platzierte Elemente ------------------------------------
+   Die einfache Grundform. Jedes Element steht an einer selbst gewählten
+   Stelle; gespeichert ist seine Mitte als Anteil der Fläche, damit es auf
+   jeder Auflösung gleich sitzt. Kein Raster, keine Seiten, kein Blättern. */
+.stage__body[data-layout="board"] {
+  display: block;
+  position: relative;
+  padding: calc(var(--pad) * .6);
+  animation: none;                 /* beim Verschieben soll nichts aufblitzen */
+}
+.stage__body[data-layout="board"] .stage__empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+}
+
+.bcard {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 46%;
+  padding: calc(var(--u) * .45) calc(var(--u) * .85);
+  border: 1px solid transparent;
+  border-radius: calc(var(--u) * .7);
+  text-align: center;
+  line-height: 1.14;
+  cursor: grab;
+  touch-action: none;              /* auf Touchgeräten ziehen statt scrollen */
+  user-select: none;
+}
+.bcard__text {
+  font-size: calc(var(--fs-term) * var(--card-scale, 1));
+  font-weight: 650; letter-spacing: -.012em; overflow-wrap: break-word;
+}
+.bcard__text .art { color: var(--stage-muted); font-weight: 500; }
+.bcard__text .art__part[data-gender] { font-weight: 650; }
+.bcard__text .art__part[data-gender="m"] { color: var(--stage-genus-m); }
+.bcard__text .art__part[data-gender="f"] { color: var(--stage-genus-f); }
+.bcard__text .art__part[data-gender="n"] { color: var(--stage-genus-n); }
+.bcard__text .gap {
+  display: inline-block; min-width: 5ch;
+  border-bottom: .07em solid currentColor; opacity: .34; margin: 0 .12em;
+}
+.bcard__de {
+  font-size: calc(var(--fs-line) * var(--card-scale, 1) * .82);
+  color: var(--stage-de); margin-top: calc(var(--u) * .18); font-weight: 500;
+}
+.bcard:hover { border-color: var(--stage-line); }
+.bcard[data-selected="true"] { border-color: var(--stage-brand); }
+.bcard[data-dragging="true"] { cursor: grabbing; z-index: 4; }
+.bcard:focus-visible { outline: 2px solid var(--stage-brand); outline-offset: 3px; }
+
+/* Eingabe unmittelbar auf der Fläche – auch im Beamerfenster. */
+.bcomposer {
+  position: absolute; transform: translate(-50%, -50%); z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * .3);
+}
+.bcomposer__input {
+  font: inherit;
+  font-size: calc(var(--fs-term) * .82); font-weight: 650; text-align: center;
+  color: var(--stage-ink); background: var(--stage-bg);
+  border: 2px solid var(--stage-brand); border-radius: calc(var(--u) * .6);
+  padding: calc(var(--u) * .3) calc(var(--u) * .8);
+  min-width: 12ch; max-width: 60vw; outline: none;
+}
+.bcomposer__hint { font-size: var(--fs-head); color: var(--stage-muted); }
+
 /* --- Fußzeile ------------------------------------------------------------ */
 .stage__foot {
   display: flex; align-items: center; gap: calc(var(--u) * 1.2);
@@ -5329,15 +5595,20 @@ body { position: relative; }
       + ',menubar=no,toolbar=no,location=no,status=no,scrollbars=no,resizable=yes';
   }
 
+  /* Die Kurzhilfe auf der Leinwand nennt nur, was gerade wirklich gilt:
+     eine Wortbank wird geblättert, eine Tafel wird beschriftet und gezogen. */
+  var DEFAULT_HINT = [
+    ['F', 'Vollbild'],
+    ['← →', 'Blättern'],
+    ['Leertaste', 'Automatik'],
+    ['B', 'Bildschirm leeren']
+  ];
+  var hintPairs = DEFAULT_HINT;
+
   function buildHint(doc) {
     var hint = doc.createElement('div');
     hint.className = 'stage__hint';
-    [
-      ['F', 'Vollbild'],
-      ['← →', 'Blättern'],
-      ['Leertaste', 'Automatik'],
-      ['B', 'Bildschirm leeren']
-    ].forEach(function (pair) {
+    hintPairs.forEach(function (pair) {
       var span = doc.createElement('span');
       var kbd = doc.createElement('kbd');
       kbd.textContent = pair[0];
@@ -5346,6 +5617,19 @@ body { position: relative; }
       hint.appendChild(span);
     });
     return hint;
+  }
+
+  /** Wechselt die Kurzhilfe – auch auf bereits offenen Flächen. */
+  function setHint(pairs) {
+    hintPairs = (pairs && pairs.length) ? pairs : DEFAULT_HINT;
+    surfaces.forEach(function (surface) {
+      var old = surface.stage.hint;
+      if (!old || !old.parentNode) return;
+      var fresh = buildHint(surface.doc);
+      fresh.dataset.hidden = old.dataset.hidden || 'false';
+      old.parentNode.replaceChild(fresh, old);
+      surface.stage.hint = fresh;
+    });
   }
 
   function showHint(stage, milliseconds) {
@@ -5527,6 +5811,8 @@ body { position: relative; }
     toggleOverlayFullscreen: toggleOverlayFullscreen,
     attachPreview: attachPreview,
     detachPreview: detachPreview,
+    setHint: setHint,
+    DEFAULT_HINT: DEFAULT_HINT,
     surfaces: all,
     getSurface: getSurface,
     showHint: showHint,
@@ -5670,6 +5956,10 @@ body { position: relative; }
     options = options || {};
     var store = BAO.store.getState();
     var bank = bankId ? select.bank(store, bankId) : null;
+
+    // Es gibt nur eine Leinwand: Eine laufende Tafel gibt sie hier ab.
+    if (BAO.board && BAO.board.isActive()) BAO.board.stop();
+    output.setHint(output.DEFAULT_HINT);
 
     state.active = true;
     state.bankId = bank ? bank.id : '';
@@ -5955,6 +6245,794 @@ body { position: relative; }
     clearLive: clearLive,
     getLive: getLive,
     leadingSurface: leadingSurface
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/projection/board.js */
+/* ==========================================================================
+   Tafel – die einfache Grundform der Projektion
+   Eine Fläche, auf der Elemente frei stehen. Ein Element ist ein Eintrag des
+   Bestands; ob dahinter ein einzelnes Wort oder ein ganzer Satzanfang steht,
+   spielt für die Bedienung keine Rolle.
+
+   Alles, was hier geschieht, geschieht auf jeder Ausgabefläche gleichzeitig:
+   in der Vorschau der Lehreransicht, in der Vollbild-Überlagerung und im
+   eigenen Beamerfenster. Verschieben und Anlegen funktionieren auf allen
+   dreien – auch direkt auf dem Beamerbild.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var ui = BAO.ui;
+  var output = BAO.output;
+  var select = BAO.select;
+  var schema = BAO.schema;
+
+  var MIN_SCALE = 0.6;
+  var MAX_SCALE = 2.2;
+  var NUDGE = 0.012;              // Pfeiltaste: knapp über einem Prozent
+
+  var BOARD_HINT = [
+    ['Doppelklick', 'Element anlegen'],
+    ['Ziehen', 'verschieben'],
+    ['F', 'Vollbild'],
+    ['B', 'Bildschirm leeren']
+  ];
+
+  var state = {
+    active: false,
+    boardId: '',
+    selectedId: '',
+    theme: 'light',
+    scale: 1,
+    blank: false
+  };
+
+  var listeners = [];
+  var drag = null;                // { itemId, node, grabX, grabY, box, moved }
+  var composer = null;            // { surface, node, input, itemId, x, y, closing }
+  var keysBound = false;
+
+  function subscribe(fn) {
+    listeners.push(fn);
+    return function () {
+      var i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    };
+  }
+
+  function emit(reason) {
+    listeners.forEach(function (fn) {
+      try { fn(state, reason); } catch (err) { console.error('Fehler im Tafelbeobachter:', err); }
+    });
+  }
+
+  /* --- Zugriff auf den Bestand --------------------------------------------- */
+
+  function currentBoard(source) {
+    var store = source || BAO.store.getState();
+    if (!store || !state.boardId) return null;
+    return select.board(store, state.boardId);
+  }
+
+  function entries(board) {
+    return board ? select.boardEntries(BAO.store.getState(), board) : [];
+  }
+
+  function itemOf(board, itemId) {
+    if (!board) return null;
+    return (board.items || []).filter(function (item) { return item.id === itemId; })[0] || null;
+  }
+
+  /* --- Aufbau eines Elements ------------------------------------------------ */
+
+  function cardNode(doc, entry, board) {
+    var node = doc.createElement('div');
+    node.className = 'bcard';
+    node.dataset.itemId = entry.item.id;
+    node.dataset.selected = entry.item.id === state.selectedId ? 'true' : 'false';
+    node.tabIndex = 0;
+    node.setAttribute('role', 'button');
+    node.setAttribute('aria-label', entry.text + ' – ziehen zum Verschieben');
+    node.style.left = (entry.item.x * 100) + '%';
+    node.style.top = (entry.item.y * 100) + '%';
+    node.style.setProperty('--card-scale', entry.item.scale || 1);
+
+    var text = doc.createElement('div');
+    text.className = 'bcard__text';
+    // Ein vorhandener Artikel wird farbig nach Genus mitgezeigt – aber nur,
+    // wenn einer gepflegt ist. Elemente ohne weitere Angaben bleiben schlicht.
+    if (board.showArticle && entry.kind === 'lex') {
+      var article = ui.articleNode(entry.ref, doc);
+      if (article) {
+        text.appendChild(article);
+        var written = article.textContent;
+        if (written.charAt(written.length - 1) !== '’') text.appendChild(doc.createTextNode(' '));
+      }
+    }
+    text.appendChild(ui.gapText(entry.text, doc));
+    node.appendChild(text);
+
+    if (board.showTranslation && entry.ref.translation) {
+      var translation = doc.createElement('div');
+      translation.className = 'bcard__de';
+      translation.textContent = entry.ref.translation;
+      node.appendChild(translation);
+    }
+    return node;
+  }
+
+  /**
+   * Holt ein Element vollständig in die Fläche zurück.
+   * Gespeichert ist die Mitte als Anteil der Fläche; wie breit ein Element
+   * dabei tatsächlich wird, hängt von Text und Auflösung ab. Deshalb wird die
+   * Anzeige nach dem Messen nachjustiert – der gespeicherte Wert bleibt.
+   */
+  function fitIntoSurface(body) {
+    var width = body.clientWidth;
+    var height = body.clientHeight;
+    if (!width || !height) return;
+    util.$$('.bcard', body).forEach(function (node) {
+      var halfX = (node.offsetWidth / 2) / width;
+      var halfY = (node.offsetHeight / 2) / height;
+      var x = parseFloat(node.style.left) / 100;
+      var y = parseFloat(node.style.top) / 100;
+      if (halfX < 0.5) node.style.left = (util.clamp(x, halfX, 1 - halfX) * 100) + '%';
+      if (halfY < 0.5) node.style.top = (util.clamp(y, halfY, 1 - halfY) * 100) + '%';
+    });
+  }
+
+  /* --- Zeichnen ------------------------------------------------------------- */
+
+  /** Grundeinheit der Schriftgröße aus der tatsächlichen Flächengröße. */
+  function applyUnit(surface) {
+    var root = surface.stage.root;
+    var width = root.clientWidth || 960;
+    var height = root.clientHeight || 540;
+    var unit = Math.min(width * 0.0105, height * 0.0185);
+    root.style.setProperty('--u', Math.max(unit, 2) + 'px');
+  }
+
+  function renderSurface(surface, board, store) {
+    var stage = surface.stage;
+    var doc = stage.doc;
+
+    stage.root.dataset.stageTheme = state.theme;
+    stage.root.dataset.blank = state.blank ? 'true' : 'false';
+    stage.root.dataset.focus = 'false';
+    stage.root.setAttribute('data-blank-hint', 'Bildschirm geleert – Taste B zeigt die Tafel wieder');
+    stage.root.style.setProperty('--user-scale', state.scale);
+
+    var subject = board ? select.subject(store, board.subjectId) : null;
+    var group = board ? select.group(store, board.groupId) : null;
+
+    util.clear(stage.crumb);
+    if (subject) {
+      var strong = doc.createElement('b');
+      strong.textContent = subject.name;
+      stage.crumb.appendChild(strong);
+      if (group) stage.crumb.appendChild(doc.createTextNode(' · ' + group.name));
+    }
+    stage.title.textContent = board ? board.title : 'Tafel';
+
+    var list = board ? entries(board) : [];
+    stage.pos.textContent = list.length
+      ? list.length + ' ' + util.plural(list.length, 'Element', 'Elemente')
+      : '';
+    stage.foot.dataset.hidden = 'true';
+
+    util.clear(stage.body);
+    stage.body.dataset.layout = 'board';
+    stage.body.style.removeProperty('--cols');
+
+    if (!list.length) {
+      var empty = doc.createElement('div');
+      empty.className = 'stage__empty';
+      empty.textContent = 'Doppelklick auf die Fläche legt ein Element an.';
+      stage.body.appendChild(empty);
+    } else {
+      list.forEach(function (entry) { stage.body.appendChild(cardNode(doc, entry, board)); });
+      fitIntoSurface(stage.body);
+    }
+
+    bindSurface(surface);
+  }
+
+  function renderAll(reason) {
+    var store = BAO.store.getState();
+    var board = currentBoard(store);
+    var surfaces = output.surfaces();
+    surfaces.forEach(function (surface) {
+      applyUnit(surface);
+      renderSurface(surface, board, store);
+    });
+    restoreFocus();
+    emit(reason || 'render');
+  }
+
+  /** Nach einem Neuaufbau steht die Auswahl wieder unter der Tastatur. */
+  var focusWanted = false;
+  function restoreFocus() {
+    if (!focusWanted || !state.selectedId) return;
+    focusWanted = false;
+    var surfaces = output.surfaces();
+    for (var i = 0; i < surfaces.length; i++) {
+      var node = cardIn(surfaces[i], state.selectedId);
+      if (node) { try { node.focus({ preventScroll: true }); } catch (err) { node.focus(); } return; }
+    }
+  }
+
+  function cardIn(surface, itemId) {
+    return surface.stage.body.querySelector('.bcard[data-item-id="' + itemId + '"]');
+  }
+
+  function eachCard(itemId, fn) {
+    output.surfaces().forEach(function (surface) {
+      var node = cardIn(surface, itemId);
+      if (node) fn(node, surface);
+    });
+  }
+
+  /* --- Auswahl -------------------------------------------------------------- */
+
+  function select_(itemId) {
+    state.selectedId = itemId || '';
+    output.surfaces().forEach(function (surface) {
+      util.$$('.bcard', surface.stage.body).forEach(function (node) {
+        node.dataset.selected = node.dataset.itemId === state.selectedId ? 'true' : 'false';
+      });
+    });
+    emit('select');
+  }
+
+  /* --- Verschieben ---------------------------------------------------------- */
+
+  function beginDrag(event, node, surface) {
+    if (event.button !== undefined && event.button !== 0) return;
+    var body = surface.stage.body;
+    var box = body.getBoundingClientRect();
+    var rect = node.getBoundingClientRect();
+    drag = {
+      itemId: node.dataset.itemId,
+      // Abstand vom Mittelpunkt: Das Element springt beim Anfassen nicht.
+      grabX: event.clientX - (rect.left + rect.width / 2),
+      grabY: event.clientY - (rect.top + rect.height / 2),
+      halfX: (rect.width / 2) / box.width,
+      halfY: (rect.height / 2) / box.height,
+      box: box,
+      moved: false
+    };
+    select_(drag.itemId);
+    eachCard(drag.itemId, function (twin) { twin.dataset.dragging = 'true'; });
+    try { node.setPointerCapture(event.pointerId); } catch (err) { /* ältere Browser */ }
+    event.preventDefault();
+  }
+
+  function moveDrag(event) {
+    if (!drag) return;
+    var x = (event.clientX - drag.grabX - drag.box.left) / drag.box.width;
+    var y = (event.clientY - drag.grabY - drag.box.top) / drag.box.height;
+    drag.x = util.clamp(x, Math.min(drag.halfX, 0.5), Math.max(1 - drag.halfX, 0.5));
+    drag.y = util.clamp(y, Math.min(drag.halfY, 0.5), Math.max(1 - drag.halfY, 0.5));
+    drag.moved = true;
+    // Während des Ziehens folgen alle Flächen sofort – ohne Umweg über den
+    // Bestand, damit das Bild auf dem Beamer nicht ruckelt.
+    eachCard(drag.itemId, function (twin) {
+      twin.style.left = (drag.x * 100) + '%';
+      twin.style.top = (drag.y * 100) + '%';
+    });
+  }
+
+  function endDrag() {
+    if (!drag) return;
+    var finished = drag;
+    drag = null;
+    eachCard(finished.itemId, function (twin) { delete twin.dataset.dragging; });
+    if (!finished.moved || finished.x === undefined) return;
+    moveItem(finished.itemId, finished.x, finished.y);
+  }
+
+  function moveItem(itemId, x, y) {
+    return BAO.store.commit('Element verschoben', function (draft) {
+      var board = select.board(draft, state.boardId);
+      var item = itemOf(board, itemId);
+      if (!item) return false;
+      item.x = util.clamp(x, 0, 1);
+      item.y = util.clamp(y, 0, 1);
+      board.updatedAt = util.nowISO();
+    });
+  }
+
+  /* --- Eingabe unmittelbar auf der Fläche ------------------------------------ */
+
+  function closeComposer(commitText) {
+    if (!composer || composer.closing) return;
+    composer.closing = true;
+    var text = composer.input.value;
+    var target = composer;
+    if (target.node.parentNode) target.node.parentNode.removeChild(target.node);
+    composer = null;
+    if (commitText && text.trim()) {
+      if (target.itemId) setText(target.itemId, text.trim());
+      else addAt(text, target.x, target.y);
+    } else if (!commitText) {
+      emit('composer-cancelled');
+    }
+  }
+
+  /**
+   * Öffnet ein Eingabefeld mitten auf der Fläche – auch im Beamerfenster.
+   * options: { x, y } für ein neues Element, { itemId } zum Ändern.
+   */
+  function openComposer(surface, options) {
+    closeComposer(false);
+    if (!state.active) return null;
+    var doc = surface.stage.doc;
+    var board = currentBoard();
+    if (!board) return null;
+
+    var x = options.x;
+    var y = options.y;
+    var value = '';
+    if (options.itemId) {
+      var entry = select.resolveBoardItem(BAO.store.getState(), itemOf(board, options.itemId));
+      if (!entry) return null;
+      x = entry.item.x;
+      y = entry.item.y;
+      value = entry.text;
+    }
+
+    var input = doc.createElement('input');
+    input.type = 'text';
+    input.className = 'bcomposer__input';
+    input.value = value;
+    input.setAttribute('aria-label', options.itemId ? 'Element ändern' : 'Neues Element');
+    input.placeholder = options.itemId ? '' : 'Wort oder Satz …';
+
+    var node = doc.createElement('div');
+    node.className = 'bcomposer';
+    node.style.left = (x * 100) + '%';
+    node.style.top = (y * 100) + '%';
+    node.appendChild(input);
+
+    var hint = doc.createElement('div');
+    hint.className = 'bcomposer__hint';
+    hint.textContent = 'Enter übernimmt · Esc bricht ab';
+    node.appendChild(hint);
+
+    surface.stage.body.appendChild(node);
+    composer = { surface: surface, node: node, input: input, itemId: options.itemId || '', x: x, y: y, closing: false };
+
+    input.addEventListener('keydown', function (event) {
+      // Die Tastatur gehört jetzt dem Eingabefeld – nicht der Projektion.
+      event.stopPropagation();
+      if (event.key === 'Enter') { event.preventDefault(); closeComposer(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); closeComposer(false); }
+    });
+    input.addEventListener('blur', function () { closeComposer(true); });
+    input.addEventListener('paste', function (event) {
+      var text = event.clipboardData ? event.clipboardData.getData('text') : '';
+      if (!/[\r\n]/.test(text)) return;
+      // Mehrere Zeilen auf einmal: jede Zeile wird ein eigenes Element.
+      event.preventDefault();
+      var target = composer;
+      closeComposer(false);
+      addAt(text, target.x, target.y);
+    });
+
+    try { input.focus({ preventScroll: true }); } catch (err) { input.focus(); }
+    input.select();
+    emit('composer-opened');
+    return composer;
+  }
+
+  function isComposing() { return !!composer; }
+
+  /* --- Elemente anlegen, ändern, entfernen ----------------------------------- */
+
+  /**
+   * Legt aus einem oder mehreren Textzeilen Elemente an.
+   * Jedes Element ist ein gewöhnlicher Eintrag des Bestands und lässt sich
+   * später um Artikel, Übersetzung, Beispiel und alles Weitere ergänzen.
+   */
+  function addAt(text, x, y) {
+    var lines = String(text || '').split(/\r?\n/).map(function (line) { return line.trim(); })
+      .filter(Boolean);
+    if (!lines.length) return null;
+
+    var created = [];
+    var ok = BAO.store.commit(lines.length > 1 ? lines.length + ' Elemente angelegt' : 'Element angelegt', function (draft) {
+      var board = select.board(draft, state.boardId);
+      if (!board) return false;
+      var group = select.group(draft, board.groupId);
+      var unit = board.unitId ? select.unit(draft, board.unitId) : select.currentUnit(draft, board.groupId);
+      lines.forEach(function (line, index) {
+        var lexeme = schema.makeLexeme({
+          subjectId: board.subjectId,
+          groupId: board.groupId,
+          term: line,
+          status: 'new',
+          introducedUnitId: unit ? unit.id : '',
+          introducedSchoolYear: group ? group.schoolYear : ''
+        });
+        draft.lexemes.push(lexeme);
+        var item = schema.makeBoardItem({
+          kind: 'lex',
+          refId: lexeme.id,
+          // Mehrere Zeilen legen sich versetzt ab, statt sich zu verdecken.
+          x: util.clamp(x + index * 0.035, 0.05, 0.95),
+          y: util.clamp(y + index * 0.075, 0.06, 0.94)
+        });
+        board.items.push(item);
+        created.push(item.id);
+      });
+      board.updatedAt = util.nowISO();
+    });
+    if (!ok) return null;
+    select_(created[created.length - 1] || '');
+    emit('added');
+    return created;
+  }
+
+  /** Legt ein Element an einer noch freien Stelle der Fläche an. */
+  function add(text) {
+    var spot = freeSpot();
+    return addAt(text, spot.x, spot.y);
+  }
+
+  /** Setzt einen vorhandenen Eintrag des Bestands auf die Tafel. */
+  function place(kind, refId, position) {
+    var spot = position || freeSpot();
+    var newId = null;
+    var ok = BAO.store.commit('Element auf die Tafel gelegt', function (draft) {
+      var board = select.board(draft, state.boardId);
+      if (!board) return false;
+      var item = schema.makeBoardItem({ kind: kind, refId: refId, x: spot.x, y: spot.y });
+      board.items.push(item);
+      board.updatedAt = util.nowISO();
+      newId = item.id;
+    });
+    if (!ok) return null;
+    select_(newId);
+    emit('added');
+    return newId;
+  }
+
+  function setText(itemId, text) {
+    var value = String(text || '').trim();
+    if (!value) return false;
+    return BAO.store.commit('Element geändert', function (draft) {
+      var board = select.board(draft, state.boardId);
+      var item = itemOf(board, itemId);
+      if (!item) return false;
+      var ref = item.kind === 'starter' ? select.starter(draft, item.refId) : select.lexeme(draft, item.refId);
+      if (!ref) return false;
+      if (item.kind === 'starter') ref.text = value; else ref.term = value;
+      ref.updatedAt = util.nowISO();
+      board.updatedAt = util.nowISO();
+    });
+  }
+
+  /** Nimmt ein Element von der Tafel – der Eintrag selbst bleibt im Bestand. */
+  function removeItem(itemId) {
+    var removed = null;
+    var ok = BAO.store.commit('Element von der Tafel genommen', function (draft) {
+      var board = select.board(draft, state.boardId);
+      if (!board) return false;
+      var before = board.items.length;
+      board.items = board.items.filter(function (item) {
+        if (item.id !== itemId) return true;
+        removed = item;
+        return false;
+      });
+      if (board.items.length === before) return false;
+      board.updatedAt = util.nowISO();
+    });
+    if (!ok) return null;
+    if (state.selectedId === itemId) state.selectedId = '';
+    return removed;
+  }
+
+  function setScaleOf(itemId, scale) {
+    return BAO.store.commit('Elementgröße geändert', function (draft) {
+      var board = select.board(draft, state.boardId);
+      var item = itemOf(board, itemId);
+      if (!item) return false;
+      item.scale = util.clamp(Math.round(scale * 20) / 20, MIN_SCALE, MAX_SCALE);
+      board.updatedAt = util.nowISO();
+    });
+  }
+
+  /* --- Freie Stelle und Ordnen ---------------------------------------------- */
+
+  /** Sucht die Stelle mit dem größten Abstand zu allem, was schon dasteht. */
+  function freeSpot() {
+    var board = currentBoard();
+    var placed = board ? (board.items || []) : [];
+    if (!placed.length) return { x: 0.5, y: 0.45 };
+    var best = { x: 0.5, y: 0.5 };
+    var bestDistance = -1;
+    for (var col = 0; col < 6; col++) {
+      for (var row = 0; row < 4; row++) {
+        var x = 0.14 + col * 0.144;
+        var y = 0.16 + row * 0.226;
+        var nearest = Infinity;
+        placed.forEach(function (item) {
+          var dx = item.x - x;
+          var dy = (item.y - y) * 0.6;      // waagerecht ist mehr Platz
+          nearest = Math.min(nearest, dx * dx + dy * dy);
+        });
+        if (nearest > bestDistance) { bestDistance = nearest; best = { x: x, y: y }; }
+      }
+    }
+    return best;
+  }
+
+  /** Verteilt alle Elemente gleichmäßig – der Weg zurück aus dem Durcheinander. */
+  function arrange() {
+    return BAO.store.commit('Tafel geordnet', function (draft) {
+      var board = select.board(draft, state.boardId);
+      if (!board || !board.items.length) return false;
+      var count = board.items.length;
+      var cols = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(count * 1.6))));
+      var rows = Math.ceil(count / cols);
+      board.items.forEach(function (item, index) {
+        var col = index % cols;
+        var row = Math.floor(index / cols);
+        item.x = (col + 0.5) / cols;
+        item.y = (row + 0.5) / rows;
+      });
+      board.updatedAt = util.nowISO();
+    });
+  }
+
+  /* --- Ereignisse einer Ausgabefläche ---------------------------------------- */
+
+  function positionInBody(event, body) {
+    var box = body.getBoundingClientRect();
+    return {
+      x: util.clamp((event.clientX - box.left) / box.width, 0.06, 0.94),
+      y: util.clamp((event.clientY - box.top) / box.height, 0.08, 0.92)
+    };
+  }
+
+  function bindSurface(surface) {
+    var stage = surface.stage;
+    if (stage.__boardBound) return;
+    stage.__boardBound = true;
+    var body = stage.body;
+
+    body.addEventListener('pointerdown', function (event) {
+      if (!state.active || !event.target.closest) return;
+      if (event.target.closest('.bcomposer')) return;
+      var card = event.target.closest('.bcard');
+      var itemId = card ? card.dataset.itemId : '';
+      // Eine offene Eingabe wird zuerst übernommen – das kann die Fläche neu
+      // aufbauen, deshalb wird das angefasste Element danach neu gesucht.
+      if (composer) closeComposer(true);
+      if (itemId) { beginDrag(event, cardIn(surface, itemId) || card, surface); return; }
+      select_('');
+    });
+    body.addEventListener('pointermove', function (event) {
+      if (state.active) moveDrag(event);
+    });
+    body.addEventListener('pointerup', function () { if (state.active) endDrag(); });
+    body.addEventListener('pointercancel', function () { if (state.active) endDrag(); });
+
+    body.addEventListener('dblclick', function (event) {
+      if (!state.active) return;
+      var card = event.target.closest ? event.target.closest('.bcard') : null;
+      event.preventDefault();
+      if (card) { openComposer(surface, { itemId: card.dataset.itemId }); return; }
+      if (event.target.closest && event.target.closest('.bcomposer')) return;
+      var spot = positionInBody(event, body);
+      openComposer(surface, spot);
+    });
+  }
+
+  /* --- Tastatur -------------------------------------------------------------- */
+
+  function isTyping(event) {
+    var target = event.target;
+    if (!target) return false;
+    var tag = (target.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+  }
+
+  function surfaceFor(source) {
+    if (source === 'window') return output.getSurface('window');
+    return output.getSurface('overlay') || output.getSurface('preview');
+  }
+
+  function handleKey(event, source) {
+    if (!state.active || composer) return;
+    if (source !== 'window') {
+      var route = BAO.app.currentRoute();
+      if (route.path !== 'tafel' && !output.isOverlayOpen()) return;
+      if (isTyping(event)) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      var modalRoot = document.getElementById('modal-root');
+      if (modalRoot && modalRoot.firstChild) return;
+    }
+
+    var step = event.shiftKey ? NUDGE * 4 : NUDGE;
+    var board = currentBoard();
+    var selected = itemOf(board, state.selectedId);
+    var handled = true;
+
+    switch (event.key) {
+      case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown':
+        if (!selected) { handled = false; break; }
+        focusWanted = true;
+        moveItem(selected.id,
+          selected.x + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
+          selected.y + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0));
+        break;
+      case 'Delete': case 'Backspace':
+        if (!selected) { handled = false; break; }
+        removeItem(selected.id);
+        break;
+      case 'Enter': case 'F2':
+        if (!selected) { handled = false; break; }
+        openComposer(surfaceFor(source), { itemId: selected.id });
+        break;
+      case '+':
+        if (!selected) { handled = false; break; }
+        focusWanted = true;
+        setScaleOf(selected.id, (selected.scale || 1) + 0.1);
+        break;
+      case '-':
+        if (!selected) { handled = false; break; }
+        focusWanted = true;
+        setScaleOf(selected.id, (selected.scale || 1) - 0.1);
+        break;
+      case 'b': case 'B': toggleBlank(); break;
+      case 'f': case 'F':
+        if (source === 'window') output.requestWindowFullscreen();
+        else if (output.isOverlayOpen()) output.toggleOverlayFullscreen();
+        else output.openOverlay();
+        break;
+      case 'Escape':
+        if (state.selectedId) { select_(''); break; }
+        if (source === 'window') { handled = false; break; }
+        if (output.isOverlayOpen()) output.closeOverlay(); else handled = false;
+        break;
+      default:
+        // Einfach lostippen: Ein druckbares Zeichen öffnet die Eingabe.
+        if (event.key.length === 1 && event.key !== ' '
+          && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          var surface = surfaceFor(source);
+          if (!surface) { handled = false; break; }
+          var made = openComposer(surface, freeSpot());
+          if (made) made.input.value = event.key;
+          else handled = false;
+        } else {
+          handled = false;
+        }
+    }
+    if (handled) event.preventDefault();
+  }
+
+  function bindKeys() {
+    if (keysBound) return;
+    keysBound = true;
+    document.addEventListener('keydown', function (event) { handleKey(event, 'document'); });
+    output.onKey(handleKey);
+  }
+
+  /* --- Darstellung ----------------------------------------------------------- */
+
+  function setTheme(theme) {
+    state.theme = theme === 'dark' ? 'dark' : 'light';
+    BAO.store.commit('Darstellung der Projektion', function (draft) {
+      draft.settings.stageTheme = state.theme;
+    }, { undoable: false });
+    renderAll('theme');
+  }
+
+  function setScale(scale) {
+    state.scale = util.clamp(scale, 0.7, 1.8);
+    BAO.store.commit('Schriftgröße der Projektion', function (draft) {
+      draft.settings.stageScale = state.scale;
+    }, { undoable: false });
+    renderAll('scale');
+  }
+
+  function toggleBlank() {
+    state.blank = !state.blank;
+    renderAll('blank');
+  }
+
+  function setOption(key, value) {
+    return BAO.store.commit('Tafel-Einstellung geändert', function (draft) {
+      var board = select.board(draft, state.boardId);
+      if (!board) return false;
+      board[key] = !!value;
+      board.updatedAt = util.nowISO();
+    }, { undoable: false });
+  }
+
+  /* --- Sitzung --------------------------------------------------------------- */
+
+  function start(boardId) {
+    var store = BAO.store.getState();
+    var board = select.board(store, boardId);
+    if (!board) return null;
+
+    if (BAO.session && BAO.session.getState().active) BAO.session.stop();
+    output.setHint(BOARD_HINT);
+
+    state.active = true;
+    state.boardId = board.id;
+    state.selectedId = '';
+    state.blank = false;
+    state.theme = store.settings.stageTheme || 'light';
+    state.scale = store.settings.stageScale || 1;
+    bindKeys();
+
+    BAO.store.commit('Tafel geöffnet', function (draft) {
+      var target = select.board(draft, board.id);
+      if (target) target.lastUsedAt = util.nowISO();
+    }, { undoable: false });
+
+    renderAll('start');
+    return state;
+  }
+
+  function stop() {
+    closeComposer(false);
+    state.active = false;
+    state.boardId = '';
+    state.selectedId = '';
+    emit('stop');
+  }
+
+  function isActive() { return state.active; }
+  function getState() { return state; }
+
+  output.onChange(function (reason) {
+    if (!state.active) return;
+    if (reason === 'window-opened' || reason === 'overlay-opened') closeComposer(true);
+    renderAll(reason);
+  });
+
+  BAO.store.subscribe(function (nextState, meta) {
+    if (!state.active) return;
+    if (meta.reason === 'commit' && meta.label === 'Tafel geöffnet') return;
+    if (drag) return;                       // Während des Ziehens nicht dazwischenfunken
+    renderAll('store');
+  });
+
+  BAO.board = {
+    subscribe: subscribe,
+    start: start,
+    stop: stop,
+    isActive: isActive,
+    getState: getState,
+    getBoard: function () { return currentBoard(); },
+    entries: function () { return entries(currentBoard()); },
+    renderAll: renderAll,
+    select: select_,
+    add: add,
+    addAt: addAt,
+    place: place,
+    setText: setText,
+    removeItem: removeItem,
+    moveItem: moveItem,
+    setScaleOf: setScaleOf,
+    arrange: arrange,
+    freeSpot: freeSpot,
+    setTheme: setTheme,
+    setScale: setScale,
+    toggleBlank: toggleBlank,
+    setOption: setOption,
+    openComposer: openComposer,
+    isComposing: isComposing,
+    MIN_SCALE: MIN_SCALE,
+    MAX_SCALE: MAX_SCALE
   };
 })(window.BAO = window.BAO || {});
 
@@ -6528,7 +7606,7 @@ body { position: relative; }
         : 'Die Einträge werden aus dem Bestand der Lerngruppe entfernt.',
       detail: usage
         ? 'Achtung: ' + usage + ' ' + util.plural(usage, 'Verwendung', 'Verwendungen')
-          + ' in Wortbanken werden ebenfalls entfernt. Das lässt sich rückgängig machen.'
+          + ' in Wortbanken und auf Tafeln werden ebenfalls entfernt. Das lässt sich rückgängig machen.'
         : 'Das lässt sich direkt rückgängig machen.',
       confirmLabel: 'Löschen', danger: true
     }).then(function (confirmed) {
@@ -6540,6 +7618,11 @@ body { position: relative; }
             section.items = section.items.filter(function (item) {
               return !(item.kind === 'lex' && ids.indexOf(item.refId) >= 0);
             });
+          });
+        });
+        draft.boards.forEach(function (board) {
+          board.items = board.items.filter(function (item) {
+            return !(item.kind === 'lex' && ids.indexOf(item.refId) >= 0);
           });
         });
       });
@@ -6946,7 +8029,7 @@ body { position: relative; }
       title: 'Satzanfang löschen?',
       text: ui.plainStarterText(starter.text),
       detail: usage
-        ? 'Er wird in ' + usage + ' ' + util.plural(usage, 'Wortbank', 'Wortbanken') + ' verwendet und dort ebenfalls entfernt.'
+        ? 'Er wird ' + usage + '-mal in Wortbanken oder auf Tafeln verwendet und dort ebenfalls entfernt.'
         : 'Das lässt sich direkt rückgängig machen.',
       confirmLabel: 'Löschen', danger: true
     }).then(function (confirmed) {
@@ -6958,6 +8041,11 @@ body { position: relative; }
             section.items = section.items.filter(function (item) {
               return !(item.kind === 'starter' && item.refId === starter.id);
             });
+          });
+        });
+        draft.boards.forEach(function (board) {
+          board.items = board.items.filter(function (item) {
+            return !(item.kind === 'starter' && item.refId === starter.id);
           });
         });
       });
@@ -7842,6 +8930,612 @@ body { position: relative; }
 
   BAO.views = BAO.views || {};
   BAO.views.bankEditor = { render: render };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/views/boards.js */
+/* ==========================================================================
+   Tafeln der Lerngruppe
+   Die einfache Grundform: eine Fläche, Elemente darauf, sonst nichts.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var h = util.h;
+  var ui = BAO.ui;
+  var schema = BAO.schema;
+  var select = BAO.select;
+
+  function createBoard(ctx, app, options) {
+    options = options || {};
+    var fieldTitle = ui.textField({
+      label: 'Titel', value: options.title || '',
+      placeholder: 'z. B. Wörter für das Partnergespräch'
+    });
+
+    return BAO.modal.open({
+      title: 'Neue Tafel',
+      subtitle: 'Eine leere Fläche. Elemente entstehen später einfach dort, wo sie stehen sollen.',
+      width: '480px',
+      initialFocus: 'input',
+      body: h('div.stack', {}, fieldTitle,
+        h('div.note', { text: 'Auf der Fläche genügt ein Doppelklick, um ein Element anzulegen – '
+          + 'auch unmittelbar im Beamerfenster.' })
+      ),
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        {
+          label: 'Anlegen und öffnen', kind: 'primary',
+          onSelect: function () {
+            var title = fieldTitle.input.value.trim();
+            if (!title) { fieldTitle.input.focus(); return false; }
+            var newId = null;
+            BAO.store.commit('Tafel angelegt', function (draft) {
+              var board = schema.makeBoard({
+                subjectId: ctx.subject.id,
+                groupId: ctx.group.id,
+                unitId: ctx.unit ? ctx.unit.id : '',
+                title: title
+              });
+              draft.boards.push(board);
+              newId = board.id;
+            });
+            BAO.toast.undoable('Tafel „' + title + '“ angelegt.');
+            if (newId) app.go('tafel/' + newId);
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
+  /** Übernimmt alle Einträge einer Wortbank auf eine neue Tafel. */
+  function fromBank(ctx, app) {
+    var state = BAO.store.getState();
+    var banks = select.banksOfGroup(state, ctx.group.id);
+    if (!banks.length) {
+      BAO.toast.show('Für diese Lerngruppe gibt es noch keine Wortbank.');
+      return null;
+    }
+    var fieldBank = ui.selectField({
+      label: 'Wortbank', value: banks[0].id,
+      options: banks.map(function (bank) {
+        return { value: bank.id, label: bank.title + ' (' + select.bankItemCount(bank) + ')' };
+      })
+    });
+
+    return BAO.modal.open({
+      title: 'Tafel aus einer Wortbank',
+      subtitle: 'Die Einträge werden gleichmäßig auf der Fläche verteilt und lassen sich danach frei verschieben.',
+      width: '480px',
+      body: h('div.stack', {}, fieldBank),
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        {
+          label: 'Tafel anlegen', kind: 'primary',
+          onSelect: function () {
+            var bankId = util.$('select', fieldBank).value;
+            var newId = null;
+            BAO.store.commit('Tafel aus Wortbank angelegt', function (draft) {
+              var bank = select.bank(draft, bankId);
+              if (!bank) return false;
+              var flat = [];
+              (bank.sections || []).forEach(function (section) {
+                (section.items || []).forEach(function (item) {
+                  if (select.resolveItem(draft, item)) flat.push(item);
+                });
+              });
+              var cols = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(flat.length * 1.6))));
+              var rows = Math.max(1, Math.ceil(flat.length / cols));
+              var board = schema.makeBoard({
+                subjectId: bank.subjectId, groupId: bank.groupId, unitId: bank.unitId,
+                title: bank.title,
+                items: flat.map(function (item, index) {
+                  return schema.makeBoardItem({
+                    kind: item.kind, refId: item.refId,
+                    x: ((index % cols) + 0.5) / cols,
+                    y: (Math.floor(index / cols) + 0.5) / rows
+                  });
+                })
+              });
+              draft.boards.push(board);
+              newId = board.id;
+            });
+            if (!newId) return true;
+            BAO.toast.undoable('Tafel angelegt.');
+            app.go('tafel/' + newId);
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
+  function duplicate(board, app) {
+    var newId = null;
+    BAO.store.commit('Tafel dupliziert', function (draft) {
+      var copy = util.clone(board);
+      copy.id = util.uid('brd');
+      copy.title = board.title + ' (Kopie)';
+      copy.favorite = false;
+      copy.lastUsedAt = '';
+      copy.createdAt = util.nowISO();
+      copy.updatedAt = util.nowISO();
+      copy.items = (copy.items || []).map(function (item) {
+        item.id = util.uid('bit');
+        return item;
+      });
+      draft.boards.push(copy);
+      newId = copy.id;
+    });
+    BAO.toast.undoable('Kopie angelegt.');
+    if (newId && app) app.go('tafel/' + newId);
+  }
+
+  function remove(board) {
+    return BAO.modal.confirm({
+      title: 'Tafel löschen?',
+      text: '„' + board.title + '“ wird entfernt.',
+      detail: 'Die Elemente selbst bleiben im Bestand der Lerngruppe erhalten.',
+      confirmLabel: 'Löschen', danger: true
+    }).then(function (confirmed) {
+      if (!confirmed) return;
+      BAO.store.commit('Tafel gelöscht', function (draft) {
+        draft.boards = draft.boards.filter(function (b) { return b.id !== board.id; });
+      });
+      BAO.toast.undoable('Tafel gelöscht.');
+    });
+  }
+
+  function boardTile(state, board, app) {
+    var count = (board.items || []).length;
+    var subject = select.subject(state, board.subjectId);
+
+    return h('div.tile', {
+      style: ui.subjectVars(subject),
+      onclick: function () { app.go('tafel/' + board.id); }
+    },
+      h('span.tile__accent'),
+      h('div.tile__top', {},
+        h('span.tile__title', { text: board.title }),
+        h('span.spacer'),
+        ui.favButton(board.favorite, function () {
+          BAO.store.commit('Favorit geändert', function (draft) {
+            var target = select.board(draft, board.id);
+            if (target) target.favorite = !target.favorite;
+          });
+        })
+      ),
+      h('div.row', {},
+        h('span.chip', { text: count + ' ' + util.plural(count, 'Element', 'Elemente') }),
+        board.showTranslation ? h('span.chip.chip--outline', { text: 'mit Deutsch' }) : null
+      ),
+      board.note ? h('div.tile__meta', { text: board.note }) : null,
+      h('div.tile__foot', {},
+        h('button.btn.btn--primary.btn--sm', {
+          type: 'button',
+          onclick: function (event) { event.stopPropagation(); app.projectBoard(board.id); }
+        }, ui.icon('beamer', 15), 'Zeigen'),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Duplizieren',
+          onclick: function (event) { event.stopPropagation(); duplicate(board, app); }
+        }, ui.icon('copy', 15)),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Löschen',
+          onclick: function (event) { event.stopPropagation(); remove(board); }
+        }, ui.icon('trash', 15))
+      )
+    );
+  }
+
+  function render(host, context) {
+    var state = context.state;
+    var ctx = context.ctx;
+    var app = context.app;
+    var view = h('div.view');
+
+    if (!ctx.group) {
+      view.appendChild(ui.emptyState({
+        title: 'Noch keine Lerngruppe',
+        text: 'Eine Tafel gehört zu einer Lerngruppe – so bleibt der Bestand über die Jahre beieinander.',
+        actionLabel: 'Lerngruppe anlegen', onAction: function () { app.go('verwaltung'); }
+      }));
+      host.appendChild(view);
+      return;
+    }
+
+    var all = select.boardsOfGroup(state, ctx.group.id);
+
+    view.appendChild(h('div.view__head', {},
+      h('div.view__title', {},
+        h('h1', { text: 'Tafeln' }),
+        h('span.sub', {
+          text: ctx.subject.name + ' · ' + ctx.group.name + ' · '
+            + all.length + ' ' + util.plural(all.length, 'Tafel', 'Tafeln')
+        })
+      ),
+      h('div.spacer'),
+      h('div.view__actions', {},
+        select.banksOfGroup(state, ctx.group.id).length
+          ? h('button.btn', { type: 'button', onclick: function () { fromBank(ctx, app); } },
+            'Aus einer Wortbank')
+          : null,
+        h('button.btn.btn--primary', {
+          type: 'button', onclick: function () { createBoard(ctx, app); }
+        }, ui.icon('plus', 16), 'Neue Tafel')
+      )
+    ));
+
+    if (!all.length) {
+      view.appendChild(ui.emptyState({
+        title: 'Noch keine Tafel',
+        text: 'Eine Tafel ist eine leere Fläche für den Unterricht. Wörter und Sätze werden dort '
+          + 'gleich behandelt: Ein Doppelklick legt ein Element an, Ziehen setzt es an seinen Platz – '
+          + 'auch unmittelbar im Beamerfenster.',
+        actionLabel: 'Erste Tafel anlegen',
+        onAction: function () { createBoard(ctx, app); }
+      }));
+    } else {
+      var tiles = h('div.tiles.tiles--wide');
+      all.forEach(function (board) { tiles.appendChild(boardTile(state, board, app)); });
+      tiles.appendChild(h('button.tile.tile--add', {
+        type: 'button', onclick: function () { createBoard(ctx, app); }
+      }, ui.icon('plus', 22), h('span', { text: 'Neue Tafel' })));
+      view.appendChild(tiles);
+    }
+
+    host.appendChild(view);
+  }
+
+  BAO.views = BAO.views || {};
+  BAO.views.boards = {
+    render: render, createBoard: createBoard, fromBank: fromBank,
+    duplicate: duplicate, remove: remove
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/views/board.js */
+/* ==========================================================================
+   Tafel – Steuerung neben der Fläche
+   Links das, was die Lernenden sehen, rechts alles Weitere. Die Fläche selbst
+   ist an beiden Stellen bedienbar: Ziehen verschiebt, Doppelklick legt an –
+   in der Vorschau ebenso wie im Beamerfenster.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var h = util.h;
+  var ui = BAO.ui;
+  var select = BAO.select;
+
+  var pick = { query: '' };
+  var listenerBound = false;
+  var refs = {};
+
+  /* --- Panel: Elemente hinzufügen -------------------------------------------- */
+
+  function addCard() {
+    var input = h('textarea', {
+      rows: 2, placeholder: 'Wort oder Satz … (mehrere Zeilen sind möglich)',
+      'aria-label': 'Neues Element'
+    });
+
+    function submit() {
+      var text = input.value;
+      if (!text.trim()) { input.focus(); return; }
+      var created = BAO.board.add(text);
+      input.value = '';
+      input.focus();
+      if (created) BAO.toast.undoable(created.length > 1
+        ? created.length + ' Elemente auf der Tafel.'
+        : 'Element auf der Tafel.');
+    }
+
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); }
+    });
+
+    return h('div.ctrl-card', {},
+      h('h3', {}, 'Element hinzufügen'),
+      h('div.stack', {},
+        input,
+        h('button.btn.btn--primary.btn--sm', { type: 'button', onclick: submit },
+          ui.icon('plus', 15), 'Auf die Tafel'),
+        h('div.note', { text: 'Enter legt an, Umschalt + Enter macht eine neue Zeile. '
+          + 'Auf der Fläche selbst genügt ein Doppelklick.' })
+      )
+    );
+  }
+
+  /* --- Panel: was auf der Tafel liegt ---------------------------------------- */
+
+  function entryRow(entry) {
+    var bare = select.isBareEntry(entry.ref);
+    var row = h('div.belem', {
+      dataset: { itemId: entry.item.id, selected: BAO.board.getState().selectedId === entry.item.id ? 'true' : 'false' },
+      onclick: function () { BAO.board.select(entry.item.id); }
+    },
+      h('span.belem__text', { text: entry.kind === 'lex' ? ui.termLabel(entry.ref) : entry.text }),
+      bare ? h('span.chip.chip--outline', { title: 'Bisher nur Text – Artikel, Übersetzung und mehr lassen sich ergänzen', text: 'nur Text' }) : null,
+      h('span.spacer'),
+      h('div.belem__actions', {},
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Um weitere Angaben ergänzen',
+          onclick: function (event) {
+            event.stopPropagation();
+            if (entry.kind === 'starter') BAO.views.starters.openEditor(entry.ref);
+            else BAO.views.vocab.openEditor(entry.ref);
+          }
+        }, ui.icon('edit', 15)),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Von der Tafel nehmen (der Eintrag bleibt im Bestand)',
+          onclick: function (event) {
+            event.stopPropagation();
+            BAO.board.removeItem(entry.item.id);
+            BAO.toast.undoable('Element von der Tafel genommen.');
+          }
+        }, ui.icon('trash', 15))
+      )
+    );
+    return row;
+  }
+
+  function elementsCard(entries) {
+    var list = h('div.belem-list');
+    if (!entries.length) {
+      list.appendChild(h('div.note', { text: 'Die Tafel ist noch leer.' }));
+    } else {
+      entries.forEach(function (entry) { list.appendChild(entryRow(entry)); });
+    }
+    refs.list = list;
+
+    return h('div.ctrl-card', {},
+      h('h3', {}, 'Auf der Tafel',
+        h('span.spacer'),
+        h('span.chip', { text: String(entries.length) })
+      ),
+      list,
+      entries.length > 1 ? h('button.btn.btn--sm', {
+        type: 'button', title: 'Alle Elemente gleichmäßig verteilen',
+        onclick: function () { BAO.board.arrange(); BAO.toast.undoable('Tafel geordnet.'); }
+      }, 'Ordnen') : null
+    );
+  }
+
+  /* --- Panel: vorhandene Einträge holen -------------------------------------- */
+
+  function pickCard(state, ctx, board, app) {
+    var used = {};
+    (board.items || []).forEach(function (item) { used[item.kind + ':' + item.refId] = true; });
+
+    var needle = util.fold(pick.query);
+    var candidates = [];
+    if (needle) {
+      select.lexemesOfGroup(state, ctx.group.id).forEach(function (lex) {
+        if (used['lex:' + lex.id]) return;
+        if (util.fold(ui.termLabel(lex) + ' ' + (lex.translation || '')).indexOf(needle) < 0) return;
+        candidates.push({ kind: 'lex', id: lex.id, text: ui.termLabel(lex), meta: lex.translation || '' });
+      });
+      select.startersOfGroup(state, ctx.group.id, ctx.subject.id).forEach(function (starter) {
+        if (used['starter:' + starter.id]) return;
+        if (util.fold(starter.text + ' ' + (starter.translation || '')).indexOf(needle) < 0) return;
+        candidates.push({ kind: 'starter', id: starter.id, text: starter.text, meta: starter.translation || '' });
+      });
+    }
+
+    var results = h('div.picker__list');
+    if (!needle) {
+      results.appendChild(h('div.note', { text: 'Suchbegriff eingeben – gefunden wird alles, was diese Lerngruppe schon kennt.' }));
+    } else if (!candidates.length) {
+      results.appendChild(h('div.note', { text: 'Kein Treffer. Neue Elemente entstehen oben oder direkt auf der Fläche.' }));
+    } else {
+      candidates.slice(0, 12).forEach(function (candidate) {
+        results.appendChild(h('button.picker__item', {
+          type: 'button',
+          onclick: function () {
+            BAO.board.place(candidate.kind, candidate.id);
+            BAO.toast.undoable('Element auf der Tafel.');
+          }
+        },
+          h('span.plus', { text: '+' }),
+          h('span', {}, h('strong', { text: candidate.text }),
+            candidate.meta ? h('small', { text: ' · ' + candidate.meta }) : null)
+        ));
+      });
+    }
+
+    return h('div.ctrl-card', {},
+      h('h3', {}, 'Aus dem Bestand holen'),
+      h('input', {
+        type: 'search', value: pick.query, placeholder: 'Suchen …',
+        'aria-label': 'Im Bestand suchen',
+        oninput: function (event) { pick.query = event.target.value; app.scheduleRender(); }
+      }),
+      results
+    );
+  }
+
+  /* --- Panel: Darstellung ------------------------------------------------------ */
+
+  function appearanceCard(board, session, app) {
+    function toggle(label, value, hint, onChange) {
+      var id = util.uid('chk');
+      return h('div.toggle-row', {},
+        h('input', {
+          type: 'checkbox', id: id, checked: value ? true : null,
+          onchange: function (event) { onChange(event.target.checked); }
+        }),
+        h('label', { for: id, text: label, title: hint || '' })
+      );
+    }
+
+    return h('div.ctrl-card', {},
+      h('h3', {}, 'Darstellung'),
+      h('div.stack', {},
+        toggle('Artikel zeigen', board.showArticle,
+          'Vorhandene Artikel erscheinen farbig nach Genus.',
+          function (value) { BAO.board.setOption('showArticle', value); }),
+        toggle('Deutsch zeigen', board.showTranslation,
+          'Zeigt die deutsche Entsprechung, sofern eine gepflegt ist.',
+          function (value) { BAO.board.setOption('showTranslation', value); }),
+        h('div.row', {},
+          h('button.btn.btn--sm', {
+            type: 'button', text: session.theme === 'dark' ? 'Hell' : 'Dunkel',
+            title: 'Helligkeit der Projektion',
+            onclick: function () { BAO.board.setTheme(session.theme === 'dark' ? 'light' : 'dark'); app.scheduleRender(); }
+          }),
+          h('button.btn.btn--sm.btn--icon', {
+            type: 'button', title: 'Schrift kleiner', 'aria-label': 'Schrift kleiner',
+            onclick: function () { BAO.board.setScale(BAO.board.getState().scale - 0.1); }
+          }, '−'),
+          h('button.btn.btn--sm.btn--icon', {
+            type: 'button', title: 'Schrift größer', 'aria-label': 'Schrift größer',
+            onclick: function () { BAO.board.setScale(BAO.board.getState().scale + 0.1); }
+          }, '+')
+        )
+      )
+    );
+  }
+
+  /* --- Auswahl ohne vollen Neuaufbau spiegeln --------------------------------- */
+
+  function bindSelection() {
+    if (listenerBound) return;
+    listenerBound = true;
+    BAO.board.subscribe(function (state, reason) {
+      if (reason !== 'select' || !refs.list || !refs.list.isConnected) return;
+      util.$$('.belem', refs.list).forEach(function (row) {
+        row.dataset.selected = row.dataset.itemId === state.selectedId ? 'true' : 'false';
+      });
+    });
+  }
+
+  /* --- Ansicht ------------------------------------------------------------------ */
+
+  function render(host, context) {
+    var state = context.state;
+    var ctx = context.ctx;
+    var app = context.app;
+    var boardId = context.params[0];
+    var board = boardId ? select.board(state, boardId) : null;
+    var view = h('div.view');
+
+    if (!board) {
+      view.appendChild(ui.emptyState({
+        title: 'Tafel nicht gefunden',
+        text: 'Diese Tafel gibt es nicht mehr.',
+        actionLabel: 'Zur Übersicht', onAction: function () { app.go('tafeln'); }
+      }));
+      host.appendChild(view);
+      return;
+    }
+
+    bindSelection();
+    var session = BAO.board.getState();
+    if (!session.active || session.boardId !== board.id) {
+      BAO.board.start(board.id);
+      session = BAO.board.getState();
+    }
+
+    var entries = BAO.board.entries();
+    var frame = h('div.stage-frame', {
+      dataset: { mirrored: BAO.output.isWindowOpen() ? 'true' : 'false' }
+    });
+
+    var preview = h('div.stage-preview', {}, frame,
+      h('div.stage-preview__bar', {},
+        h('button.btn.btn--sm', {
+          type: 'button',
+          title: BAO.output.isWindowOpen() ? 'Beamerfenster schließen' : 'Eigenes Fenster für den Beamer öffnen',
+          onclick: function () {
+            if (BAO.output.isWindowOpen()) BAO.output.closeWindow();
+            else if (!BAO.output.openWindow().ok) {
+              BAO.toast.error('Der Browser hat das zweite Fenster blockiert. Bitte Pop-ups für diese Seite erlauben – '
+                + 'oder das Vollbild verwenden.');
+            }
+            app.scheduleRender();
+          }
+        }, ui.icon('beamer', 15), BAO.output.isWindowOpen() ? 'Fenster schließen' : 'Beamerfenster'),
+        h('button.btn.btn--sm', {
+          type: 'button', title: 'Vollbild auf diesem Bildschirm (Taste F)',
+          onclick: function () {
+            if (BAO.output.isOverlayOpen()) BAO.output.closeOverlay(); else BAO.output.openOverlay();
+            app.scheduleRender();
+          }
+        }, ui.icon('focus', 15), BAO.output.isOverlayOpen() ? 'Vollbild beenden' : 'Vollbild'),
+        h('span.spacer'),
+        h('button.btn.btn--sm', {
+          type: 'button', 'aria-pressed': session.blank ? 'true' : 'false',
+          text: session.blank ? 'Tafel zeigen' : 'Bildschirm leeren',
+          title: 'Taste B',
+          onclick: function () { BAO.board.toggleBlank(); app.scheduleRender(); }
+        })
+      )
+    );
+
+    var panel = h('div.ctrl-panel', {},
+      addCard(),
+      elementsCard(entries),
+      pickCard(state, ctx, board, app),
+      appearanceCard(board, session, app),
+      h('div.ctrl-card', {},
+        h('h3', {}, 'Auf der Fläche'),
+        h('div.kv', {},
+          h('dt', { text: 'Doppelklick' }), h('dd', { text: 'Element anlegen oder ändern' }),
+          h('dt', { text: 'Ziehen' }), h('dd', { text: 'verschieben' }),
+          h('dt', { text: 'Tippen' }), h('dd', { text: 'öffnet die Eingabe' }),
+          h('dt', { text: '← ↑ ↓ →' }), h('dd', { text: 'ausgewähltes Element rücken' }),
+          h('dt', { text: '+ −' }), h('dd', { text: 'Element größer / kleiner' }),
+          h('dt', { text: 'Entf' }), h('dd', { text: 'von der Tafel nehmen' }),
+          h('dt', { text: 'B / F' }), h('dd', { text: 'leeren / Vollbild' })
+        )
+      )
+    );
+
+    view.appendChild(h('div.view__head', {},
+      h('div.view__title', {},
+        h('h1', { text: board.title }),
+        h('span.sub', {
+          text: ctx.subject.name + ' · ' + ctx.group.name + ' · '
+            + entries.length + ' ' + util.plural(entries.length, 'Element', 'Elemente')
+        })
+      ),
+      h('div.spacer'),
+      h('div.view__actions', {},
+        h('button.btn', { type: 'button', onclick: function () { app.go('tafeln'); } }, 'Alle Tafeln'),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Titel ändern',
+          onclick: function () {
+            BAO.modal.prompt({
+              title: 'Titel der Tafel', label: 'Titel', value: board.title
+            }).then(function (value) {
+              if (value === null) return;
+              var title = String(value).trim();
+              if (!title) return;
+              BAO.store.commit('Tafel umbenannt', function (draft) {
+                var target = select.board(draft, board.id);
+                if (target) { target.title = title; target.updatedAt = util.nowISO(); }
+              });
+            });
+          }
+        }, ui.icon('edit', 15))
+      )
+    ));
+
+    view.appendChild(h('div.present', {}, preview, panel));
+    host.appendChild(view);
+
+    BAO.output.attachPreview(frame);
+    window.requestAnimationFrame(function () { BAO.board.renderAll('view'); });
+  }
+
+  BAO.views = BAO.views || {};
+  BAO.views.board = { render: render };
 })(window.BAO = window.BAO || {});
 
   </script>
@@ -9462,14 +11156,15 @@ body { position: relative; }
         h('div.card__body.stack', {},
           h('p', {
             text: 'Der Export enthält alle Fächer, Lerngruppen, Reihen, Wortschatzeinträge, Satzanfänge, '
-              + 'Wortbanken und Einstellungen in einer einzigen Datei.'
+              + 'Wortbanken, Tafeln und Einstellungen in einer einzigen Datei.'
           }),
           h('dl.kv', {},
             h('dt', { text: 'Fächer' }), h('dd', { text: String(totals.subjects) }),
             h('dt', { text: 'Lerngruppen' }), h('dd', { text: String(totals.groups) }),
             h('dt', { text: 'Wortschatz' }), h('dd', { text: String(totals.lexemes) }),
             h('dt', { text: 'Satzanfänge' }), h('dd', { text: String(totals.starters) }),
-            h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) })
+            h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) }),
+            h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) })
           ),
           h('button.btn.btn--primary.btn--wide', { type: 'button', text: 'Alle Daten exportieren', onclick: exportAll }),
           h('button.btn.btn--wide', {
@@ -9602,16 +11297,29 @@ body { position: relative; }
   var ui = BAO.ui;
   var select = BAO.select;
 
+  /* Der einfache Modus zeigt nur, was für die Grundform gebraucht wird:
+     Tafeln, Elemente, Lerngruppen, Daten. Erreichbar bleibt alles – die
+     Adressen ändern sich nicht, nur die Navigationsleiste wird kürzer. */
   var ROUTES = [
     { path: 'start',        view: 'dashboard',  label: 'Start',        icon: 'home',   key: '1' },
-    { path: 'wortschatz',   view: 'vocab',      label: 'Wortschatz',   icon: 'list',   key: '2' },
-    { path: 'satzanfaenge', view: 'starters',   label: 'Satzanfänge',  icon: 'quote',  key: '3' },
-    { path: 'wortbanken',   view: 'banks',      label: 'Wortbanken',   icon: 'grid',   key: '4' },
-    { path: 'projektion',   view: 'present',    label: 'Projektion',   icon: 'play',   key: '5' },
+    { path: 'tafeln',       view: 'boards',     label: 'Tafeln',       icon: 'beamer', key: '2', simple: true },
+    { path: 'wortschatz',   view: 'vocab',      label: 'Wortschatz',   icon: 'list',   key: '3',
+      simple: true, simpleLabel: 'Elemente' },
+    { path: 'satzanfaenge', view: 'starters',   label: 'Satzanfänge',  icon: 'quote',  key: '4' },
+    { path: 'wortbanken',   view: 'banks',      label: 'Wortbanken',   icon: 'grid',   key: '5' },
+    { path: 'projektion',   view: 'present',    label: 'Projektion',   icon: 'play',   key: '6' },
+    { path: 'tafel',        view: 'board',      label: 'Tafel',        icon: 'beamer', hidden: true },
     { path: 'wortbank',     view: 'bankEditor', label: 'Wortbank',     icon: 'grid',   hidden: true },
-    { path: 'verwaltung',   view: 'manage',     label: 'Lerngruppen',  icon: 'school', key: '6' },
-    { path: 'daten',        view: 'data',       label: 'Daten',        icon: 'data',   key: '7' }
+    { path: 'verwaltung',   view: 'manage',     label: 'Lerngruppen',  icon: 'school', key: '7', simple: true },
+    { path: 'daten',        view: 'data',       label: 'Daten',        icon: 'data',   key: '8', simple: true }
   ];
+
+  /* Änderungen, die nur die Leinwand betreffen. Ein vollständiger Neuaufbau
+     der Lehreransicht wäre hier störend – beim Ziehen sogar sichtbar. */
+  var QUIET_LABELS = {
+    'Wortbank geöffnet': true, 'Tafel geöffnet': true,
+    'Element verschoben': true, 'Elementgröße geändert': true
+  };
 
   var current = { path: 'start', params: [] };
   var renderScheduled = false;
@@ -9619,12 +11327,25 @@ body { position: relative; }
 
   /* --- Routen --------------------------------------------------------------- */
 
+  /** Läuft die Oberfläche in der einfachen Grundform? */
+  function isSimple() {
+    var state = BAO.store.getState();
+    return !!(state && state.settings && state.settings.simpleMode);
+  }
+
+  function homePath() { return isSimple() ? 'tafeln' : 'start'; }
+
+  /** Beschriftung einer Route – in der Grundform teils schlichter. */
+  function routeLabel(route) {
+    return (isSimple() && route.simpleLabel) ? route.simpleLabel : route.label;
+  }
+
   function parseHash() {
     var hash = String(window.location.hash || '').replace(/^#\/?/, '');
     var parts = hash.split('/').filter(Boolean).map(decodeURIComponent);
-    var path = parts[0] || 'start';
+    var path = parts[0] || homePath();
     var route = ROUTES.filter(function (r) { return r.path === path; })[0];
-    if (!route) route = ROUTES[0];
+    if (!route) route = ROUTES.filter(function (r) { return r.path === homePath(); })[0] || ROUTES[0];
     return { path: route.path, route: route, params: parts.slice(1) };
   }
 
@@ -9717,27 +11438,36 @@ body { position: relative; }
     var counts = {
       vocab: ctx.group ? select.lexemesOfGroup(state, ctx.group.id).length : 0,
       starters: ctx.group ? select.startersOfGroup(state, ctx.group.id, ctx.subject ? ctx.subject.id : '').length : 0,
-      banks: ctx.group ? select.banksOfGroup(state, ctx.group.id).length : 0
+      banks: ctx.group ? select.banksOfGroup(state, ctx.group.id).length : 0,
+      boards: ctx.group ? select.boardsOfGroup(state, ctx.group.id).length : 0
     };
 
-    ROUTES.filter(function (route) { return !route.hidden; }).forEach(function (route, index) {
+    // Welche Ansicht ist im Untermenü einer anderen zu Hause?
+    var PARENT = { wortbank: 'wortbanken', tafel: 'tafeln' };
+    var simple = isSimple();
+
+    ROUTES.filter(function (route) {
+      return !route.hidden && (!simple || route.simple);
+    }).forEach(function (route) {
+      if (route.path === 'wortschatz') rail.appendChild(h('div.rail__title', { text: 'Bestand' }));
       if (route.path === 'verwaltung') rail.appendChild(h('div.rail__sep'));
       var count = route.view === 'vocab' ? counts.vocab
         : route.view === 'starters' ? counts.starters
-        : route.view === 'banks' ? counts.banks : null;
+        : route.view === 'banks' ? counts.banks
+        : route.view === 'boards' ? counts.boards : null;
 
+      var label = routeLabel(route);
       var item = h('button.rail__item', {
         type: 'button',
-        'aria-current': current.path === route.path || (current.path === 'wortbank' && route.path === 'wortbanken') ? 'page' : null,
-        title: route.label + (route.key ? '  (Alt + ' + route.key + ')' : ''),
+        'aria-current': current.path === route.path || PARENT[current.path] === route.path ? 'page' : null,
+        title: label + (route.key ? '  (Alt + ' + route.key + ')' : ''),
         onclick: function () { go(route.path); }
       },
         h('span.rail__icon', {}, ui.icon(route.icon, 18)),
-        h('span.rail__label', { text: route.label }),
+        h('span.rail__label', { text: label }),
         count !== null ? h('span.rail__count', { text: String(count) }) : null
       );
       rail.appendChild(item);
-      if (index === 0) rail.appendChild(h('div.rail__title', { text: 'Bestand' }));
     });
 
     rail.appendChild(h('div.spacer'));
@@ -9838,7 +11568,8 @@ body { position: relative; }
     var results = [];
     var activeIndex = 0;
 
-    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', unit: 'Unterrichtsreihe', lexeme: 'Wortschatz', starter: 'Satzanfang' };
+    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', board: 'Tafel',
+      unit: 'Unterrichtsreihe', lexeme: 'Wortschatz', starter: 'Satzanfang' };
 
     function draw(query) {
       util.clear(list);
@@ -9886,6 +11617,7 @@ body { position: relative; }
       if (!result) return;
       if (result.subjectId) setContext(result.subjectId, result.groupId || undefined);
       if (result.type === 'bank') { go('wortbank/' + result.id); return; }
+      if (result.type === 'board') { go('tafel/' + result.id); return; }
       if (result.type === 'group') { go('wortschatz'); return; }
       if (result.type === 'unit') { go('verwaltung'); return; }
       if (result.type === 'lexeme') { go('wortschatz/' + result.id); return; }
@@ -9975,6 +11707,14 @@ body { position: relative; }
     go('projektion');
   }
 
+  /** Dasselbe für eine Tafel. */
+  function projectBoard(boardId, options) {
+    options = options || {};
+    if (!BAO.board.start(boardId)) return;
+    if (options.openOutput !== false) ensureOutput();
+    go('tafel/' + boardId);
+  }
+
   /* --- Tastenkürzel ----------------------------------------------------------- */
 
   function isTyping(event) {
@@ -10007,7 +11747,7 @@ body { position: relative; }
         if (BAO.output.isWindowOpen()) BAO.output.closeWindow(); else ensureOutput();
         return;
       }
-      if (event.altKey && !mod && /^[1-7]$/.test(event.key)) {
+      if (event.altKey && !mod && /^[1-8]$/.test(event.key)) {
         var route = ROUTES.filter(function (r) { return r.key === event.key; })[0];
         if (route) { event.preventDefault(); go(route.path); }
         return;
@@ -10030,6 +11770,17 @@ body { position: relative; }
   function bindChrome() {
     util.on(document, 'click', '[data-action="open-search"]', function () { openSearch(); });
     util.on(document, 'click', '[data-action="open-live"]', function () { openLiveHelp(); });
+    util.on(document, 'click', '[data-action="toggle-simple"]', function () {
+      var next = !isSimple();
+      BAO.store.commit('Ansichtsumfang', function (draft) { draft.settings.simpleMode = next; }, { undoable: false });
+      // In der Grundform gibt es manche Ansicht nicht mehr in der Leiste –
+      // dann führt der Weg zurück auf die Tafeln.
+      var route = ROUTES.filter(function (r) { return r.path === current.path; })[0];
+      if (next && route && !route.simple && route.path !== 'tafel') go('tafeln'); else renderView();
+      BAO.toast.show(next
+        ? 'Einfache Grundform: Tafeln, Elemente, Lerngruppen, Daten.'
+        : 'Vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion.', { timeout: 3200 });
+    });
     util.on(document, 'click', '[data-action="toggle-theme"]', function () {
       var order = ['auto', 'light', 'dark'];
       var state = BAO.store.getState();
@@ -10079,7 +11830,7 @@ body { position: relative; }
           ? ctx.group.name + ' · ' + (ctx.subject ? ctx.subject.name : '') + ' · Jg. ' + ctx.group.grade
           : 'Wortschatz für den Unterricht';
       }
-      if (meta.reason === 'commit' && meta.undoable === false && meta.label === 'Wortbank geöffnet') return;
+      if (meta.reason === 'commit' && QUIET_LABELS[meta.label]) return;
       scheduleRender();
     });
 
@@ -10107,6 +11858,8 @@ body { position: relative; }
     openLiveHelp: openLiveHelp,
     ensureOutput: ensureOutput,
     projectBank: projectBank,
+    projectBoard: projectBoard,
+    isSimple: isSimple,
     applyTheme: applyTheme
   };
 })(window.BAO = window.BAO || {});

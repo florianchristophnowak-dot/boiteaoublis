@@ -33,6 +33,18 @@
         });
         return state;
       }
+    },
+    {
+      to: 2,
+      describe: 'Tafeln und einfacher Modus ergänzt',
+      run: function (state) {
+        if (!Array.isArray(state.boards)) state.boards = [];
+        if (!state.settings) state.settings = {};
+        // Ein bestehender Bestand behält die vollständige Oberfläche. Wer die
+        // einfache Grundform sehen möchte, schaltet sie in der Kopfzeile um.
+        if (typeof state.settings.simpleMode !== 'boolean') state.settings.simpleMode = false;
+        return state;
+      }
     }
   ];
 

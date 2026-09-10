@@ -1,11 +1,12 @@
 # Boîte à Oublis
 
-**Wortschatz sammeln, Wortbanken bauen, sauber projizieren.**
+**An der Tafel sammeln, Wortschatz aufbauen, sauber projizieren.**
 Eine eigenständige, vollständig lokale Browser-App für den Fremdsprachenunterricht.
-Version 1.0.0 · © Florian Nowak
+Version 1.1.0 · © Florian Nowak
 
 Boîte à Oublis ist keine Vokabelverwaltung, sondern ein Unterrichtswerkzeug. Sie verbindet
 
+* die **Tafel** – eine Fläche, auf der Wörter und Sätze gleichberechtigt stehen und sich frei verschieben lassen,
 * einen **langfristig wachsenden Wortschatzbestand** je Lerngruppe,
 * **Wortverbindungen, Chunks und kommunikative Satzanfänge**,
 * daraus zusammengestellte, situationsbezogene **Wortbanken**,
@@ -54,12 +55,20 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 
 ## 2. Der erste Unterrichtseinsatz in fünf Klicks
 
+### Mit einer Tafel (die Grundform)
+
 1. Oben im Kopfbereich **Fach** und **Lerngruppe** wählen.
-2. Auf der Startseite eine Wortbank anklicken → **Projizieren**.
+2. **Tafeln → Neue Tafel**, Titel eingeben.
 3. **Beamerfenster** öffnet ein zweites Fenster; dieses auf den Beamer-Bildschirm ziehen und dort **F** drücken.
-   Alternativ **Vollbild** für die Projektion auf dem aktuellen Bildschirm.
-4. Mit **1 / 2 / 3** die Unterstützungsstufe steuern, mit **← →** blättern.
-5. Spontan gebraucht? **Strg + L** → Live-Hilfe eingeben → erscheint sofort am Beamer.
+4. **Doppelklick** auf die Fläche – im Beamerfenster genügt das ebenfalls – und lostippen.
+5. Elemente mit der Maus dorthin ziehen, wo sie hingehören.
+
+### Mit einer Wortbank (vollständige Ansicht)
+
+1. Auf der Startseite eine Wortbank anklicken → **Projizieren**.
+2. **Beamerfenster** oder **Vollbild** für die Projektion auf dem aktuellen Bildschirm.
+3. Mit **1 / 2 / 3** die Unterstützungsstufe steuern, mit **← →** blättern.
+4. Spontan gebraucht? **Strg + L** → Live-Hilfe eingeben → erscheint sofort am Beamer.
 
 ### Tastenkürzel
 
@@ -69,9 +78,15 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 | `Strg + L` | Live-Hilfe einblenden |
 | `Strg + B` | Beamerfenster öffnen / schließen |
 | `Strg + Z` / `Strg + Umschalt + Z` | Rückgängig / Wiederherstellen |
-| `Alt + 1 … 7` | Ansicht wechseln |
+| `Alt + 1 … 8` | Ansicht wechseln |
 
-| In der Projektion (Steuerfenster **und** Beamerfenster) | |
+| Auf einer Tafel (Vorschau **und** Beamerfenster) | |
+|---|---|
+| Doppelklick | Element anlegen oder ändern |
+| Ziehen | Element verschieben |
+| `← ↑ ↓ →` · `+` `−` · `Entf` | rücken · Größe · von der Tafel nehmen |
+
+| In der Wortbank-Projektion (Steuerfenster **und** Beamerfenster) | |
 |---|---|
 | `← →` | eine Seite zurück / weiter |
 | `Pos1` / `Ende` | erste / letzte Seite |
@@ -85,7 +100,68 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 
 ---
 
-## 3. Wie die Inhalte organisiert sind
+## 3. Die Tafel – die einfache Grundform
+
+Die Tafel ist Boîte à Oublis auf das Wesentliche zurückgenommen: **eine Fläche, Elemente darauf, sonst nichts.**
+
+**Ob Wort oder Satz, spielt keine Rolle.** Auf der Tafel gibt es nur *Elemente*. „le stage“ steht neben
+„Je voudrais expliquer que ___.“ – beides ist dasselbe: ein Stück Sprache an einer selbst gewählten Stelle.
+Es gibt keine Abschnitte, keine Seiten und nichts zu blättern.
+
+### Bedienung auf der Fläche
+
+| | |
+|---|---|
+| **Doppelklick auf eine freie Stelle** | legt dort ein Element an |
+| **Doppelklick auf ein Element** | ändert seinen Text |
+| **Ziehen** | verschiebt |
+| **einfach lostippen** | öffnet die Eingabe |
+| `← ↑ ↓ →` | rückt das ausgewählte Element (mit `Umschalt` in größeren Schritten) |
+| `+` `−` | Element größer / kleiner |
+| `Entf` | von der Tafel nehmen – der Eintrag selbst bleibt im Bestand |
+| `B` / `F` | Bildschirm leeren / Vollbild |
+
+Das alles gilt **auch unmittelbar im Beamerfenster.** Wer mitten in der Stunde am Beamer ein Wort ergänzt
+oder ein Element an eine andere Stelle zieht, arbeitet in denselben Daten: Vorschau, Vollbild-Überlagerung
+und Beamerfenster zeigen immer denselben Stand. Mehrere Zeilen auf einmal eingefügt ergeben mehrere
+Elemente, versetzt abgelegt.
+
+Gespeichert wird die **Mitte eines Elements als Anteil der Fläche**. Deshalb sitzt es auf jeder Auflösung
+an derselben Stelle – die Vorschau zeigt genau das Bild des Beamers. **Ordnen** stellt jederzeit ein
+gleichmäßiges Raster wieder her.
+
+### Später ergänzen
+
+Ein auf der Fläche getipptes Element ist ein **gewöhnlicher Eintrag des Bestands** – zunächst nur Text.
+In der Liste neben der Fläche trägt er die Kennzeichnung **nur Text**; das Stiftsymbol öffnet den
+vollständigen Editor mit Artikel, Formhinweis, Wortverbindung, Chunk, Erklärung, Übersetzung, Beispielsatz,
+Lautschrift, Thema und Niveau. Er taucht damit auch überall sonst auf: in der Wortschatzliste, in der
+Schnellsuche, in Wortbanken, im Export.
+
+Was ergänzt wurde, wirkt sofort auf die Tafel zurück. Zwei Schalter je Tafel entscheiden darüber:
+
+* **Artikel zeigen** – vorhandene Artikel erscheinen farbig nach Genus (`le` blau, `la` rot),
+* **Deutsch zeigen** – die deutsche Entsprechung erscheint unter dem Element.
+
+Umgekehrt lässt sich alles, was die Lerngruppe schon kennt, über **Aus dem Bestand holen** auf die Tafel
+legen – Wortschatzeinträge und Satzanfänge gleichermaßen. Eine ganze **Wortbank** wird über
+*Tafeln → Aus einer Wortbank* zu einer Tafel; die Einträge verteilen sich gleichmäßig und sind danach
+frei verschiebbar.
+
+### Einfache Grundform oder vollständige Ansicht
+
+Der Knopf **Ansicht** in der Kopfzeile schaltet zwischen beiden um:
+
+* **einfache Grundform** – Tafeln, Elemente, Lerngruppen, Daten. Mehr nicht.
+* **vollständige Ansicht** – zusätzlich Startseite, Satzanfänge, Wortbanken und Projektion.
+
+Ein frisch eingerichteter Bestand startet in der Grundform. Versteckt wird dabei nichts, was verloren ginge:
+Es sind dieselben Daten, nur die Navigationsleiste ist kürzer. Ein vorhandener Bestand behält beim
+Aktualisieren die vollständige Ansicht.
+
+---
+
+## 4. Wie die Inhalte organisiert sind
 
 ```
 Fach (Französisch, Englisch, …)
@@ -93,11 +169,12 @@ Fach (Französisch, Englisch, …)
     ├── Unterrichtsreihe („Le stage en entreprise“)
     ├── Wortschatzbestand      ← wächst über Jahre, wird nie dupliziert
     ├── Satzanfänge            ← nach kommunikativen Funktionen geordnet
-    └── Wortbanken             ← Auswahl für eine konkrete Unterrichtsszene
+    ├── Wortbanken             ← Auswahl für eine konkrete Unterrichtsszene
+    └── Tafeln                 ← freie Fläche, Elemente an selbst gewählter Stelle
 ```
 
-**Der Bestand gehört der Lerngruppe, nicht der Reihe.** Eine Wortbank enthält keine Kopien, sondern
-Verweise. Deshalb kann derselbe Eintrag in beliebig vielen Wortbanken auftauchen, ohne sich zu vervielfachen –
+**Der Bestand gehört der Lerngruppe, nicht der Reihe.** Eine Wortbank und eine Tafel enthalten keine
+Kopien, sondern Verweise. Deshalb kann derselbe Eintrag in beliebig vielen Wortbanken auftauchen, ohne sich zu vervielfachen –
 und beim Schuljahreswechsel bleibt alles erhalten.
 
 ### Satzanfänge erfassen
@@ -165,7 +242,7 @@ Es entstehen **keine Kopien**. Der Schritt lässt sich mit `Strg + Z` zurückneh
 
 ---
 
-## 4. Abgestufte Hilfen
+## 5. Abgestufte Hilfen
 
 Drei Stufen, die im Unterricht mit einem Tastendruck wechseln:
 
@@ -183,7 +260,7 @@ Der **Fokusmodus** zeigt nur einen Abschnitt (zum Beispiel nur die Satzanfänge)
 
 ---
 
-## 5. Projektion
+## 6. Projektion
 
 Die Projektionsansicht ist bewusst reduziert: keine Bedienelemente, kein Menü, keine Dekoration.
 
@@ -224,7 +301,7 @@ Bewegung (`prefers-reduced-motion`) schaltet alle Übergänge ab.
 
 ---
 
-## 6. Datensicherung
+## 7. Datensicherung
 
 Alles liegt im lokalen Speicher des Browsers (`localStorage`, Schlüssel `bao.state.v1`) und wird nach jeder
 Änderung automatisch gesichert. Die Fußzeile zeigt den Speicherstand; kann der Browser nicht speichern,
@@ -269,7 +346,7 @@ Programmversion werden erkannt und höflich abgelehnt, statt Daten zu beschädig
 
 ---
 
-## 7. Projektstruktur
+## 8. Projektstruktur
 
 ```
 boite-a-oublis/
@@ -290,9 +367,10 @@ boite-a-oublis/
 │       │                         selectors, search, csv, backup
 │       ├── data/seed.js          Beispieldaten
 │       ├── ui/                   toast, modal, components, ipa (Lautschrift-Tastatur)
-│       ├── projection/           stage-style, deck, render, output, session
+│       ├── projection/           stage-style, deck, render, output, session,
+│       │                         board (freie Fläche)
 │       ├── views/                dashboard, vocab, starters, banks, bank-editor,
-│       │                         present, manage, data
+│       │                         boards, board, present, manage, data
 │       ├── app.js                Navigation, Kontext, Schnellsuche, Tastenkürzel
 │       └── main.js               Start
 ├── tools/
@@ -317,7 +395,7 @@ für den Testlauf gebraucht (`npm install -D playwright` oder global installiert
 
 ---
 
-## 8. Zentrale Architekturentscheidungen
+## 9. Zentrale Architekturentscheidungen
 
 **Kein Framework, kein Bundler zur Laufzeit.**
 Die App besteht aus klassischen Skripten unter einem gemeinsamen Namensraum `BAO`, die `index.html` in
@@ -343,6 +421,13 @@ speichert verzögert lokal. Ansichten lesen nur und zeichnen sich nach jeder Än
 Textdaten in dieser Größenordnung passen bequem hinein, das Format ist portabel, und – entscheidend –
 `localStorage` funktioniert beim Start über `file://` zuverlässig, IndexedDB nicht überall. Fällt die
 Speicherung aus, arbeitet die App weiter und weist sichtbar auf den Nur-Sitzung-Betrieb hin.
+
+**Die Tafel benutzt dieselben Daten wie alles andere.**
+Ein Element der Tafel ist ein Verweis auf einen Eintrag des Bestands, ergänzt um Position und Größe. Ein
+auf der Fläche getipptes Wort legt deshalb einen ganz gewöhnlichen Wortschatzeintrag an – nur eben ohne
+weitere Angaben. Genau das macht die einfache Grundform anschlussfähig: Was in der Stunde entsteht, ist
+später vollständig ausbaubar, ohne dass etwas umgezogen oder abgeglichen werden müsste. Es gibt nur eine
+Leinwand: Startet eine Wortbank-Projektion, gibt die Tafel sie ab, und umgekehrt.
 
 **Wortbanken verweisen, sie kopieren nicht.**
 Eine Wortbank besteht aus Abschnitten mit Verweisen auf Wortschatzeinträge und Satzanfänge. Das ist die
@@ -371,16 +456,18 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ---
 
-## 9. Prüfen
+## 10. Prüfen
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 120 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 153 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
 prüft unter anderem: Beispieldaten und getrennte Fächer, Anlegen von Lerngruppen, Reihen, Einträgen und
-Satzanfängen, die IPA-Tastatur, Wortbanken samt Ziehen und Ablegen, die drei Unterstützungsstufen, Fokus- und
+Satzanfängen, die IPA-Tastatur, die Tafel (Anlegen per Doppelklick, Verschieben per Ziehen – beides auch
+im Beamerfenster – und das spätere Ergänzen eines Elements), Wortbanken samt Ziehen und Ablegen, die drei
+Unterstützungsstufen, Fokus- und
 Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion bei fünf Auflösungen
 (dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Genuserkennung und Artikelfarben in hell und
 dunkel, Schuljahreswechsel, Rückgängig, Export/Import/Zusammenführen, CSV und die Dauerhaftigkeit nach
@@ -390,7 +477,7 @@ nicht hatte. Bildschirmfotos landen in `tests/output/`.
 
 ---
 
-## 10. Bewusst nicht enthalten
+## 11. Bewusst nicht enthalten
 
 Benutzerkonten, Cloud-Synchronisierung, Schülergeräte, künstliche Intelligenz, automatische Übersetzung,
 Lernstandsanalysen einzelner Schülerinnen und Schüler, Gamification.

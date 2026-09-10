@@ -235,6 +235,20 @@
 .section-map__idx { font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--fs-xs); min-width: 3ch; }
 .section-map__count { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
 
+/* Elemente einer Tafel – die Liste neben der Fläche */
+.belem-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; margin-bottom: var(--sp-2); }
+.belem {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%;
+  padding: 5px var(--sp-2); border: 1px solid transparent; border-radius: var(--r-sm);
+  font-size: var(--fs-sm); cursor: pointer; text-align: left;
+}
+.belem:hover { background: var(--surface-sunken); }
+.belem[data-selected="true"] { background: var(--brand-soft); border-color: var(--brand); }
+.belem__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.belem .spacer { flex: 1 1 auto; }
+.belem__actions { display: flex; gap: 2px; opacity: .4; transition: opacity .12s ease; }
+.belem:hover .belem__actions, .belem:focus-within .belem__actions { opacity: 1; }
+
 .live-form { display: flex; flex-direction: column; gap: var(--sp-2); }
 .live-list { display: flex; flex-direction: column; gap: 4px; margin-top: var(--sp-2); }
 .live-item {

@@ -326,7 +326,7 @@
         : 'Die Einträge werden aus dem Bestand der Lerngruppe entfernt.',
       detail: usage
         ? 'Achtung: ' + usage + ' ' + util.plural(usage, 'Verwendung', 'Verwendungen')
-          + ' in Wortbanken werden ebenfalls entfernt. Das lässt sich rückgängig machen.'
+          + ' in Wortbanken und auf Tafeln werden ebenfalls entfernt. Das lässt sich rückgängig machen.'
         : 'Das lässt sich direkt rückgängig machen.',
       confirmLabel: 'Löschen', danger: true
     }).then(function (confirmed) {
@@ -338,6 +338,11 @@
             section.items = section.items.filter(function (item) {
               return !(item.kind === 'lex' && ids.indexOf(item.refId) >= 0);
             });
+          });
+        });
+        draft.boards.forEach(function (board) {
+          board.items = board.items.filter(function (item) {
+            return !(item.kind === 'lex' && ids.indexOf(item.refId) >= 0);
           });
         });
       });

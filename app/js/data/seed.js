@@ -349,7 +349,52 @@
       })
     ];
 
+    /* --- Tafeln -----------------------------------------------------------
+       Die einfache Grundform: eine Fläche, Elemente darauf. Wort oder Satz
+       spielt keine Rolle – beides steht gleichberechtigt nebeneinander. */
+    function scatter(entries) {
+      return entries.map(function (entry) {
+        return schema.makeBoardItem({
+          kind: entry[0], refId: entry[1], x: entry[2], y: entry[3],
+          scale: entry[4] === undefined ? 1 : entry[4]
+        });
+      });
+    }
+
+    state.boards = [
+      schema.makeBoard({
+        id: 'brd_fr_stage', subjectId: 'sub_fr', groupId: 'grp_fr9b', unitId: 'unt_fr_stage',
+        title: 'Mon stage – Wortfeld an der Tafel', favorite: true,
+        note: 'Ausgangspunkt für das Partnergespräch. Elemente lassen sich während der Stunde umsortieren.',
+        items: scatter([
+          ['lex', 'lex_fr_8', 0.22, 0.24, 1.25],
+          ['lex', 'lex_fr_9', 0.58, 0.19],
+          ['lex', 'lex_fr_10', 0.83, 0.3],
+          ['lex', 'lex_fr_14', 0.18, 0.55],
+          ['lex', 'lex_fr_15', 0.45, 0.47],
+          ['lex', 'lex_fr_16', 0.75, 0.6],
+          ['starter', 'sta_fr_0', 0.35, 0.79, 0.85],
+          ['starter', 'sta_fr_3', 0.72, 0.86, 0.85]
+        ])
+      }),
+      schema.makeBoard({
+        id: 'brd_en_debate', subjectId: 'sub_en', groupId: 'grp_en10a', unitId: 'unt_en_social',
+        title: 'Social media – arguments on the board',
+        showTranslation: true,
+        items: scatter([
+          ['lex', 'lex_en_12', 0.24, 0.26],
+          ['lex', 'lex_en_13', 0.6, 0.22],
+          ['lex', 'lex_en_14', 0.82, 0.44],
+          ['lex', 'lex_en_15', 0.3, 0.55],
+          ['lex', 'lex_en_16', 0.58, 0.66]
+        ])
+      })
+    ];
+
     /* --- Ausgangslage der Oberfläche -------------------------------------- */
+    // Ein frischer Bestand startet in der einfachen Grundform. Die
+    // vollständige Ansicht ist einen Klick in der Kopfzeile entfernt.
+    state.settings.simpleMode = true;
     state.ui.subjectId = 'sub_fr';
     state.ui.groupId = 'grp_fr9b';
     state.ui.recentBanks = ['bnk_fr_stage', 'bnk_en_debate', 'bnk_fr_photo'];

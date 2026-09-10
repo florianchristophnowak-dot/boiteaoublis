@@ -195,6 +195,70 @@
   color: var(--stage-muted); font-size: var(--fs-title); max-width: 26ch; line-height: 1.4;
 }
 
+/* --- Tafel: frei platzierte Elemente ------------------------------------
+   Die einfache Grundform. Jedes Element steht an einer selbst gewählten
+   Stelle; gespeichert ist seine Mitte als Anteil der Fläche, damit es auf
+   jeder Auflösung gleich sitzt. Kein Raster, keine Seiten, kein Blättern. */
+.stage__body[data-layout="board"] {
+  display: block;
+  position: relative;
+  padding: calc(var(--pad) * .6);
+  animation: none;                 /* beim Verschieben soll nichts aufblitzen */
+}
+.stage__body[data-layout="board"] .stage__empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+}
+
+.bcard {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 46%;
+  padding: calc(var(--u) * .45) calc(var(--u) * .85);
+  border: 1px solid transparent;
+  border-radius: calc(var(--u) * .7);
+  text-align: center;
+  line-height: 1.14;
+  cursor: grab;
+  touch-action: none;              /* auf Touchgeräten ziehen statt scrollen */
+  user-select: none;
+}
+.bcard__text {
+  font-size: calc(var(--fs-term) * var(--card-scale, 1));
+  font-weight: 650; letter-spacing: -.012em; overflow-wrap: break-word;
+}
+.bcard__text .art { color: var(--stage-muted); font-weight: 500; }
+.bcard__text .art__part[data-gender] { font-weight: 650; }
+.bcard__text .art__part[data-gender="m"] { color: var(--stage-genus-m); }
+.bcard__text .art__part[data-gender="f"] { color: var(--stage-genus-f); }
+.bcard__text .art__part[data-gender="n"] { color: var(--stage-genus-n); }
+.bcard__text .gap {
+  display: inline-block; min-width: 5ch;
+  border-bottom: .07em solid currentColor; opacity: .34; margin: 0 .12em;
+}
+.bcard__de {
+  font-size: calc(var(--fs-line) * var(--card-scale, 1) * .82);
+  color: var(--stage-de); margin-top: calc(var(--u) * .18); font-weight: 500;
+}
+.bcard:hover { border-color: var(--stage-line); }
+.bcard[data-selected="true"] { border-color: var(--stage-brand); }
+.bcard[data-dragging="true"] { cursor: grabbing; z-index: 4; }
+.bcard:focus-visible { outline: 2px solid var(--stage-brand); outline-offset: 3px; }
+
+/* Eingabe unmittelbar auf der Fläche – auch im Beamerfenster. */
+.bcomposer {
+  position: absolute; transform: translate(-50%, -50%); z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * .3);
+}
+.bcomposer__input {
+  font: inherit;
+  font-size: calc(var(--fs-term) * .82); font-weight: 650; text-align: center;
+  color: var(--stage-ink); background: var(--stage-bg);
+  border: 2px solid var(--stage-brand); border-radius: calc(var(--u) * .6);
+  padding: calc(var(--u) * .3) calc(var(--u) * .8);
+  min-width: 12ch; max-width: 60vw; outline: none;
+}
+.bcomposer__hint { font-size: var(--fs-head); color: var(--stage-muted); }
+
 /* --- Fußzeile ------------------------------------------------------------ */
 .stage__foot {
   display: flex; align-items: center; gap: calc(var(--u) * 1.2);

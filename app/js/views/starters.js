@@ -128,7 +128,7 @@
       title: 'Satzanfang löschen?',
       text: ui.plainStarterText(starter.text),
       detail: usage
-        ? 'Er wird in ' + usage + ' ' + util.plural(usage, 'Wortbank', 'Wortbanken') + ' verwendet und dort ebenfalls entfernt.'
+        ? 'Er wird ' + usage + '-mal in Wortbanken oder auf Tafeln verwendet und dort ebenfalls entfernt.'
         : 'Das lässt sich direkt rückgängig machen.',
       confirmLabel: 'Löschen', danger: true
     }).then(function (confirmed) {
@@ -140,6 +140,11 @@
             section.items = section.items.filter(function (item) {
               return !(item.kind === 'starter' && item.refId === starter.id);
             });
+          });
+        });
+        draft.boards.forEach(function (board) {
+          board.items = board.items.filter(function (item) {
+            return !(item.kind === 'starter' && item.refId === starter.id);
           });
         });
       });
