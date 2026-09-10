@@ -11,21 +11,57 @@
   var schema = BAO.schema;
   var select = BAO.select;
 
+  /**
+   * Neue Tafel. Fach und Lerngruppe werden ausdrücklich gewählt – eine Tafel
+   * gehört immer einer Lerngruppe, und daran hängt, welcher Bestand auf sie
+   * darf. Vorgeschlagen wird der aktuelle Arbeitskontext.
+   */
   function createBoard(ctx, app, options) {
     options = options || {};
+    var state = BAO.store.getState();
+
     var fieldTitle = ui.textField({
       label: 'Titel', value: options.title || '',
       placeholder: 'z. B. Wörter für das Partnergespräch'
     });
 
+    var groupSelect = h('select', { 'aria-label': 'Lerngruppe wählen' });
+    var fieldGroup = h('div.field', {}, h('label', { text: 'Lerngruppe (Klasse)' }), groupSelect);
+
+    function fillGroups(subjectId, preferred) {
+      util.clear(groupSelect);
+      var groups = select.groupsOfSubject(state, subjectId);
+      if (!groups.length) {
+        groupSelect.appendChild(h('option', { value: '', text: 'keine Lerngruppe in diesem Fach' }));
+        return;
+      }
+      groups.forEach(function (group) {
+        groupSelect.appendChild(h('option', {
+          value: group.id,
+          text: group.name + ' · Jg. ' + group.grade + (group.favorite ? ' ★' : ''),
+          selected: group.id === preferred ? true : null
+        }));
+      });
+    }
+
+    var fieldSubject = ui.selectField({
+      label: 'Fach (Sprache)',
+      value: ctx.subject.id,
+      options: select.subjects(state).map(function (subject) {
+        return { value: subject.id, label: subject.name };
+      }),
+      onChange: function (value) { fillGroups(value, ''); }
+    });
+    fillGroups(ctx.subject.id, ctx.group ? ctx.group.id : '');
+
     return BAO.modal.open({
       title: 'Neue Tafel',
       subtitle: 'Eine leere Fläche. Elemente entstehen später einfach dort, wo sie stehen sollen.',
-      width: '480px',
+      width: '520px',
       initialFocus: 'input',
-      body: h('div.stack', {}, fieldTitle,
+      body: h('div.stack', {}, fieldTitle, h('div.grid2', {}, fieldSubject, fieldGroup),
         h('div.note', { text: 'Auf der Fläche genügt ein Doppelklick, um ein Element anzulegen – '
-          + 'auch unmittelbar im Beamerfenster.' })
+          + 'auch unmittelbar im Beamerfenster. Auf die Tafel kommt nur, was zu dieser Lerngruppe gehört.' })
       ),
       actions: [
         { label: 'Abbrechen', value: null, kind: 'ghost' },
@@ -34,18 +70,26 @@
           onSelect: function () {
             var title = fieldTitle.input.value.trim();
             if (!title) { fieldTitle.input.focus(); return false; }
+            var subjectId = util.$('select', fieldSubject).value;
+            var groupId = groupSelect.value;
+            if (!groupId) {
+              BAO.toast.error('Dieses Fach hat noch keine Lerngruppe. Bitte zuerst unter „Lerngruppen“ eine anlegen.');
+              return false;
+            }
             var newId = null;
             BAO.store.commit('Tafel angelegt', function (draft) {
               var board = schema.makeBoard({
-                subjectId: ctx.subject.id,
-                groupId: ctx.group.id,
-                unitId: ctx.unit ? ctx.unit.id : '',
+                subjectId: subjectId,
+                groupId: groupId,
+                unitId: (select.currentUnit(draft, groupId) || {}).id || '',
                 title: title
               });
               draft.boards.push(board);
               newId = board.id;
             });
             BAO.toast.undoable('Tafel „' + title + '“ angelegt.');
+            // Der Arbeitskontext zieht mit, damit Bestand und Tafel zusammenpassen.
+            app.setContext(subjectId, groupId);
             if (newId) app.go('tafel/' + newId);
             return true;
           }
@@ -108,6 +152,8 @@
             });
             if (!newId) return true;
             BAO.toast.undoable('Tafel angelegt.');
+            var made = select.board(BAO.store.getState(), newId);
+            if (made) app.setContext(made.subjectId, made.groupId);
             app.go('tafel/' + newId);
             return true;
           }

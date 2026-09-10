@@ -137,6 +137,12 @@ und lassen sich deshalb später mit dem gewöhnlichen Eintragseditor vervollstä
 | `showArticle` | vorhandene Artikel farbig nach Genus mitzeigen |
 | `showTranslation` | deutsche Entsprechung unter dem Element einblenden |
 
+Eine Tafel gehört über `groupId` einer Lerngruppe und damit einem Fach. `BAO.select.belongsToBoard(ref, board)`
+entscheidet, ob ein Eintrag darauf darf; `BAO.board.place` weist alles andere ab, und die Tafelansicht setzt
+beim Öffnen den Arbeitskontext auf die Lerngruppe der Tafel. Fachweite Satzanfänge (ohne `groupId`) gehören
+dazu. Das ist kein Formalismus: Ohne diese Bindung stünde ein französischer Artikel farbig auf einer
+englischen Tafel.
+
 Beim Laden werden Positionen auf 0…1 zurückgeholt und Verweise ins Leere entfernt (`schema.validateState`).
 Die Anzeige korrigiert zusätzlich nach dem Messen: Ein Element, das mit seiner tatsächlichen Breite über den
 Rand ragen würde, rückt in die Fläche – der gespeicherte Wert bleibt davon unberührt.

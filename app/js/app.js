@@ -424,6 +424,10 @@
   /** Dasselbe für eine Tafel. */
   function projectBoard(boardId, options) {
     options = options || {};
+    var board = select.board(BAO.store.getState(), boardId);
+    if (!board) return;
+    // Eine Tafel bringt ihre Lerngruppe mit.
+    setContext(board.subjectId, board.groupId);
     if (!BAO.board.start(boardId)) return;
     if (options.openOutput !== false) ensureOutput();
     go('tafel/' + boardId);

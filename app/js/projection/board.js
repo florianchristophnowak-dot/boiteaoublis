@@ -437,6 +437,10 @@
     var ok = BAO.store.commit('Element auf die Tafel gelegt', function (draft) {
       var board = select.board(draft, state.boardId);
       if (!board) return false;
+      var ref = kind === 'starter' ? select.starter(draft, refId) : select.lexeme(draft, refId);
+      // Eine Tafel gehört einer Lerngruppe. Ein Eintrag aus einer anderen
+      // Sprache käme sonst mitsamt seinem Artikel auf die Fläche.
+      if (!select.belongsToBoard(ref, board)) return false;
       var item = schema.makeBoardItem({ kind: kind, refId: refId, x: spot.x, y: spot.y });
       board.items.push(item);
       board.updatedAt = util.nowISO();

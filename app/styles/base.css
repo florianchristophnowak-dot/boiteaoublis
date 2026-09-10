@@ -124,6 +124,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 .chip--tag { background: transparent; border-color: var(--line-strong); color: var(--muted); font-weight: 500; }
 .chip--subject { background: var(--subject-soft, var(--brand-soft)); color: var(--subject-color, var(--brand-ink)); }
 .chip--outline { background: transparent; border-color: var(--line-strong); }
+.chip--warn { background: var(--danger-soft, var(--st-revisit-soft)); color: var(--danger); border-color: currentColor; }
 
 .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
 

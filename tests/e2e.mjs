@@ -1054,6 +1054,89 @@ async function run() {
     JSON.stringify(arranged));
   await page.screenshot({ path: join(shotDir, 'tafel.png') });
 
+  // Eine Tafel gehört einer Lerngruppe – und damit einer Sprache
+  await page.evaluate(() => {
+    BAO.app.setContext('sub_fr', 'grp_fr9b');
+    BAO.app.go('tafel/brd_en_debate');
+  });
+  await page.waitForTimeout(700);
+  const aligned = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const context = BAO.select.context(state);
+    const board = BAO.select.board(state, 'brd_en_debate');
+    return {
+      ctx: context.subject.id + '/' + context.group.id,
+      board: board.subjectId + '/' + board.groupId
+    };
+  });
+  check('eine geöffnete Tafel setzt den Arbeitskontext auf ihre Lerngruppe',
+    aligned.ctx === aligned.board, JSON.stringify(aligned));
+  const boardHead = await page.textContent('.view__title .sub');
+  check('die Kopfzeile nennt Fach und Lerngruppe der Tafel',
+    boardHead.includes('Englisch') && boardHead.includes('10a'), boardHead);
+
+  await page.fill('.ctrl-card input[type="search"]', 'stage');
+  await page.waitForTimeout(300);
+  check('„Aus dem Bestand holen“ zeigt nur den Bestand dieser Lerngruppe',
+    await page.evaluate(() => BAO.util.$$('.picker__item').length) === 0);
+
+  check('ein Eintrag aus einer anderen Sprache lässt sich nicht auf die Tafel legen',
+    await page.evaluate(() => {
+      const count = () => BAO.select.board(BAO.store.getState(), 'brd_en_debate').items.length;
+      const before = count();
+      BAO.board.place('lex', 'lex_fr_8');
+      return count() === before;
+    }));
+
+  // Was aus einem älteren Bestand doch fremd auf einer Tafel liegt, wird benannt
+  await page.evaluate(() => {
+    BAO.store.commit('Prüfung: fremdes Element', (draft) => {
+      BAO.select.board(draft, 'brd_en_debate').items.push(
+        BAO.schema.makeBoardItem({ kind: 'lex', refId: 'lex_fr_8', x: 0.5, y: 0.85 }));
+    });
+  });
+  await page.waitForTimeout(450);
+  check('ein fremdsprachiges Element wird in der Liste gekennzeichnet',
+    await page.evaluate(() => BAO.util.$$('.belem .chip--warn').length) === 1,
+    JSON.stringify(await page.evaluate(() => BAO.util.$$('.belem .chip--warn').map((n) => n.textContent))));
+
+  // Der Wechsel der Lerngruppe oben verlässt eine Tafel, die nicht dazugehört
+  await page.evaluate(() => BAO.app.setContext('sub_fr', 'grp_fr9b'));
+  await page.waitForTimeout(700);
+  check('ein Wechsel der Lerngruppe führt zurück zur Tafelübersicht',
+    await page.evaluate(() => BAO.app.currentRoute().path === 'tafeln' && BAO.board.isActive() === false));
+
+  // Anlegen mit ausdrücklicher Wahl von Fach und Lerngruppe
+  await page.click('button:has-text("Neue Tafel")');
+  await page.waitForSelector('.modal');
+  const dialogLabels = await page.evaluate(() => BAO.util.$$('.modal .field > label').map((n) => n.textContent));
+  check('beim Anlegen lassen sich Fach und Lerngruppe wählen',
+    dialogLabels.some((l) => l.indexOf('Fach') === 0) && dialogLabels.some((l) => l.indexOf('Lerngruppe') === 0),
+    dialogLabels.join(', '));
+  await page.fill('.modal input >> nth=0', 'Tafel für Englisch');
+  await page.selectOption('.modal select >> nth=0', 'sub_en');
+  await page.waitForTimeout(250);
+  check('der Fachwechsel füllt die Lerngruppen neu',
+    await page.evaluate(() => BAO.util.$$('.modal select')[1].options[0].value) === 'grp_en10a');
+  await page.click('.modal button:text-is("Anlegen und öffnen")');
+  await page.waitForTimeout(700);
+  const madeFor = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const board = BAO.select.board(state, BAO.board.getState().boardId);
+    const context = BAO.select.context(state);
+    return {
+      board: board.subjectId + '/' + board.groupId,
+      ctx: context.subject.id + '/' + context.group.id,
+      title: board.title
+    };
+  });
+  check('die neue Tafel gehört der gewählten Lerngruppe',
+    madeFor.board === 'sub_en/grp_en10a' && madeFor.title === 'Tafel für Englisch', JSON.stringify(madeFor));
+  check('der Arbeitskontext zieht mit', madeFor.ctx === madeFor.board, JSON.stringify(madeFor));
+
+  await page.evaluate(() => { BAO.app.setContext('sub_fr', 'grp_fr9b'); BAO.app.go('tafeln'); });
+  await page.waitForTimeout(400);
+
   // Einfache Grundform
   const modes = await page.evaluate(() => {
     const labels = () => BAO.util.$$('.rail__item .rail__label').map((n) => n.textContent);
