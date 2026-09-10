@@ -107,6 +107,20 @@
       .filter(Boolean);
   }
 
+  /**
+   * Gehört ein Eintrag auf diese Tafel?
+   * Eine Tafel gehört einer Lerngruppe und damit einem Fach. Ein Eintrag aus
+   * einer anderen Sprache hat darauf nichts zu suchen – sonst stünde etwa ein
+   * französischer Artikel farbig auf einer englischen Tafel.
+   * Fachweite Satzanfänge (ohne Lerngruppe) gehören dazu.
+   */
+  function belongsToBoard(ref, boardObj) {
+    if (!ref || !boardObj) return false;
+    if (ref.subjectId && boardObj.subjectId && ref.subjectId !== boardObj.subjectId) return false;
+    if (ref.groupId && boardObj.groupId && ref.groupId !== boardObj.groupId) return false;
+    return true;
+  }
+
   /** Trägt ein Eintrag außer dem Text schon weitere Angaben? */
   function isBareEntry(ref) {
     if (!ref) return true;
@@ -229,7 +243,7 @@
     groupsOfSubject: groupsOfSubject, unitsOfGroup: unitsOfGroup, currentUnit: currentUnit,
     lexemesOfGroup: lexemesOfGroup, startersOfGroup: startersOfGroup, banksOfGroup: banksOfGroup,
     boardsOfGroup: boardsOfGroup, resolveBoardItem: resolveBoardItem, boardEntries: boardEntries,
-    isBareEntry: isBareEntry,
+    belongsToBoard: belongsToBoard, isBareEntry: isBareEntry,
     statusCounts: statusCounts, bankItemCount: bankItemCount, resolveItem: resolveItem, bankIsEmpty: bankIsEmpty,
     topicsOfGroup: topicsOfGroup, tagsOfGroup: tagsOfGroup, usageOfEntry: usageOfEntry,
     context: context, recentBanks: recentBanks, favouriteBanks: favouriteBanks, totals: totals

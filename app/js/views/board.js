@@ -53,14 +53,19 @@
 
   /* --- Panel: was auf der Tafel liegt ---------------------------------------- */
 
-  function entryRow(entry) {
+  function entryRow(entry, board) {
     var bare = select.isBareEntry(entry.ref);
+    var foreign = !select.belongsToBoard(entry.ref, board);
     var row = h('div.belem', {
       dataset: { itemId: entry.item.id, selected: BAO.board.getState().selectedId === entry.item.id ? 'true' : 'false' },
       onclick: function () { BAO.board.select(entry.item.id); }
     },
       h('span.belem__text', { text: entry.kind === 'lex' ? ui.termLabel(entry.ref) : entry.text }),
-      bare ? h('span.chip.chip--outline', { title: 'Bisher nur Text – Artikel, Übersetzung und mehr lassen sich ergänzen', text: 'nur Text' }) : null,
+      foreign ? h('span.chip.chip--warn', {
+        title: 'Dieser Eintrag gehört einer anderen Lerngruppe und passt sprachlich nicht auf diese Tafel.',
+        text: 'andere Lerngruppe'
+      }) : null,
+      bare && !foreign ? h('span.chip.chip--outline', { title: 'Bisher nur Text – Artikel, Übersetzung und mehr lassen sich ergänzen', text: 'nur Text' }) : null,
       h('span.spacer'),
       h('div.belem__actions', {},
         h('button.btn.btn--sm.btn--icon', {
@@ -84,12 +89,12 @@
     return row;
   }
 
-  function elementsCard(entries) {
+  function elementsCard(entries, board) {
     var list = h('div.belem-list');
     if (!entries.length) {
       list.appendChild(h('div.note', { text: 'Die Tafel ist noch leer.' }));
     } else {
-      entries.forEach(function (entry) { list.appendChild(entryRow(entry)); });
+      entries.forEach(function (entry) { list.appendChild(entryRow(entry, board)); });
     }
     refs.list = list;
 
@@ -108,19 +113,20 @@
 
   /* --- Panel: vorhandene Einträge holen -------------------------------------- */
 
-  function pickCard(state, ctx, board, app) {
+  function pickCard(state, board, app) {
+    var group = select.group(state, board.groupId);
     var used = {};
     (board.items || []).forEach(function (item) { used[item.kind + ':' + item.refId] = true; });
 
     var needle = util.fold(pick.query);
     var candidates = [];
     if (needle) {
-      select.lexemesOfGroup(state, ctx.group.id).forEach(function (lex) {
+      select.lexemesOfGroup(state, board.groupId).forEach(function (lex) {
         if (used['lex:' + lex.id]) return;
         if (util.fold(ui.termLabel(lex) + ' ' + (lex.translation || '')).indexOf(needle) < 0) return;
         candidates.push({ kind: 'lex', id: lex.id, text: ui.termLabel(lex), meta: lex.translation || '' });
       });
-      select.startersOfGroup(state, ctx.group.id, ctx.subject.id).forEach(function (starter) {
+      select.startersOfGroup(state, board.groupId, board.subjectId).forEach(function (starter) {
         if (used['starter:' + starter.id]) return;
         if (util.fold(starter.text + ' ' + (starter.translation || '')).indexOf(needle) < 0) return;
         candidates.push({ kind: 'starter', id: starter.id, text: starter.text, meta: starter.translation || '' });
@@ -149,7 +155,10 @@
     }
 
     return h('div.ctrl-card', {},
-      h('h3', {}, 'Aus dem Bestand holen'),
+      h('h3', {}, 'Aus dem Bestand holen',
+        h('span.spacer'),
+        h('span.chip.chip--outline', { text: group ? group.name : '' })
+      ),
       h('input', {
         type: 'search', value: pick.query, placeholder: 'Suchen …',
         'aria-label': 'Im Bestand suchen',
@@ -234,13 +243,32 @@
       return;
     }
 
-    bindSelection();
+    // Die Tafel bestimmt den Arbeitskontext, nicht umgekehrt. Sonst böte die
+    // Ansicht den Bestand einer anderen Lerngruppe an – und ein französischer
+    // Artikel landete farbig auf einer englischen Tafel.
     var session = BAO.board.getState();
-    if (!session.active || session.boardId !== board.id) {
+    var arriving = !session.active || session.boardId !== board.id;
+    if (!ctx.group || ctx.group.id !== board.groupId) {
+      if (!arriving) {
+        // Oben wurde die Lerngruppe gewechselt: Diese Tafel gehört nicht dazu.
+        BAO.board.stop();
+        app.go('tafeln');
+        return;
+      }
+      app.setContext(board.subjectId, board.groupId);
+      state = BAO.store.getState();
+      ctx = select.context(state);
+      board = select.board(state, boardId);
+    }
+
+    bindSelection();
+    if (arriving) {
       BAO.board.start(board.id);
       session = BAO.board.getState();
     }
 
+    var subject = select.subject(state, board.subjectId);
+    var group = select.group(state, board.groupId);
     var entries = BAO.board.entries();
     var frame = h('div.stage-frame', {
       dataset: { mirrored: BAO.output.isWindowOpen() ? 'true' : 'false' }
@@ -279,8 +307,8 @@
 
     var panel = h('div.ctrl-panel', {},
       addCard(),
-      elementsCard(entries),
-      pickCard(state, ctx, board, app),
+      elementsCard(entries, board),
+      pickCard(state, board, app),
       appearanceCard(board, session, app),
       h('div.ctrl-card', {},
         h('h3', {}, 'Auf der Fläche'),
@@ -300,8 +328,9 @@
       h('div.view__title', {},
         h('h1', { text: board.title }),
         h('span.sub', {
-          text: ctx.subject.name + ' · ' + ctx.group.name + ' · '
-            + entries.length + ' ' + util.plural(entries.length, 'Element', 'Elemente')
+          text: [subject ? subject.name : '', group ? group.name + ' · Jg. ' + group.grade : '',
+            entries.length + ' ' + util.plural(entries.length, 'Element', 'Elemente')]
+            .filter(Boolean).join(' · ')
         })
       ),
       h('div.spacer'),
