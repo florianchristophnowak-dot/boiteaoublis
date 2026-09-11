@@ -130,6 +130,22 @@ Gespeichert wird die **Mitte eines Elements als Anteil der Fläche**. Deshalb si
 an derselben Stelle – die Vorschau zeigt genau das Bild des Beamers. **Ordnen** stellt jederzeit ein
 gleichmäßiges Raster wieder her.
 
+### Eine Tafel gehört einer Lerngruppe
+
+Beim Anlegen werden **Fach (Sprache)** und **Lerngruppe (Klasse)** ausdrücklich gewählt; vorgeschlagen ist,
+was oben in der Kopfzeile eingestellt ist. Daran hängt mehr als eine Beschriftung:
+
+* Auf die Tafel kommt nur, was zu dieser Lerngruppe gehört – *Aus dem Bestand holen* durchsucht ausschließlich
+  ihren Bestand, und ein Eintrag aus einer anderen Sprache wird abgewiesen. Sonst stünde etwa ein
+  französischer Artikel farbig auf einer englischen Tafel.
+* Wird eine Tafel geöffnet, **zieht der Arbeitskontext oben mit**. Was auf der Fläche entsteht, landet damit
+  im richtigen Bestand.
+* Wird die Lerngruppe oben gewechselt, während eine Tafel offen ist, führt der Weg zurück zur Übersicht –
+  die Tafel gehört ja nicht zur neuen Gruppe.
+
+Liegt aus einem älteren Bestand doch ein fremdes Element auf einer Tafel, kennzeichnet die Liste neben der
+Fläche es mit **andere Lerngruppe**; das Papierkorbsymbol nimmt es herunter.
+
 ### Später ergänzen
 
 Ein auf der Fläche getipptes Element ist ein **gewöhnlicher Eintrag des Bestands** – zunächst nur Text.
@@ -460,13 +476,14 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 153 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 163 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
 prüft unter anderem: Beispieldaten und getrennte Fächer, Anlegen von Lerngruppen, Reihen, Einträgen und
 Satzanfängen, die IPA-Tastatur, die Tafel (Anlegen per Doppelklick, Verschieben per Ziehen – beides auch
-im Beamerfenster – und das spätere Ergänzen eines Elements), Wortbanken samt Ziehen und Ablegen, die drei
+im Beamerfenster –, die Bindung einer Tafel an ihre Lerngruppe und das spätere Ergänzen eines Elements),
+Wortbanken samt Ziehen und Ablegen, die drei
 Unterstützungsstufen, Fokus- und
 Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion bei fünf Auflösungen
 (dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Genuserkennung und Artikelfarben in hell und
