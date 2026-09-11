@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { startCompanionServer } from './companion-server.mjs';
 
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -54,6 +55,292 @@ function section(title) { console.log('\n' + title); }
 
 const consoleErrors = [];
 
+/* Ein nicht erreichbarer Port meldet sich in der Browserkonsole – das gehört
+   zur Suche nach dem Teacher Soundboard und ist kein Fehler der App. Nur
+   genau diese Meldung wird ausgeblendet, alles andere bleibt ein Fehler. */
+function isCompanionNoise(text) {
+  return /ws:\/\/127\.0\.0\.1:(8317|8318|8319)/.test(String(text));
+}
+
+/* ==========================================================================
+   Companion-Modus: Verbindung zum Teacher Soundboard
+   Der Gegenpart ist hier ein eigener, winziger Testserver – das andere
+   Programm muss für den Testlauf nicht installiert sein.
+   ========================================================================== */
+async function companionSection(context, page) {
+  section('16. Companion-Modus (Verbindung zum Teacher Soundboard)');
+
+  /* --- 16a. Ohne Teacher Soundboard ------------------------------------- */
+  const idle = await page.evaluate(() => ({
+    state: BAO.companion.getState(),
+    keys: Object.keys(window.localStorage)
+  }));
+  check('ohne Gegenstelle bleibt die Verbindung aus',
+    idle.state.enabled === false && idle.state.phase === 'off', JSON.stringify(idle.state));
+  check('ohne Verbindung entsteht kein eigener Speichereintrag',
+    !idle.keys.includes('bao.companion.v1'), idle.keys.join(', '));
+
+  await page.evaluate(() => BAO.app.go('daten'));
+  await page.waitForTimeout(300);
+  check('die Verwaltung erklärt die Verbindung',
+    (await page.textContent('.view')).includes('Teacher Soundboard'));
+
+  /* Eingeschaltet, aber nichts da: Die App muss ruhig weitersuchen und dabei
+     vollständig bedienbar bleiben. */
+  await page.evaluate(() => BAO.companion.connect());
+  await page.waitForTimeout(1500);
+  const searching = await page.evaluate(() => ({
+    phase: BAO.companion.getState().phase,
+    lexemes: BAO.store.getState().lexemes.length,
+    view: !!document.querySelector('.view')
+  }));
+  check('ohne Gegenstelle wird ruhig weitergesucht', searching.phase === 'searching', searching.phase);
+  check('die App bleibt dabei vollständig bedienbar',
+    searching.view && searching.lexemes > 0);
+  await page.evaluate(() => BAO.companion.disconnect(true));
+  await page.waitForTimeout(200);
+
+  /* Zwei Fingerabdrücke des lokalen Bestands:
+     „streng“ ist alles außer dem Zeitstempel, den jeder Start ohnehin neu
+     setzt; „Inhalt“ sind die Bestände selbst, ohne die Spur „zuletzt
+     verwendet“, die auch ein Klick von Hand hinterlässt. */
+  const strictPrint = () => page.evaluate(() => {
+    const raw = JSON.parse(window.localStorage.getItem('bao.state.v1'));
+    delete raw.meta.updatedAt;
+    return JSON.stringify(raw);
+  });
+  const contentPrint = () => page.evaluate(() => {
+    const raw = JSON.parse(window.localStorage.getItem('bao.state.v1'));
+    const plain = (bank) => Object.assign({}, bank, { lastUsedAt: '' });
+    return JSON.stringify({
+      subjects: raw.subjects, groups: raw.groups, units: raw.units,
+      lexemes: raw.lexemes, starters: raw.starters,
+      banks: (raw.banks || []).map(plain), boards: (raw.boards || []).map(plain)
+    });
+  });
+  const strictBefore = await strictPrint();
+  const contentBefore = await contentPrint();
+
+  /* --- 16b. Einladung koppelt ohne Nachfrage ---------------------------- */
+  let server = null;
+  for (const candidate of [8317, 8318, 8319]) {
+    try { server = await startCompanionServer({ port: candidate }); break; } catch { /* belegt */ }
+  }
+  if (!server) {
+    check('ein Port für den Testserver ist frei', false, 'alle Ports 8317–8319 belegt');
+    return;
+  }
+
+  await page.goto('about:blank');
+  await page.goto(`${appUrl}#/companion/${server.port}/testeinladung`);
+  await page.waitForFunction(() => window.BAO && window.BAO.companion);
+
+  const hello = await server.waitFor((m) => m.type === 'hello', 8000, 'Anmeldung');
+  check('die Anmeldung nennt Protokoll, Version und Programm',
+    hello.protocol === 'bao-companion' && hello.v === 1 && hello.client.app === 'boite-a-oublis');
+  check('die Einladung aus dem Textanker wird mitgeschickt', hello.invite === 'testeinladung');
+  check('der Browser maskiert alle Rahmen', server.unmaskedSeen === false);
+
+  await page.waitForFunction(() => BAO.companion.getState().connected, { timeout: 8000 });
+  check('verbunden', await page.evaluate(() => BAO.companion.getState().connected));
+  check('die Einladung verschwindet aus der Adresszeile',
+    !page.url().includes('companion'), page.url());
+  check('die Kopplung wird gespeichert',
+    await page.evaluate(() => {
+      const saved = JSON.parse(window.localStorage.getItem('bao.companion.v1') || '{}');
+      return saved.enabled === true && typeof saved.token === 'string' && saved.token.length > 0;
+    }));
+
+  const firstStatus = await server.waitForStatus(() => true, 6000, 'erster Zustand');
+  check('der erste Zustand meldet „keine Projektion“',
+    firstStatus.kind === 'none' && firstStatus.active === false, JSON.stringify(firstStatus));
+  check('die Programmversion wird mitgeteilt',
+    firstStatus.appVersion === (await page.evaluate(() => BAO.schema.APP_VERSION)));
+
+  /* --- 16c. Der Bestand bleibt unberührt --------------------------------- */
+  check('die Verbindung selbst ändert am gespeicherten Stand nichts',
+    (await strictPrint()) === strictBefore);
+  check('die Kopplung steht nicht im Bestand',
+    await page.evaluate(() => !JSON.stringify(BAO.store.getState()).includes('companion')));
+
+  /* --- 16d. Wortbank starten und Zustand melden -------------------------- */
+  const bankId = await page.evaluate(() => BAO.store.getState().banks[0].id);
+  const startId = server.command('preset.start', { id: bankId, kind: 'bank', level: 2 });
+  const startResult = await server.waitForResult(startId);
+  check('ein Preset startet die Wortbank', startResult.ok === true, startResult.error);
+
+  const running = await server.waitForStatus((s) => s.active, 6000, 'laufende Projektion');
+  check('Titel, Lerngruppe und Seitenzahl werden gemeldet',
+    running.kind === 'bank' && !!running.title && !!running.group && running.pages > 0,
+    JSON.stringify(running));
+  check('die Unterstützungsstufe wird gemeldet', running.level === 2, String(running.level));
+
+  /* --- 16e. Blättern und Unterstützungsstufe ----------------------------- */
+  await server.waitForResult(server.command('page.next'));
+  const turned = await server.waitForStatus((s) => s.page === 1, 6000, 'zweite Seite');
+  check('vorwärts blättern wirkt', turned.page === 1);
+  let mark = server.messages.length;
+  await server.waitForResult(server.command('page.prev'));
+  const back = await server.waitForStatus((s) => s.page === 0, 6000, 'erste Seite', mark);
+  check('zurück blättern wirkt', back.page === 0);
+
+  await server.waitForResult(server.command('level.set', { level: 3 }));
+  const level = await server.waitForStatus((s) => s.level === 3, 6000, 'Stufe 3');
+  check('die Unterstützungsstufe lässt sich wechseln', level.level === 3);
+  check('die Stufe gilt auch in der App',
+    await page.evaluate(() => BAO.session.getState().level) === 3);
+
+  /* --- 16f. Aus- und einblenden ------------------------------------------ */
+  await server.waitForResult(server.command('blank.toggle'));
+  const blanked = await server.waitForStatus((s) => s.blank, 6000, 'ausgeblendet');
+  check('die Projektion lässt sich ausblenden', blanked.blank === true);
+  mark = server.messages.length;
+  await server.waitForResult(server.command('blank.set', { blank: false }));
+  const shown = await server.waitForStatus((s) => !s.blank, 6000, 'eingeblendet', mark);
+  check('und wieder einblenden', shown.blank === false);
+
+  /* --- 16g. Live-Hilfe --------------------------------------------------- */
+  const liveId = server.command('live.add', {
+    text: 'Je voudrais ajouter que …', kind: 'starter', translation: 'Ich möchte ergänzen, dass …'
+  });
+  const liveResult = await server.waitForResult(liveId);
+  check('eine Live-Hilfe wird übertragen', liveResult.ok === true, liveResult.error);
+  check('die Live-Hilfe steht in der laufenden Sitzung',
+    await page.evaluate(() => BAO.session.getState().live.some(
+      (item) => item.text.indexOf('Je voudrais ajouter') === 0
+    )));
+  check('eine leere Live-Hilfe wird gar nicht erst ausgeführt',
+    (await page.evaluate(() => BAO.companion.execute('live.add', { text: '   ' }))).ok === false);
+
+  /* --- 16h. Fehlerhafte, unbekannte und veraltete Nachrichten ------------ */
+  const noiseBefore = server.results().length;
+  server.sendRaw('überhaupt kein JSON');
+  server.sendRaw(JSON.stringify({ protocol: 'etwas-anderes', v: 1, type: 'command', id: 'x', name: 'page.next' }));
+  server.sendRaw(JSON.stringify({ protocol: 'bao-companion', v: 99, type: 'command', id: 'y', name: 'page.next' }));
+  server.sendRaw(JSON.stringify({ protocol: 'bao-companion', v: 1, type: 'unbekannt' }));
+  await page.waitForTimeout(400);
+  check('unlesbare, fremde und veraltete Nachrichten werden verworfen',
+    server.results().length === noiseBefore);
+
+  const unknownId = server.command('eval', { code: 'alert(1)' });
+  const unknownResult = await server.waitForResult(unknownId);
+  check('ein unbekannter Befehl wird abgelehnt statt ausgeführt',
+    unknownResult.ok === false && unknownResult.error === 'unknown-command');
+  const badLevel = await server.waitForResult(server.command('level.set', { level: 9 }));
+  check('unsinnige Parameter werden abgelehnt',
+    badLevel.ok === false && badLevel.error === 'invalid-args', badLevel.error);
+  check('die Verbindung übersteht das alles',
+    await page.evaluate(() => BAO.companion.getState().connected));
+
+  /* --- 16i. Fehlendes oder veraltetes Preset-Ziel ------------------------ */
+  const missing = await server.waitForResult(
+    server.command('preset.start', { id: 'bnk_gibt_es_nicht', kind: 'bank' })
+  );
+  check('ein gelöschtes Ziel wird als fehlend gemeldet',
+    missing.ok === false && missing.error === 'not-found', missing.error);
+  const missingBoard = await server.waitForResult(
+    server.command('preset.start', { id: 'brd_gibt_es_nicht', kind: 'board' })
+  );
+  check('dasselbe gilt für eine gelöschte Tafel', missingBoard.error === 'not-found');
+  check('die laufende Projektion bleibt davon unberührt',
+    await page.evaluate(() => BAO.session.getState().active));
+
+  /* --- 16j. Eine Tafel statt einer Wortbank ------------------------------ */
+  const boardId = await page.evaluate(() => BAO.store.getState().boards[0].id);
+  const boardStart = await server.waitForResult(
+    server.command('preset.start', { id: boardId, kind: 'board' })
+  );
+  check('auch eine Tafel lässt sich gemeinsam starten', boardStart.ok === true, boardStart.error);
+  const boardStatus = await server.waitForStatus((s) => s.kind === 'board', 6000, 'Tafel gemeldet');
+  check('die Tafel wird mit Titel und Lerngruppe gemeldet',
+    !!boardStatus.title && !!boardStatus.group, JSON.stringify(boardStatus));
+  mark = server.messages.length;
+  await server.waitForResult(server.command('blank.toggle'));
+  const boardBlank = await server.waitForStatus(
+    (s) => s.kind === 'board' && s.blank, 6000, 'Tafel ausgeblendet', mark
+  );
+  check('auch die Tafel lässt sich ausblenden', boardBlank.blank === true);
+  const onBoard = await server.waitForResult(server.command('live.add', { text: 'geht hier nicht' }));
+  check('eine Live-Hilfe gehört nicht auf die Tafel und wird abgelehnt',
+    onBoard.ok === false && onBoard.error === 'board-active', onBoard.error);
+
+  /* --- 16k. Projektion beenden ------------------------------------------ */
+  mark = server.messages.length;
+  await server.waitForResult(server.command('session.stop'));
+  const stopped = await server.waitForStatus((s) => !s.active, 6000, 'beendet', mark);
+  check('die Projektion lässt sich beenden', stopped.kind === 'none');
+  check('danach ist auch in der App nichts mehr aktiv',
+    await page.evaluate(() => !BAO.session.getState().active && !BAO.board.isActive()));
+
+  /* --- 16l. Wiederverbindung ohne Neustart ------------------------------- */
+  const connectionsBefore = server.connections;
+  mark = server.messages.length;
+  server.dropClient();
+  await page.waitForFunction(() => !BAO.companion.getState().connected, { timeout: 5000 });
+  check('ein Abbruch wird bemerkt',
+    await page.evaluate(() => BAO.companion.getState().phase) !== 'connected');
+  await page.waitForFunction(() => BAO.companion.getState().connected, { timeout: 15000 });
+  check('die Verbindung stellt sich von selbst wieder her',
+    server.connections > connectionsBefore);
+  const afterReconnect = await server.waitForStatus(() => true, 6000, 'Zustand nach Wiederkehr', mark);
+  check('nach der Wiederkehr wird der Zustand erneut gemeldet', !!afterReconnect);
+
+  /* --- 16m. Nur ein Fenster steuert --------------------------------------- */
+  const second = await context.newPage();
+  second.on('console', (message) => {
+    if (message.type() === 'error' && !isCompanionNoise(message.text())) {
+      consoleErrors.push('console (2. Fenster): ' + message.text());
+    }
+  });
+  await second.goto(appUrl);
+  await second.waitForFunction(() => window.BAO && window.BAO.companion);
+  await second.evaluate(() => BAO.companion.connect());
+  await second.waitForFunction(() => BAO.companion.getState().connected, { timeout: 10000 });
+  check('ein zweites Fenster übernimmt die Steuerung',
+    await second.evaluate(() => BAO.companion.getState().connected));
+  await page.waitForFunction(() => BAO.companion.getState().phase === 'superseded', { timeout: 8000 });
+  check('das erste Fenster erklärt die Übernahme',
+    await page.evaluate(() => BAO.companion.getState().phase) === 'superseded');
+
+  /* --- 16n. Rückfrage beim Koppeln ---------------------------------------- */
+  await second.evaluate(() => BAO.companion.disconnect(true));
+  await second.waitForTimeout(200);
+  // Ohne Einladung fragt das Teacher Soundboard die Lehrkraft. Das dauert
+  // länger als jede Antwort eines Programms – die App muss geduldig warten.
+  server.askBeforeWelcome(4500);
+  await second.evaluate(() => BAO.companion.connect());
+  await second.waitForFunction(() => BAO.companion.getState().phase === 'pairing', { timeout: 8000 });
+  check('während der Rückfrage wird gewartet statt weitergesucht',
+    await second.evaluate(() => BAO.companion.getState().phase) === 'pairing');
+  check('die Wartezeit wird verständlich erklärt',
+    (await second.evaluate(() => BAO.companion.describe())).includes('Bestätigung'));
+  await second.waitForFunction(() => BAO.companion.getState().connected, { timeout: 15000 });
+  check('nach der Bestätigung ist die Verbindung da',
+    await second.evaluate(() => BAO.companion.getState().connected));
+
+  /* --- 16o. Abgelehnte Verbindung ---------------------------------------- */
+  await second.evaluate(() => BAO.companion.disconnect());
+  server.denyNextHello('rejected');
+  await second.evaluate(() => BAO.companion.connect());
+  await second.waitForFunction(() => BAO.companion.getState().phase === 'denied', { timeout: 10000 });
+  const denied = await second.evaluate(() => BAO.companion.getState());
+  check('eine Ablehnung wird verständlich gemeldet', denied.phase === 'denied' && !!denied.note);
+  check('nach einer Ablehnung sucht die App nicht weiter',
+    denied.enabled === false && denied.paired === false);
+
+  /* --- 16p. Aufräumen ----------------------------------------------------- */
+  await second.evaluate(() => BAO.companion.disconnect(true));
+  await second.close();
+  await page.evaluate(() => BAO.companion.disconnect(true));
+  await page.waitForTimeout(200);
+  check('getrennt heißt getrennt',
+    await page.evaluate(() => BAO.companion.getState().phase) === 'off');
+  check('kein Wortschatz hat sich durch die Verbindung verändert',
+    (await contentPrint()) === contentBefore);
+  await page.screenshot({ path: join(shotDir, '16-companion.png') });
+  await server.close();
+}
+
 async function run() {
   await mkdir(shotDir, { recursive: true });
   const browser = await playwright.chromium.launch();
@@ -64,7 +351,9 @@ async function run() {
   const page = await context.newPage();
   page.on('pageerror', (error) => consoleErrors.push('pageerror: ' + error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push('console: ' + message.text());
+    if (message.type() !== 'error') return;
+    if (isCompanionNoise(message.text())) return;
+    consoleErrors.push('console: ' + message.text());
   });
 
   await page.goto(appUrl);
@@ -1251,6 +1540,9 @@ async function run() {
 
   check('keine Fehler in der Einzeldatei', distErrors.length === 0, distErrors.slice(0, 3).join(' | '));
   await portable.close();
+
+  /* --- 16. Companion-Modus ------------------------------------------------ */
+  await companionSection(context, page);
 
   /* --- Abschluss ---------------------------------------------------------- */
   await browser.close();

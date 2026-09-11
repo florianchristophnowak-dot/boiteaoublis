@@ -352,6 +352,88 @@
 
   /* --- Ansicht -------------------------------------------------------------------- */
 
+  /* --- Verbindung zum Teacher Soundboard ---------------------------------------
+     Rein örtlich, ohne Konto und ohne Internet. Boîte à Oublis bleibt die
+     einzige Quelle für Wortschatzinhalte: Über die Verbindung gehen nur
+     Steuerbefehle und ein kurzer Zustandsbericht. */
+
+  var companionBound = false;
+
+  function bindCompanion() {
+    if (companionBound || !BAO.companion) return;
+    companionBound = true;
+    BAO.companion.subscribe(function () {
+      if (BAO.app.currentRoute().path === 'daten') BAO.app.scheduleRender();
+    });
+  }
+
+  function companionCard() {
+    if (!BAO.companion) return null;
+    bindCompanion();
+    var info = BAO.companion.getState();
+
+    var actions = h('div.row', { style: { gap: 'var(--sp-2)', 'flex-wrap': 'wrap' } });
+    if (info.connected) {
+      actions.appendChild(h('button.btn', {
+        type: 'button', text: 'Verbindung trennen',
+        onclick: function () { BAO.companion.disconnect(); }
+      }));
+    } else {
+      actions.appendChild(h('button.btn.btn--primary', {
+        type: 'button',
+        text: info.enabled ? 'Erneut verbinden' : 'Mit Teacher Soundboard verbinden',
+        onclick: function () {
+          BAO.companion.connect();
+          BAO.toast.show('Suche das Teacher Soundboard auf diesem Rechner …', { timeout: 3000 });
+        }
+      }));
+      if (info.enabled) {
+        actions.appendChild(h('button.btn', {
+          type: 'button', text: 'Suche beenden',
+          onclick: function () { BAO.companion.disconnect(); }
+        }));
+      }
+    }
+    if (info.paired) {
+      actions.appendChild(h('button.btn.btn--sm', {
+        type: 'button', text: 'Kopplung vergessen',
+        title: 'Beim nächsten Verbinden fragt das Teacher Soundboard erneut nach.',
+        onclick: function () {
+          BAO.companion.forget();
+          BAO.toast.ok('Die Kopplung wurde gelöscht.');
+        }
+      }));
+    }
+    if (info.windowBlocked) {
+      actions.appendChild(h('button.btn.btn--sm', {
+        type: 'button', text: 'Beamerfenster öffnen',
+        onclick: function () { BAO.companion.openWindowByGesture(); }
+      }));
+    }
+
+    return h('div.card', {},
+      h('div.card__head', {}, h('h2', { text: 'Teacher Soundboard' })),
+      h('div.card__body.stack', {},
+        h('div.conn', { dataset: { phase: info.phase } },
+          h('span.conn__dot'),
+          h('span.conn__text', { text: BAO.companion.describe() })
+        ),
+        info.note ? h('p.hint', { text: info.note }) : null,
+        h('p', {
+          text: 'Steuert die Projektion vom Unterrichtspanel des Teacher Soundboards aus: '
+            + 'blättern, Unterstützungsstufe, aus- und einblenden, Live-Hilfe. Die Verbindung '
+            + 'läuft ausschließlich über 127.0.0.1 auf diesem Rechner.'
+        }),
+        actions,
+        h('p.hint', {
+          text: 'Es werden keine Wortschatzdaten übertragen – nur Steuerbefehle und ein kurzer '
+            + 'Zustandsbericht (Titel, Lerngruppe, Stufe, Seite). Ohne Teacher Soundboard '
+            + 'arbeitet Boîte à Oublis unverändert weiter.'
+        })
+      )
+    );
+  }
+
   function render(host, context) {
     var state = context.state;
     var ctx = context.ctx;
@@ -471,6 +553,11 @@
       )
     );
     view.appendChild(grid);
+
+    var connection = companionCard();
+    if (connection) {
+      view.appendChild(h('div', { style: { 'margin-top': 'var(--sp-5)' } }, connection));
+    }
 
     view.appendChild(h('div', { style: { 'margin-top': 'var(--sp-5)' } }, settingsCard(state)));
 

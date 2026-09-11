@@ -8,7 +8,7 @@ Quelle der Wahrheit ist `app/js/core/schema.js`.
 ```json
 {
   "kind": "boite-a-oublis.backup",
-  "appVersion": "1.1.0",
+  "appVersion": "1.2.0",
   "schemaVersion": 2,
   "exportedAt": "2026-09-07T18:12:00.000Z",
   "counts": { "subjects": 2, "groups": 2, "…": 0 },
@@ -231,3 +231,21 @@ Register anhand des Fachnamens vor.
 `resolve(draft)` sucht die eingetippte Bezeichnung (akzentunempfindlich) und legt sie andernfalls an.
 Aufgerufen wird es **innerhalb** des commit-Mutators, damit Anlegen und Zuordnen ein einziger,
 gemeinsam rückgängig zu machender Schritt sind.
+
+## Was nicht im Bestand steht
+
+Der Companion-Modus (Verbindung zum Teacher Soundboard) speichert seinen Stand in einem eigenen Eintrag
+des lokalen Speichers:
+
+```js
+localStorage['bao.companion.v1'] = { enabled, token, clientId }
+```
+
+Er gehört bewusst **nicht** zum Zustand und damit auch nicht zu einer Sicherungsdatei: Eine Kopplung gilt
+für genau dieses Gerät und diesen Browser. Ein Export lässt sich dadurch weitergeben, ohne eine fremde
+Verbindung mitzunehmen.
+
+Über die Verbindung selbst gehen ausschließlich Steuerbefehle und ein kurzer Zustandsbericht
+(`kind`, `active`, `title`, `group`, `subject`, `level`, `page`, `pages`, `blank`, `hasOutput`,
+`appVersion`) – keine Wortschatzinhalte. Die vollständige Liste erlaubter Befehle steht in
+`app/js/companion/protocol.js`.

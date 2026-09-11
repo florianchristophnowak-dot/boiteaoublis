@@ -1,6 +1,6 @@
 {
   "name": "boite-a-oublis",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Boîte à Oublis – lokale Wortschatz-, Tafel- und Projektions-App für den Fremdsprachenunterricht",
   "private": true,
   "type": "module",

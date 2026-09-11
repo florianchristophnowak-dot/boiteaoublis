@@ -2,7 +2,7 @@
 
 **An der Tafel sammeln, Wortschatz aufbauen, sauber projizieren.**
 Eine eigenständige, vollständig lokale Browser-App für den Fremdsprachenunterricht.
-Version 1.1.0 · © Florian Nowak
+Version 1.2.0 · © Florian Nowak
 
 Boîte à Oublis ist keine Vokabelverwaltung, sondern ein Unterrichtswerkzeug. Sie verbindet
 
@@ -14,6 +14,8 @@ Boîte à Oublis ist keine Vokabelverwaltung, sondern ein Unterrichtswerkzeug. S
 * und eine **Projektionsansicht**, die auch aus der letzten Reihe lesbar ist.
 
 Keine Konten, kein Server, keine Cloud, keine KI, keine Datenübertragung. Alles bleibt auf dem Lehrer-Laptop.
+Auf Wunsch lässt sich die Projektion zusätzlich vom [Teacher Soundboard](https://github.com/florianchristophnowak-dot/TeacherSoundboard)
+aus steuern – ebenfalls rein örtlich (siehe Abschnitt 7).
 
 ---
 
@@ -317,7 +319,50 @@ Bewegung (`prefers-reduced-motion`) schaltet alle Übergänge ab.
 
 ---
 
-## 7. Datensicherung
+## 7. Teacher Soundboard verbinden (Companion-Modus, optional)
+
+Boîte à Oublis kann sich mit dem [Teacher Soundboard](https://github.com/florianchristophnowak-dot/TeacherSoundboard)
+auf **demselben Rechner** verbinden. Die Lehrkraft steuert die Projektion dann aus dessen Unterrichtspanel:
+blättern, Unterstützungsstufe wechseln, aus- und einblenden, eine Live-Hilfe einwerfen, die Projektion
+beenden.
+
+Die Verbindung ist **freiwillig und abschaltbar**. Ohne sie ändert sich nichts: keine Verbindung, keine
+Wartezeit, keine Meldung. Ist das Teacher Soundboard nicht installiert oder nicht gestartet, arbeitet die
+App unverändert weiter.
+
+**Was übertragen wird**
+
+* *hinein:* nur eine feste Liste von Steuerbefehlen – blättern, Stufe 1/2/3, aus- und einblenden,
+  Live-Hilfe ergänzen, Projektion beenden, Wortbank oder Tafel öffnen, Bestandsliste (nur Titel),
+  Ausgabefläche öffnen.
+* *hinaus:* ein kurzer Zustandsbericht – verbunden, aktive Wortbank oder Tafel, Titel und Lerngruppe,
+  Unterstützungsstufe, aktuelle und gesamte Seitenzahl, sichtbar oder ausgeblendet.
+
+**Wortschatzdaten verlassen die App nicht.** Es gibt keine Möglichkeit, über die Verbindung beliebigen
+Code auszuführen oder auf Dateien zuzugreifen: Alles, was nicht auf der Liste steht, wird verworfen.
+
+**Einrichten**
+
+Am einfachsten vom Teacher Soundboard aus: dort *Verwaltung → Boîte à Oublis → Öffnen und verbinden*.
+Die App wird im Standardbrowser geöffnet und bringt eine einmalige Einladung im Textanker der Adresse mit
+(`…/boite-a-oublis.html#/companion/…`) – dieser verschwindet sofort wieder aus der Adresszeile. Der Textanker
+gehört nicht zum Ursprung der Seite: **der lokale Datenbestand bleibt derselbe.**
+
+Ist die App schon offen, geht es genauso: **Daten → Teacher Soundboard → Verbinden**. Das Soundboard fragt
+dann einmalig nach. Die Kopplung wird gespeichert (eigener Eintrag `bao.companion.v1`, getrennt vom Bestand
+und nicht Teil des Exports) und beim nächsten Start automatisch wiederhergestellt. Bricht die Verbindung
+ab, sucht die App von selbst wieder – ohne Neustart. Steuern darf immer nur ein Fenster; ein zweites
+übernimmt, das erste sagt es deutlich.
+
+**Beamerfenster und Browserregeln**
+
+Ein eigenes Fenster darf ein Browser nur nach einem Klick öffnen. Kommt der Wunsch über die Verbindung,
+zeigt die App die Projektion zunächst als Vollbild im eigenen Fenster und bietet eine Schaltfläche für das
+Beamerfenster an. Browserregeln werden nicht umgangen, sondern erklärt.
+
+---
+
+## 8. Datensicherung
 
 Alles liegt im lokalen Speicher des Browsers (`localStorage`, Schlüssel `bao.state.v1`) und wird nach jeder
 Änderung automatisch gesichert. Die Fußzeile zeigt den Speicherstand; kann der Browser nicht speichern,
@@ -362,7 +407,7 @@ Programmversion werden erkannt und höflich abgelehnt, statt Daten zu beschädig
 
 ---
 
-## 8. Projektstruktur
+## 9. Projektstruktur
 
 ```
 boite-a-oublis/
@@ -385,6 +430,8 @@ boite-a-oublis/
 │       ├── ui/                   toast, modal, components, ipa (Lautschrift-Tastatur)
 │       ├── projection/           stage-style, deck, render, output, session,
 │       │                         board (freie Fläche)
+│       ├── companion/            protocol, companion (optionale lokale
+│       │                         Verbindung zum Teacher Soundboard)
 │       ├── views/                dashboard, vocab, starters, banks, bank-editor,
 │       │                         boards, board, present, manage, data
 │       ├── app.js                Navigation, Kontext, Schnellsuche, Tastenkürzel
@@ -393,7 +440,9 @@ boite-a-oublis/
 │   ├── build.mjs                 erzeugt dist/boite-a-oublis.html
 │   ├── serve.mjs                 kleiner Webserver für die Entwicklung
 │   └── check.mjs                 Selbstprüfung ohne Browser
-├── tests/e2e.mjs                 Durchlauf der Bedienabläufe im echten Browser
+├── tests/
+│   ├── e2e.mjs                   Durchlauf der Bedienabläufe im echten Browser
+│   └── companion-server.mjs      winziger Testserver für den Companion-Modus
 └── docs/datenmodell.md           Referenz des Datenmodells
 ```
 
@@ -411,7 +460,7 @@ für den Testlauf gebraucht (`npm install -D playwright` oder global installiert
 
 ---
 
-## 9. Zentrale Architekturentscheidungen
+## 10. Zentrale Architekturentscheidungen
 
 **Kein Framework, kein Bundler zur Laufzeit.**
 Die App besteht aus klassischen Skripten unter einem gemeinsamen Namensraum `BAO`, die `index.html` in
@@ -466,17 +515,28 @@ berechnet wird – deshalb zeigt die kleine Vorschau exakt dasselbe Umbruchverha
 Beide Listen stehen im Bestand und lassen sich unter *Daten → Einstellungen* erweitern. Ebenso sind
 weitere Fächer und Sprachen ohne Programmänderung anlegbar.
 
+**Der Companion-Modus ist Client, nicht Server – und ein schmaler Adapter.**
+Ein Browserfenster kann keinen Port öffnen, darf sich aber zu `ws://127.0.0.1` verbinden, auch aus einer
+Datei heraus. Deshalb liegt der Server im Teacher Soundboard, das ohnehin durchgehend läuft, und
+Boîte à Oublis verbindet sich dorthin. `companion/protocol.js` prüft jede Nachricht auf Protokollnamen,
+Version, Typ und Inhalt; `companion/companion.js` bildet die freigegebenen Befehle auf `BAO.session`,
+`BAO.output`, `BAO.board` und `BAO.app` ab. Projektionslogik entsteht dort keine, und es gibt keinen Weg,
+über die Verbindung beliebigen Code oder Dateizugriffe auszulösen. Die Kopplung steht in einem eigenen
+Eintrag des lokalen Speichers, nicht im Bestand – ein Export enthält sie nicht.
+
 **Alles offline.**
 Keine externen Schriften, keine CDNs, keine Netzwerkzugriffe. Symbole sind Inline-SVG, Schriften sind
-Systemschriften. `npm run check` prüft das automatisch.
+Systemschriften. `npm run check` prüft das automatisch. Die einzige mögliche Verbindung ist der
+ausdrücklich eingeschaltete Companion-Modus – und der geht ausschließlich zur Loopback-Adresse
+`127.0.0.1` desselben Rechners.
 
 ---
 
-## 10. Prüfen
+## 11. Prüfen
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 163 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 215 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
@@ -490,11 +550,15 @@ Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion 
 dunkel, Schuljahreswechsel, Rückgängig, Export/Import/Zusammenführen, CSV und die Dauerhaftigkeit nach
 einem Neustart. Ein eigener Abschnitt prüft dieselben Abläufe zusätzlich in der portablen
 Einzeldatei `dist/boite-a-oublis.html` – dort lief einmal ein Einbettungsfehler auf, den der Quelltext
-nicht hatte. Bildschirmfotos landen in `tests/output/`.
+nicht hatte. Ein weiterer Abschnitt prüft den Companion-Modus gegen einen winzigen, eigens gebauten
+Testserver (`tests/companion-server.mjs`): Start ohne Gegenstelle, Kopplung, Statusmeldungen, Blättern,
+Stufenwechsel, Aus- und Einblenden, Live-Hilfe, fehlerhafte und unbekannte Nachrichten, fehlende
+Preset-Ziele, Wiederverbindung, Übernahme durch ein zweites Fenster und die Unversehrtheit des lokalen
+Bestands. Bildschirmfotos landen in `tests/output/`.
 
 ---
 
-## 11. Bewusst nicht enthalten
+## 12. Bewusst nicht enthalten
 
 Benutzerkonten, Cloud-Synchronisierung, Schülergeräte, künstliche Intelligenz, automatische Übersetzung,
 Lernstandsanalysen einzelner Schülerinnen und Schüler, Gamification.

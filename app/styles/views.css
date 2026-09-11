@@ -370,3 +370,29 @@ table.mini tr:last-child td { border-bottom: 0; }
 .ipa-field > label { display: flex; align-items: center; gap: var(--sp-2); }
 .field--action > label .btn,
 .ipa-field > label .btn { margin-left: auto; font-weight: 550; }
+
+/* --- Verbindung zum Teacher Soundboard (Companion-Modus) ------------------- */
+.conn { display: flex; align-items: center; gap: var(--sp-2); }
+.conn__dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted); flex: 0 0 auto;
+}
+.conn__text { font-weight: 550; }
+.conn[data-phase="connected"] .conn__dot { background: var(--ok); }
+.conn[data-phase="pairing"] .conn__dot,
+.conn[data-phase="searching"] .conn__dot {
+  background: var(--accent, var(--muted));
+  /* Ruhiges Pulsieren: Es läuft eine Suche, es ist aber kein Fehler. */
+  animation: conn-pulse 1.6s ease-in-out infinite;
+}
+.conn[data-phase="denied"] .conn__dot,
+.conn[data-phase="superseded"] .conn__dot { background: var(--danger); }
+
+@keyframes conn-pulse {
+  0%, 100% { opacity: .35; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conn[data-phase="pairing"] .conn__dot,
+.conn[data-phase="searching"] .conn__dot { animation: none; opacity: .7; }
+}

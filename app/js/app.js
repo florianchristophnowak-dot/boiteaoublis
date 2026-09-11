@@ -556,6 +556,10 @@
     bindShortcuts();
     renderView();
 
+    // Optionaler Companion-Modus. Ist er nicht eingeschaltet, geschieht hier
+    // nichts: keine Verbindung, keine Wartezeit, keine Meldung.
+    if (BAO.companion) BAO.companion.start();
+
     var storage = BAO.store.storageInfo();
     document.dispatchEvent(new CustomEvent('bao:storage', { detail: storage }));
     if (!storage.available) {

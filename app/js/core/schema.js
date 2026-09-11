@@ -17,7 +17,7 @@
 
   var util = BAO.util;
 
-  var APP_VERSION = '1.1.0';
+  var APP_VERSION = '1.2.0';
   var SCHEMA_VERSION = 2;
   var EXPORT_KIND = 'boite-a-oublis.backup';
 
