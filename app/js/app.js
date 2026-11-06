@@ -15,29 +15,44 @@
      Tafeln, Elemente, Lerngruppen, Daten. Erreichbar bleibt alles – die
      Adressen ändern sich nicht, nur die Navigationsleiste wird kürzer. */
   var ROUTES = [
-    { path: 'start',        view: 'dashboard',  label: 'Start',        icon: 'home',   key: '1' },
-    { path: 'tafeln',       view: 'boards',     label: 'Tafeln',       icon: 'beamer', key: '2', simple: true },
-    { path: 'wortschatz',   view: 'vocab',      label: 'Wortschatz',   icon: 'list',   key: '3',
+    { path: 'start',        view: 'dashboard',   label: 'Start',        icon: 'home',       key: '1' },
+    { path: 'tafeln',       view: 'boards',      label: 'Tafeln',       icon: 'beamer',     key: '2', simple: true },
+    { path: 'whiteboards',  view: 'whiteboards', label: 'Whiteboards',  icon: 'whiteboard', key: '3', simple: true },
+    { path: 'wortschatz',   view: 'vocab',       label: 'Wortschatz',   icon: 'list',       key: '4',
       simple: true, simpleLabel: 'Elemente' },
-    { path: 'satzanfaenge', view: 'starters',   label: 'Satzanfänge',  icon: 'quote',  key: '4' },
-    { path: 'wortbanken',   view: 'banks',      label: 'Wortbanken',   icon: 'grid',   key: '5' },
-    { path: 'projektion',   view: 'present',    label: 'Projektion',   icon: 'play',   key: '6' },
-    { path: 'tafel',        view: 'board',      label: 'Tafel',        icon: 'beamer', hidden: true },
-    { path: 'wortbank',     view: 'bankEditor', label: 'Wortbank',     icon: 'grid',   hidden: true },
-    { path: 'verwaltung',   view: 'manage',     label: 'Lerngruppen',  icon: 'school', key: '7', simple: true },
-    { path: 'daten',        view: 'data',       label: 'Daten',        icon: 'data',   key: '8', simple: true }
+    { path: 'satzanfaenge', view: 'starters',    label: 'Satzanfänge',  icon: 'quote',      key: '5' },
+    { path: 'wortbanken',   view: 'banks',       label: 'Wortbanken',   icon: 'grid',       key: '6' },
+    { path: 'projektion',   view: 'present',     label: 'Projektion',   icon: 'play',       key: '7' },
+    { path: 'tafel',        view: 'board',       label: 'Tafel',        icon: 'beamer',     hidden: true },
+    { path: 'whiteboard',   view: 'whiteboard',  label: 'Whiteboard',   icon: 'whiteboard', hidden: true },
+    { path: 'wortbank',     view: 'bankEditor',  label: 'Wortbank',     icon: 'grid',       hidden: true },
+    { path: 'verwaltung',   view: 'manage',      label: 'Lerngruppen',  icon: 'school',     key: '8', simple: true },
+    { path: 'daten',        view: 'data',        label: 'Daten',        icon: 'data',       key: '9', simple: true }
   ];
 
   /* Änderungen, die nur die Leinwand betreffen. Ein vollständiger Neuaufbau
-     der Lehreransicht wäre hier störend – beim Ziehen sogar sichtbar. */
+     der Lehreransicht wäre hier störend – beim Ziehen sogar sichtbar.
+     'always': Die Fläche zeichnet sich selbst, auch nach Rückgängig. */
   var QUIET_LABELS = {
     'Wortbank geöffnet': true, 'Tafel geöffnet': true,
-    'Element verschoben': true, 'Elementgröße geändert': true
+    'Element verschoben': true, 'Elementgröße geändert': true,
+    'Whiteboard geöffnet': 'always', 'Whiteboard-Ansicht': 'always', 'Werkzeug gewählt': 'always',
+    'Strich gezeichnet': 'always', 'Striche geändert': 'always', 'Radiert': 'always',
+    'Strich gelöscht': 'always', 'Striche gelöscht': 'always', 'Strichfarbe geändert': 'always',
+    'Striche verschoben': 'always', 'Whiteboard geleert': 'always'
   };
+
+  function isQuiet(meta) {
+    var quiet = QUIET_LABELS[meta.label];
+    if (!quiet) return false;
+    if (meta.reason === 'commit') return true;
+    return quiet === 'always' && (meta.reason === 'undo' || meta.reason === 'redo') && current.path === 'whiteboard';
+  }
 
   var current = { path: 'start', params: [] };
   var renderScheduled = false;
   var viewScrollTop = {};
+  var mountedView = null;     // die zuletzt gezeichnete Ansicht (für ihren Abbau)
 
   /* --- Routen --------------------------------------------------------------- */
 
@@ -153,11 +168,12 @@
       vocab: ctx.group ? select.lexemesOfGroup(state, ctx.group.id).length : 0,
       starters: ctx.group ? select.startersOfGroup(state, ctx.group.id, ctx.subject ? ctx.subject.id : '').length : 0,
       banks: ctx.group ? select.banksOfGroup(state, ctx.group.id).length : 0,
-      boards: ctx.group ? select.boardsOfGroup(state, ctx.group.id).length : 0
+      boards: ctx.group ? select.boardsOfGroup(state, ctx.group.id).length : 0,
+      whiteboards: ctx.group ? select.whiteboardsOfGroup(state, ctx.group.id).length : 0
     };
 
     // Welche Ansicht ist im Untermenü einer anderen zu Hause?
-    var PARENT = { wortbank: 'wortbanken', tafel: 'tafeln' };
+    var PARENT = { wortbank: 'wortbanken', tafel: 'tafeln', whiteboard: 'whiteboards' };
     var simple = isSimple();
 
     ROUTES.filter(function (route) {
@@ -168,7 +184,8 @@
       var count = route.view === 'vocab' ? counts.vocab
         : route.view === 'starters' ? counts.starters
         : route.view === 'banks' ? counts.banks
-        : route.view === 'boards' ? counts.boards : null;
+        : route.view === 'boards' ? counts.boards
+        : route.view === 'whiteboards' ? counts.whiteboards : null;
 
       var label = routeLabel(route);
       var item = h('button.rail__item', {
@@ -213,6 +230,12 @@
     // Scrollposition je Ansicht merken – hilft beim Hin- und Herspringen.
     var main = document.querySelector('.main');
     if (main) viewScrollTop[current.lastPath || ''] = main.scrollTop;
+
+    // Eine Ansicht mit eigener Fläche (Whiteboard) räumt auf, wenn eine andere folgt.
+    if (mountedView && mountedView !== view && mountedView.unmount) {
+      try { mountedView.unmount(); } catch (err) { console.error('Fehler beim Abbau der Ansicht:', err); }
+    }
+    mountedView = view || null;
 
     util.clear(host);
     if (!view) {
@@ -282,7 +305,7 @@
     var results = [];
     var activeIndex = 0;
 
-    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', board: 'Tafel',
+    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', board: 'Tafel', whiteboard: 'Whiteboard',
       unit: 'Unterrichtsreihe', lexeme: 'Wortschatz', starter: 'Satzanfang' };
 
     function draw(query) {
@@ -332,6 +355,7 @@
       if (result.subjectId) setContext(result.subjectId, result.groupId || undefined);
       if (result.type === 'bank') { go('wortbank/' + result.id); return; }
       if (result.type === 'board') { go('tafel/' + result.id); return; }
+      if (result.type === 'whiteboard') { go('whiteboard/' + result.id); return; }
       if (result.type === 'group') { go('wortschatz'); return; }
       if (result.type === 'unit') { go('verwaltung'); return; }
       if (result.type === 'lexeme') { go('wortschatz/' + result.id); return; }
@@ -465,7 +489,7 @@
         if (BAO.output.isWindowOpen()) BAO.output.closeWindow(); else ensureOutput();
         return;
       }
-      if (event.altKey && !mod && /^[1-8]$/.test(event.key)) {
+      if (event.altKey && !mod && /^[1-9]$/.test(event.key)) {
         var route = ROUTES.filter(function (r) { return r.key === event.key; })[0];
         if (route) { event.preventDefault(); go(route.path); }
         return;
@@ -494,9 +518,9 @@
       // In der Grundform gibt es manche Ansicht nicht mehr in der Leiste –
       // dann führt der Weg zurück auf die Tafeln.
       var route = ROUTES.filter(function (r) { return r.path === current.path; })[0];
-      if (next && route && !route.simple && route.path !== 'tafel') go('tafeln'); else renderView();
+      if (next && route && !route.simple && route.path !== 'tafel' && route.path !== 'whiteboard') go('tafeln'); else renderView();
       BAO.toast.show(next
-        ? 'Einfache Grundform: Tafeln, Elemente, Lerngruppen, Daten.'
+        ? 'Einfache Grundform: Tafeln, Whiteboards, Elemente, Lerngruppen, Daten.'
         : 'Vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion.', { timeout: 3200 });
     });
     util.on(document, 'click', '[data-action="toggle-theme"]', function () {
@@ -548,7 +572,7 @@
           ? ctx.group.name + ' · ' + (ctx.subject ? ctx.subject.name : '') + ' · Jg. ' + ctx.group.grade
           : 'Wortschatz für den Unterricht';
       }
-      if (meta.reason === 'commit' && QUIET_LABELS[meta.label]) return;
+      if (isQuiet(meta)) return;
       scheduleRender();
     });
 

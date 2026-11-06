@@ -1161,9 +1161,412 @@ async function run() {
   check('eine Wortbank-Projektion beendet die Tafel',
     await page.evaluate(() => BAO.board.isActive() === false && BAO.session.getState().active === true));
 
+  /* --- 12d. Whiteboard: Handschrift mit Stift, Finger und Werkzeugen ------ */
+  section('12d. Whiteboard: Handschrift mit Stift, Finger und Werkzeugen');
+  await page.evaluate(() => { BAO.app.setContext('sub_fr', 'grp_fr9b'); BAO.app.go('whiteboards'); });
+  await page.waitForTimeout(300);
+  check('Beispiel-Whiteboard vorhanden', await page.evaluate(() => BAO.store.getState().whiteboards.length >= 1));
+  check('Übersicht zeigt Kacheln mit Vorschau',
+    await page.locator('.tile[data-whiteboard-id] canvas.wb-thumb').count() >= 1);
+
+  await page.click('button:has-text("Neues Whiteboard")');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input >> nth=0', 'Prüf-Whiteboard');
+  await page.selectOption('.modal select >> nth=2', 'grid');
+  await page.click('.modal button:text-is("Anlegen und öffnen")');
+  await page.waitForTimeout(500);
+  const wbInfo = await page.evaluate(() => {
+    const ctrl = BAO.views.whiteboard.controller();
+    const state = BAO.store.getState();
+    const board = ctrl ? BAO.select.whiteboard(state, ctrl.whiteboardId) : null;
+    return {
+      route: BAO.app.currentRoute().path, mounted: !!ctrl,
+      background: board && board.background, title: board && board.title,
+      canvases: document.querySelectorAll('.wb canvas').length
+    };
+  });
+  check('Whiteboard angelegt und geöffnet',
+    wbInfo.route === 'whiteboard' && wbInfo.mounted && wbInfo.title === 'Prüf-Whiteboard', JSON.stringify(wbInfo));
+  check('gewählter Hintergrund (Kästchen) übernommen', wbInfo.background === 'grid', String(wbInfo.background));
+  check('zwei Leinwände: Tinte und Vorschau', wbInfo.canvases === 2, String(wbInfo.canvases));
+  const wbId = await page.evaluate(() => BAO.views.whiteboard.controller().whiteboardId);
+  await page.evaluate(() => { BAO.views.whiteboard.controller().__mark = 'erste Fläche'; });
+
+  // Hilfen: Zeigerereignisse, wie sie ein Stift oder ein Finger auslöst
+  const pointer = (type, id, points, extra) => page.evaluate(({ type, id, points, extra }) => {
+    const canvas = document.querySelector('.wb-ink');
+    const fire = (kind, x, y, more) => canvas.dispatchEvent(new PointerEvent(kind, Object.assign({
+      pointerType: type, pointerId: id, isPrimary: true, bubbles: true, cancelable: true,
+      clientX: x, clientY: y, pressure: 0.5, buttons: 1, button: 0
+    }, extra || {}, more || {})));
+    points.forEach((p, i) => fire(i === 0 ? 'pointerdown' : 'pointermove', p[0], p[1], p[2] || null));
+    const last = points[points.length - 1];
+    fire('pointerup', last[0], last[1], { buttons: 0, pressure: 0 });
+  }, { type, id, points, extra: extra || null });
+  const strokesOf = () => page.evaluate((id) => BAO.select.whiteboard(BAO.store.getState(), id).strokes, wbId);
+  const lastStroke = async () => { const s = await strokesOf(); return s[s.length - 1]; };
+  const countOf = async () => (await strokesOf()).length;
+  const viewOf = () => page.evaluate(() => BAO.views.whiteboard.controller().getView());
+  const toolNow = () => page.evaluate(() => BAO.views.whiteboard.controller().getTools().tool);
+  const drag = async (points) => {
+    await page.mouse.move(points[0][0], points[0][1]);
+    await page.mouse.down();
+    for (const p of points.slice(1)) await page.mouse.move(p[0], p[1]);
+    await page.mouse.up();
+    await page.waitForTimeout(120);
+  };
+
+  const inkBox = await page.locator('.wb-ink').boundingBox();
+  const cx = inkBox.x + inkBox.width / 2;
+  const cy = inkBox.y + inkBox.height / 2;
+
+  // Stift schreibt – mit Druck
+  const penPoints = [];
+  for (let i = 0; i <= 30; i++) {
+    penPoints.push([cx - 150 + i * 6, cy - 100 + Math.sin(i / 3) * 18, { pressure: 0.25 + (i % 10) / 16 }]);
+  }
+  await pointer('pen', 7, penPoints);
+  await page.waitForTimeout(150);
+  let stroke = await lastStroke();
+  check('Stift zeichnet einen Strich', (await countOf()) === 1 && !!stroke && stroke.tool === 'pen',
+    JSON.stringify(stroke && stroke.tool));
+  check('Punkte sind Tripel (x, y, Druck)', stroke.points.length % 3 === 0 && stroke.points.length >= 60,
+    String(stroke.points.length));
+  const pressures = stroke.points.filter((v, i) => i % 3 === 2);
+  check('Druck wird mitgeschrieben', Math.max(...pressures) - Math.min(...pressures) > 0.1, pressures.slice(0, 5).join(','));
+  check('Druck steuert die Strichbreite',
+    await page.evaluate((s) => BAO.ink.widthAt(s, 0.2) < BAO.ink.widthAt(s, 0.9), stroke));
+  check('Zähler in der Kopfzeile folgt', (await page.textContent('.view__title .sub')).includes('1 Strich'));
+
+  // Finger verschiebt – kein Strich
+  const v0 = await viewOf();
+  const panPoints = [];
+  for (let i = 0; i <= 10; i++) panPoints.push([cx + 100 - i * 12, cy + 100 - i * 6]);
+  await pointer('touch', 11, panPoints);
+  await page.waitForTimeout(120);
+  const v1 = await viewOf();
+  check('ein Finger verschiebt die Fläche',
+    Math.abs(v1.cx - v0.cx - 120) < 2 && Math.abs(v1.cy - v0.cy - 60) < 2, JSON.stringify(v1));
+  check('… und zeichnet dabei nichts', (await countOf()) === 1);
+
+  // Zwei Finger zoomen
+  await page.evaluate(({ x, y }) => {
+    const canvas = document.querySelector('.wb-ink');
+    const fire = (kind, px, py, id) => canvas.dispatchEvent(new PointerEvent(kind, {
+      pointerType: 'touch', pointerId: id, isPrimary: id === 21, bubbles: true, cancelable: true,
+      clientX: px, clientY: py, pressure: 0.5, buttons: 1
+    }));
+    fire('pointerdown', x - 40, y, 21);
+    fire('pointerdown', x + 40, y, 22);
+    for (let i = 1; i <= 8; i++) { fire('pointermove', x - 40 - i * 10, y, 21); fire('pointermove', x + 40 + i * 10, y, 22); }
+    fire('pointerup', x - 120, y, 21);
+    fire('pointerup', x + 120, y, 22);
+  }, { x: cx, y: cy });
+  await page.waitForTimeout(120);
+  const v2 = await viewOf();
+  check('zwei Finger zoomen (Pinch)', v2.zoom > v1.zoom * 2.5, v1.zoom + ' -> ' + v2.zoom);
+  check('… ohne einen Strich zu hinterlassen', (await countOf()) === 1);
+  check('Zoomanzeige folgt', (await page.textContent('.wb-zoom__level')).includes(Math.round(v2.zoom * 100) + ' %'));
+
+  // Mausrad: mit Strg zoomen, ohne Strg rollen
+  await page.mouse.move(cx, cy);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, 300);
+  await page.keyboard.up('Control');
+  await page.waitForTimeout(120);
+  const v3 = await viewOf();
+  check('Strg + Mausrad zoomt', v3.zoom < v2.zoom, v2.zoom + ' -> ' + v3.zoom);
+  await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(120);
+  const v4 = await viewOf();
+  check('Mausrad allein rollt die Fläche', v4.cy > v3.cy && v4.zoom === v3.zoom, JSON.stringify(v4));
+
+  await page.keyboard.press('0');
+  await page.waitForTimeout(100);
+  check('Taste 0 setzt den Zoom auf 100 %', (await viewOf()).zoom === 1);
+  await page.evaluate(() => BAO.views.whiteboard.controller().resetView());
+  await page.waitForTimeout(150);
+
+  // Handballen: Während der Stift schreibt, verschiebt ein Finger nichts
+  const v5 = await viewOf();
+  await page.evaluate(({ x, y }) => {
+    const canvas = document.querySelector('.wb-ink');
+    const fire = (kind, px, py, type, id, more) => canvas.dispatchEvent(new PointerEvent(kind, Object.assign({
+      pointerType: type, pointerId: id, isPrimary: true, bubbles: true, cancelable: true,
+      clientX: px, clientY: py, pressure: 0.5, buttons: 1
+    }, more || {})));
+    fire('pointerdown', x, y + 40, 'pen', 7);
+    fire('pointerdown', x + 60, y + 90, 'touch', 31);
+    for (let i = 1; i <= 10; i++) {
+      fire('pointermove', x + i * 8, y + 40 + i, 'pen', 7);
+      fire('pointermove', x + 60 + i * 10, y + 90 + i * 10, 'touch', 31);
+    }
+    fire('pointerup', x + 80, y + 50, 'pen', 7, { buttons: 0 });
+    fire('pointerup', x + 160, y + 190, 'touch', 31, { buttons: 0 });
+  }, { x: cx, y: cy });
+  await page.waitForTimeout(120);
+  const v6 = await viewOf();
+  check('Handballen neben dem Stift verschiebt nichts',
+    v6.cx === v5.cx && v6.cy === v5.cy && (await countOf()) === 2, JSON.stringify(v6) + ' / ' + (await countOf()));
+
+  // Textmarker und Marker
+  await page.keyboard.press('x');
+  check('Taste X wählt den Textmarker', (await toolNow()) === 'highlighter');
+  const hlPoints = [];
+  for (let i = 0; i <= 12; i++) hlPoints.push([cx - 150 + i * 15, cy - 100]);
+  await drag(hlPoints);
+  stroke = await lastStroke();
+  check('Textmarker-Strich: breit und gelb',
+    stroke.tool === 'highlighter' && stroke.width === 20 && stroke.color === 'yellow',
+    JSON.stringify([stroke.tool, stroke.width, stroke.color]));
+  const order = await page.evaluate((id) => {
+    const strokes = BAO.select.whiteboard(BAO.store.getState(), id).strokes;
+    const seen = [];
+    const real = document.createElement('canvas').getContext('2d');
+    const ctx = new Proxy(real, {
+      get(target, key) {
+        const value = target[key];
+        if (typeof value !== 'function') return value;
+        return function () {
+          if (key === 'stroke' || key === 'fill') seen.push(target.globalAlpha < 1 ? 'textmarker' : 'tinte');
+          return value.apply(target, arguments);
+        };
+      },
+      set(target, key, value) { target[key] = value; return true; }
+    });
+    BAO.whiteboard.drawStrokes(ctx, strokes, { colors: BAO.whiteboard.resolveColors() });
+    return seen;
+  }, wbId);
+  check('Textmarker wird vor der Tinte gezeichnet und liegt deshalb dahinter',
+    order.includes('textmarker') && order.includes('tinte') && order.lastIndexOf('textmarker') < order.indexOf('tinte'),
+    order.join(','));
+
+  await page.keyboard.press('m');
+  const mkPoints = [];
+  for (let i = 0; i <= 10; i++) mkPoints.push([cx - 100 + i * 10, cy + 150 + i]);
+  await drag(mkPoints);
+  stroke = await lastStroke();
+  check('Marker: breiter Filzstift in Blau',
+    stroke.tool === 'marker' && stroke.width === 6 && stroke.color === 'blue',
+    JSON.stringify([stroke.tool, stroke.width, stroke.color]));
+
+  await page.click('.wb-options .wb-swatch[aria-label="Farbe Rot"]');
+  await page.click('.wb-options .wb-width[aria-label="Breite breit"]');
+  const prefs = await page.evaluate(() => BAO.store.getState().settings.whiteboard.marker);
+  check('Farbe und Breite werden in den Einstellungen gemerkt', prefs.color === 'red' && prefs.width === 2, JSON.stringify(prefs));
+
+  // Unterstreichen wie in Capy-note: Stil, doppelt, Häkchen rechts
+  await page.keyboard.press('u');
+  await page.click('.wb-options .wb-ustyle[aria-label="wellig"]');
+  await page.click('.wb-options button:has-text("Doppelt")');
+  await page.click('.wb-options button:has-text("Häkchen rechts")');
+  await drag([[cx - 150, cy - 60], [cx - 100, cy - 58], [cx + 50, cy - 55]]);
+  stroke = await lastStroke();
+  check('Unterstreichung entsteht durch waagerechtes Ziehen',
+    stroke.tool === 'underline' && Math.abs(stroke.w - 200) < 3, JSON.stringify(stroke));
+  check('… wellig, doppelt, mit Häkchen rechts',
+    stroke.style === 'wavy' && stroke.double === true && stroke.hook === true,
+    JSON.stringify([stroke.style, stroke.double, stroke.hook]));
+  const ulGeometry = await page.evaluate((s) => ({
+    lines: BAO.ink.underlineLines(s).length, hook: BAO.ink.underlineHook(s)
+  }), stroke);
+  check('doppelt = zwei Linien, das Häkchen zeigt nach rechts unten',
+    ulGeometry.lines === 2 && !!ulGeometry.hook && ulGeometry.hook[2] < ulGeometry.hook[0] && ulGeometry.hook[3] > ulGeometry.hook[1],
+    JSON.stringify(ulGeometry));
+  let count = await countOf();
+  await drag([[cx - 150, cy - 30], [cx - 149, cy - 30]]);
+  check('zu kurzes Ziehen ergibt keine Unterstreichung', (await countOf()) === count);
+
+  // Korrekturzeichen wie in Capy-note
+  await page.keyboard.press('k');
+  await page.mouse.click(cx + 120, cy - 100);
+  await page.waitForTimeout(100);
+  stroke = await lastStroke();
+  check('Häkchen wird mit einem Tipp gesetzt',
+    stroke.tool === 'stamp' && stroke.variant === 'check' && stroke.color === 'red' && stroke.size === 30,
+    JSON.stringify(stroke));
+  await page.click('.wb-options .wb-stamp[aria-label="halbes Häkchen (durchgestrichen)"]');
+  await page.mouse.click(cx + 160, cy - 100);
+  await page.click('.wb-options .wb-stamp[aria-label="Auslassungszeichen"]');
+  await page.mouse.click(cx + 200, cy - 100);
+  await page.click('.wb-options .wb-stamp[aria-label="Grammatik"]');
+  await page.mouse.click(cx + 240, cy - 100);
+  await page.waitForTimeout(120);
+  const stamps = (await strokesOf()).filter((s) => s.tool === 'stamp')
+    .map((s) => s.variant + ':' + (s.text || '') + ':' + s.color);
+  check('alle Zeichen: Häkchen, halbes Häkchen, Auslassungszeichen, Kürzel',
+    stamps.join(' ') === 'check::red check_crossed::red omission::red text:Gr:red', stamps.join(' '));
+  const stampDefs = await page.evaluate(() => ({
+    paths: BAO.whiteboard.STAMP_PATHS,
+    badges: BAO.whiteboard.STAMPS.filter((s) => s.variant === 'text').map((s) => s.text).join(',')
+  }));
+  check('Formen der Zeichen stammen aus Capy-note',
+    stampDefs.paths.check.main === 'M 24 36 Q 24 52 28 66 Q 31 78 36 72 Q 55 38 88 9'
+    && stampDefs.paths.check_crossed.accent === 'M 48 45 Q 60 44 74 45'
+    && stampDefs.paths.omission.main === 'M 23 16 Q 31 40 45 86 Q 61 40 81 16');
+  check('Kürzel wie in Capy-note: Gr, O, V, Conj, Acc, G', stampDefs.badges === 'Gr,O,V,Conj,Acc,G', stampDefs.badges);
+  await page.screenshot({ path: join(shotDir, 'whiteboard-werkzeuge.png') });
+
+  // Radierer: ganzer Strich
+  count = await countOf();
+  await page.keyboard.press('r');
+  await drag([[cx + 120, cy - 130], [cx + 120, cy - 100], [cx + 120, cy - 70]]);
+  check('Radierer entfernt ein berührtes Zeichen ganz', (await countOf()) === count - 1, count + ' -> ' + (await countOf()));
+
+  // Stift umgedreht (Radierende) radiert ohne Werkzeugwechsel
+  await page.keyboard.press('t');
+  count = await countOf();
+  await pointer('pen', 7, [[cx + 160, cy - 130], [cx + 160, cy - 100], [cx + 160, cy - 70]], { buttons: 32 });
+  await page.waitForTimeout(120);
+  check('umgedrehter Stift radiert, das Werkzeug bleibt der Stift',
+    (await countOf()) === count - 1 && (await toolNow()) === 'pen', count + ' -> ' + (await countOf()));
+
+  // Radierer: fein – teilt einen Strich
+  const longPoints = [];
+  for (let i = 0; i <= 20; i++) longPoints.push([cx - 200 + i * 20, cy + 220]);
+  await drag(longPoints);
+  count = await countOf();
+  await page.keyboard.press('r');
+  await page.click('.wb-options .wb-seg button:has-text("Fein")');
+  await drag([[cx, cy + 190], [cx, cy + 220], [cx, cy + 250]]);
+  const pieces = (await strokesOf()).filter((s) => s.tool === 'pen' && Math.abs(s.points[1] - 220) < 3);
+  check('feiner Radierer teilt einen Strich in zwei Teile', (await countOf()) === count + 1 && pieces.length === 2,
+    count + ' -> ' + (await countOf()) + ', Teile: ' + pieces.length);
+  check('beide Teile tragen eigene Kennungen', pieces.length === 2 && pieces[0].id !== pieces[1].id);
+
+  // Auswahl: einkreisen, umfärben, verschieben, löschen
+  await page.keyboard.press('l');
+  await drag([[cx - 230, cy + 180], [cx + 230, cy + 180], [cx + 230, cy + 260], [cx - 230, cy + 260], [cx - 230, cy + 185]]);
+  const selected = await page.evaluate(() => BAO.views.whiteboard.controller().getSelection());
+  check('Lasso wählt die eingekreisten Striche', selected.length === 2, String(selected.length));
+  check('Optionsleiste zeigt die Auswahl', (await page.textContent('.wb-options')).includes('2 Striche ausgewählt'));
+  await page.click('.wb-options .wb-swatch[aria-label="Farbe Grün"]');
+  await page.waitForTimeout(100);
+  const pickSelected = (ids) => page.evaluate(({ ids, id }) => BAO.select.whiteboard(BAO.store.getState(), id).strokes
+    .filter((s) => ids.includes(s.id)).map((s) => ({ color: s.color, x: s.points[0], y: s.points[1] })), { ids, id: wbId });
+  const recolored = await pickSelected(selected);
+  check('Auswahl umfärben', recolored.length === 2 && recolored.every((s) => s.color === 'green'), JSON.stringify(recolored));
+  await drag([[cx, cy + 220], [cx + 20, cy + 230], [cx + 40, cy + 250]]);
+  const moved = await pickSelected(selected);
+  check('Auswahl verschieben',
+    moved.every((s, i) => Math.abs(s.x - recolored[i].x - 40) < 1 && Math.abs(s.y - recolored[i].y - 30) < 1),
+    JSON.stringify([recolored, moved]));
+  check('Auswahl bleibt nach dem Verschieben bestehen',
+    (await page.evaluate(() => BAO.views.whiteboard.controller().getSelection().length)) === 2);
+  count = await countOf();
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(120);
+  check('Entf löscht die Auswahl', (await countOf()) === count - 2
+    && (await page.evaluate(() => BAO.views.whiteboard.controller().getSelection().length)) === 0);
+
+  // Rückgängig und Wiederherstellen ohne Neuaufbau der Fläche
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  check('Strg + Z holt die gelöschten Striche zurück', (await countOf()) === count);
+  check('die Fläche bleibt dabei dieselbe (kein Neuaufbau)',
+    await page.evaluate(() => BAO.views.whiteboard.controller().__mark === 'erste Fläche'));
+  await page.keyboard.press('Control+y');
+  await page.waitForTimeout(150);
+  check('Strg + Y löscht sie wieder', (await countOf()) === count - 2);
+  await page.click('.wb-tools button[data-action="undo"]');
+  await page.waitForTimeout(150);
+  check('Rückgängig-Knopf in der Werkzeugleiste', (await countOf()) === count);
+
+  // Kopfzeile: Hintergrund, Titel
+  await page.selectOption('.view__actions select', 'dots');
+  await page.waitForTimeout(250);
+  check('Hintergrund lässt sich in der Kopfzeile wechseln',
+    await page.evaluate((id) => BAO.select.whiteboard(BAO.store.getState(), id).background === 'dots', wbId));
+  check('die Fläche zieht in die neu gezeichnete Ansicht um',
+    await page.evaluate(() => BAO.views.whiteboard.controller().__mark === 'erste Fläche'
+      && document.querySelectorAll('.wb canvas').length === 2));
+  await page.click('.view__actions button[title="Titel ändern"]');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input', 'Prüf-Whiteboard umbenannt');
+  await page.click('.modal button:text-is("Übernehmen")');
+  await page.waitForTimeout(250);
+  check('Umbenennen', (await page.textContent('.view__title h1')) === 'Prüf-Whiteboard umbenannt');
+
+  // Geräte ohne Stift: Der Finger darf zeichnen
+  await page.check('.wb-hint input[type="checkbox"]');
+  await page.keyboard.press('t');
+  count = await countOf();
+  await pointer('touch', 41, [[cx - 50, cy + 300], [cx, cy + 310], [cx + 50, cy + 300]]);
+  await page.waitForTimeout(120);
+  check('„Finger zeichnet“: ein Finger schreibt, wenn gewünscht', (await countOf()) === count + 1);
+  await page.uncheck('.wb-hint input[type="checkbox"]');
+  await page.screenshot({ path: join(shotDir, 'whiteboard.png') });
+
+  // Das Whiteboard gehört seiner Lerngruppe
+  await page.evaluate(() => BAO.app.setContext('sub_en', 'grp_en10a'));
+  await page.waitForTimeout(300);
+  check('Wechsel der Lerngruppe führt zur Übersicht zurück',
+    await page.evaluate(() => BAO.app.currentRoute().path === 'whiteboards' && !BAO.views.whiteboard.controller()));
+  await page.evaluate((id) => BAO.app.go('whiteboard/' + id), wbId);
+  await page.waitForTimeout(400);
+  check('Öffnen eines Whiteboards zieht den Arbeitskontext mit',
+    await page.evaluate(() => {
+      const c = BAO.select.context(BAO.store.getState());
+      return c.subject.id === 'sub_fr' && c.group.id === 'grp_fr9b' && !!BAO.views.whiteboard.controller();
+    }));
+  await page.evaluate(() => BAO.app.go('whiteboards'));
+  await page.waitForTimeout(300);
+  check('Verlassen räumt die Fläche auf', await page.evaluate(() => !BAO.views.whiteboard.controller()));
+  check('Übersicht zeigt beide Whiteboards mit Vorschau',
+    await page.locator('.tile[data-whiteboard-id] canvas.wb-thumb').count() === 2);
+  await page.screenshot({ path: join(shotDir, 'whiteboards.png') });
+
+  // Daten: Speicherung, Export, Prüfung, Migration, Suche
+  const wbPersisted = await countOf();
+  await page.waitForTimeout(900);
+  await page.reload();
+  await page.waitForFunction(() => window.BAO && window.BAO.store && window.BAO.store.getState());
+  check('Striche überstehen einen Neustart', (await countOf()) === wbPersisted, String(wbPersisted));
+  const dataChecks = await page.evaluate(() => {
+    const state = BAO.store.getState();
+    const exported = BAO.backup.buildExport(state);
+    const broken = BAO.util.clone(state);
+    broken.whiteboards[0].strokes.push({ id: 'kaputt', tool: 'pen', points: [1, 2] });
+    broken.whiteboards[0].view = { cx: 'x', cy: 0, zoom: 99 };
+    const checked = BAO.schema.validateState(broken);
+    const migrated = BAO.migrations.migrate({
+      schemaVersion: 2, subjects: [], groups: [], units: [], lexemes: [], starters: [], banks: [], boards: [], settings: {}, ui: {}
+    });
+    return {
+      exportCount: exported.counts.whiteboards,
+      exportHas: Array.isArray(exported.data.whiteboards),
+      brokenRemoved: !checked.state.whiteboards[0].strokes.some((s) => s.id === 'kaputt'),
+      warning: checked.warnings.some((w) => w.includes('Whiteboard')),
+      viewRepaired: typeof checked.state.whiteboards[0].view.cx === 'number' && checked.state.whiteboards[0].view.zoom <= 8,
+      migrated: Array.isArray(migrated.state.whiteboards) && migrated.applied.some((a) => a.startsWith('v3')),
+      search: BAO.search.global(state, 'Tafelbild', { limit: 5 }).some((r) => r.type === 'whiteboard')
+    };
+  });
+  check('Export enthält die Whiteboards', dataChecks.exportHas && dataChecks.exportCount >= 2, JSON.stringify(dataChecks));
+  check('beschädigte Striche werden beim Laden entfernt', dataChecks.brokenRemoved && dataChecks.warning, JSON.stringify(dataChecks));
+  check('eine ungültige Ansicht wird repariert', dataChecks.viewRepaired);
+  check('Migration auf Datenversion 3 ergänzt Whiteboards', dataChecks.migrated);
+  check('Schnellsuche findet Whiteboards', dataChecks.search);
+
+  // Navigation
+  const simpleLabels = await page.evaluate(() => {
+    BAO.store.commit('Prüfung: Grundform', (d) => { d.settings.simpleMode = true; }, { undoable: false });
+    BAO.app.renderView();
+    const labels = BAO.util.$$('.rail__item .rail__label').map((n) => n.textContent);
+    BAO.store.commit('Prüfung: vollständig', (d) => { d.settings.simpleMode = false; }, { undoable: false });
+    BAO.app.renderView();
+    return labels;
+  });
+  check('Whiteboards gehören zur einfachen Grundform', simpleLabels.includes('Whiteboards'), simpleLabels.join(', '));
+  await page.evaluate(() => BAO.app.go('start'));
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Alt+3');
+  await page.waitForTimeout(200);
+  check('Alt + 3 öffnet die Whiteboards', await page.evaluate(() => BAO.app.currentRoute().path === 'whiteboards'));
+
   /* --- 13. Alle Ansichten zeichnen sich fehlerfrei ------------------------ */
   section('13. Alle Ansichten');
-  for (const route of ['start', 'tafeln', 'wortschatz', 'satzanfaenge', 'wortbanken', 'projektion', 'verwaltung', 'daten']) {
+  for (const route of ['start', 'tafeln', 'whiteboards', 'wortschatz', 'satzanfaenge', 'wortbanken', 'projektion', 'verwaltung', 'daten']) {
     await page.evaluate((r) => BAO.app.go(r), route);
     await page.waitForTimeout(220);
     const ok = await page.evaluate(() => {
@@ -1248,6 +1651,25 @@ async function run() {
   await distPage.waitForTimeout(350);
   check('Element lässt sich auch in der Einzeldatei auf der Fläche anlegen',
     await distPage.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'le classeur')));
+
+  await distPage.evaluate(() => { BAO.app.go('whiteboard/wbd_fr_notes'); });
+  await distPage.waitForTimeout(500);
+  const distInk = await distPage.locator('.wb-ink').boundingBox();
+  const distBefore = await distPage.evaluate(() => BAO.views.whiteboard.controller().strokeCount());
+  await distPage.evaluate(({ x, y }) => {
+    const canvas = document.querySelector('.wb-ink');
+    const fire = (kind, px, py, more) => canvas.dispatchEvent(new PointerEvent(kind, Object.assign({
+      pointerType: 'pen', pointerId: 5, isPrimary: true, bubbles: true, cancelable: true,
+      clientX: px, clientY: py, pressure: 0.6, buttons: 1
+    }, more || {})));
+    fire('pointerdown', x, y);
+    for (let i = 1; i <= 15; i++) fire('pointermove', x + i * 8, y + Math.cos(i / 2) * 10);
+    fire('pointerup', x + 120, y, { buttons: 0, pressure: 0 });
+  }, { x: distInk.x + distInk.width * 0.4, y: distInk.y + distInk.height * 0.6 });
+  await distPage.waitForTimeout(200);
+  check('Whiteboard: der Stift schreibt auch in der Einzeldatei',
+    await distPage.evaluate(() => BAO.views.whiteboard.controller().strokeCount()) === distBefore + 1);
+  await distPage.screenshot({ path: join(shotDir, 'whiteboard-einzeldatei.png') });
 
   check('keine Fehler in der Einzeldatei', distErrors.length === 0, distErrors.slice(0, 3).join(' | '));
   await portable.close();

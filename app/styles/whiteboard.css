@@ -1,0 +1,206 @@
+/* ==========================================================================
+   Whiteboard – Handschrift auf einer unbegrenzten Fläche
+   Die Tinte wird auf eine Leinwand gezeichnet; die Farben dafür stehen hier
+   als Token, damit dieselbe Tinte auf hellem wie dunklem Papier lesbar bleibt.
+   Blau, Rot und Grün entsprechen den Genusfarben der App.
+   ========================================================================== */
+
+:root {
+  --wb-paper: #fdfcfa;
+  --wb-grid: #e3ddd3;
+  --wb-select: #2b7bb9;
+  --wb-muted: #6b7382;
+
+  --wb-c-ink: #1a1f28;
+  --wb-c-blue: #0f3f96;
+  --wb-c-red: #9c1223;
+  --wb-c-green: #10603a;
+  --wb-c-orange: #c26240;
+  --wb-c-amber: #9a6512;
+  --wb-c-purple: #5c4a99;
+  --wb-c-grey: #6b7382;
+
+  --wb-c-yellow: #f6d13c;
+  --wb-c-mint: #8fe3b3;
+  --wb-c-sky: #8ecbf5;
+  --wb-c-pink: #f5a3c7;
+  --wb-c-peach: #f9b98a;
+}
+
+:root[data-theme="dark"] {
+  --wb-paper: #181d25;
+  --wb-grid: #2c3542;
+  --wb-select: #63b3ed;
+  --wb-muted: #9aa4b2;
+
+  --wb-c-ink: #eef1f5;
+  --wb-c-blue: #7db0f7;
+  --wb-c-red: #f5919c;
+  --wb-c-green: #77d3a5;
+  --wb-c-orange: #e2916d;
+  --wb-c-amber: #dcb063;
+  --wb-c-purple: #b0a0ea;
+  --wb-c-grey: #9aa4b2;
+
+  --wb-c-yellow: #f2cf3a;
+  --wb-c-mint: #5fc993;
+  --wb-c-sky: #62b2ee;
+  --wb-c-pink: #ec86b4;
+  --wb-c-peach: #f2a16b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --wb-paper: #181d25;
+    --wb-grid: #2c3542;
+    --wb-select: #63b3ed;
+    --wb-muted: #9aa4b2;
+
+    --wb-c-ink: #eef1f5;
+    --wb-c-blue: #7db0f7;
+    --wb-c-red: #f5919c;
+    --wb-c-green: #77d3a5;
+    --wb-c-orange: #e2916d;
+    --wb-c-amber: #dcb063;
+    --wb-c-purple: #b0a0ea;
+    --wb-c-grey: #9aa4b2;
+
+    --wb-c-yellow: #f2cf3a;
+    --wb-c-mint: #5fc993;
+    --wb-c-sky: #62b2ee;
+    --wb-c-pink: #ec86b4;
+    --wb-c-peach: #f2a16b;
+  }
+}
+
+/* --- Ansicht: die Fläche füllt den Platz unter der Kopfzeile ------------- */
+
+.view--whiteboard {
+  max-width: none; height: 100%; display: flex; flex-direction: column;
+  padding: var(--sp-3) var(--sp-4) var(--sp-3);
+}
+.view--whiteboard .view__head { margin-bottom: var(--sp-3); }
+.view--whiteboard .view__head h1 { font-size: var(--fs-xl); }
+@media (max-width: 900px) { .view--whiteboard { padding: var(--sp-2); } }
+
+.wb {
+  position: relative; flex: 1 1 auto; min-height: 420px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--wb-paper); box-shadow: var(--shadow-1);
+  user-select: none; -webkit-user-select: none;
+}
+.wb:fullscreen { border: 0; border-radius: 0; }
+
+.wb-ink, .wb-live { position: absolute; inset: 0; display: block; }
+.wb-ink { touch-action: none; cursor: crosshair; }
+.wb-live { pointer-events: none; }
+
+.wb[data-tool="hand"] .wb-ink, .wb[data-space="true"] .wb-ink { cursor: grab; }
+.wb[data-panning="true"] .wb-ink { cursor: grabbing !important; }
+.wb[data-tool="eraser"] .wb-ink { cursor: none; }
+.wb[data-tool="stamp"] .wb-ink { cursor: cell; }
+.wb[data-tool="lasso"] .wb-ink { cursor: default; }
+
+/* --- Schwebende Leisten --------------------------------------------------- */
+
+.wb-tools, .wb-options, .wb-zoom, .wb-hint {
+  position: absolute; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow-2); z-index: 2;
+}
+
+.wb-tools {
+  left: var(--sp-3); top: var(--sp-3); display: flex; flex-direction: column; gap: 2px;
+  padding: 4px; border-radius: var(--r-md);
+}
+.wb-tool {
+  width: 40px; height: 40px; display: grid; place-items: center; border: 0;
+  border-radius: var(--r-sm); background: transparent; color: var(--ink-2); cursor: pointer;
+  font: inherit; padding: 0;
+}
+.wb-tool:hover { background: var(--surface-sunken); color: var(--ink); }
+.wb-tool[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.wb-tool:disabled { opacity: .4; cursor: default; }
+.wb-tool:disabled:hover { background: transparent; color: var(--ink-2); }
+.wb-tools__sep { height: 1px; background: var(--line); margin: 3px 4px; }
+
+.wb-options {
+  left: 66px; top: var(--sp-3); right: var(--sp-3); max-width: max-content;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  padding: 6px 10px; border-radius: var(--r-md); font-size: var(--fs-sm); color: var(--ink-2);
+}
+.wb-options__group { display: flex; align-items: center; gap: 4px; }
+.wb-options__label { color: var(--muted); font-size: var(--fs-xs); margin-right: 2px; }
+.wb-options__sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+.wb-options .btn--sm { min-height: 28px; }
+
+.wb-swatch {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--surface); padding: 0;
+  background: var(--sw); cursor: pointer; box-shadow: 0 0 0 1px var(--line-strong);
+}
+.wb-swatch:hover { transform: scale(1.08); }
+.wb-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.wb-swatch--soft { opacity: .8; }
+
+.wb-width, .wb-stamp, .wb-ustyle {
+  display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface); cursor: pointer; padding: 0; color: var(--ink-2); font: inherit;
+}
+.wb-width { width: 32px; height: 28px; }
+.wb-width i { display: block; border-radius: 50%; background: currentColor; }
+.wb-stamp { width: 36px; height: 30px; font-weight: 700; font-size: 12px; color: var(--stamp, var(--ink)); }
+.wb-stamp svg { width: 24px; height: 24px; }
+.wb-ustyle { width: 40px; height: 28px; }
+.wb-ustyle svg { width: 30px; height: 14px; }
+.wb-width:hover, .wb-stamp:hover, .wb-ustyle:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.wb-width[aria-pressed="true"], .wb-stamp[aria-pressed="true"], .wb-ustyle[aria-pressed="true"] {
+  border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.wb-seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
+.wb-seg button {
+  border: 0; background: var(--surface); padding: 4px 10px; font: inherit; font-size: var(--fs-sm);
+  cursor: pointer; color: var(--ink-2); min-height: 26px;
+}
+.wb-seg button + button { border-left: 1px solid var(--line); }
+.wb-seg button:hover { background: var(--surface-2); }
+.wb-seg button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+
+.wb-zoom {
+  right: var(--sp-3); bottom: var(--sp-3); display: flex; align-items: center; gap: 2px;
+  padding: 4px; border-radius: var(--r-md);
+}
+.wb-zoom button {
+  min-width: 32px; height: 32px; border: 0; background: transparent; border-radius: var(--r-sm);
+  font: inherit; font-size: var(--fs-sm); color: var(--ink-2); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px;
+}
+.wb-zoom button:hover { background: var(--surface-sunken); color: var(--ink); }
+.wb-zoom__level { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.wb-hint {
+  left: var(--sp-3); bottom: var(--sp-3); display: flex; align-items: center; gap: var(--sp-3);
+  font-size: var(--fs-xs); color: var(--muted); border-radius: var(--r-pill); padding: 5px 12px;
+  box-shadow: var(--shadow-1);
+}
+.wb-hint label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--ink-2); }
+.wb-hint input { margin: 0; }
+
+@media (max-width: 760px) {
+  .wb-tools { flex-direction: row; top: var(--sp-2); left: var(--sp-2); }
+  .wb-tool { width: 36px; height: 36px; }
+  .wb-tools__sep { width: 1px; height: auto; margin: 4px 3px; }
+  .wb-options { top: 58px; left: var(--sp-2); right: var(--sp-2); max-width: none; }
+  .wb-hint span { display: none; }
+  .wb-zoom__fit, .wb-zoom__reset { display: none; }
+}
+
+/* --- Übersicht: Kacheln mit Vorschau -------------------------------------- */
+
+.wb-thumb {
+  display: block; width: 100%; height: auto; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--wb-paper);
+}
+
+/* Kopfzeile des Editors: die Hintergrundwahl bleibt so breit wie ihr Inhalt */
+.view--whiteboard .view__actions { align-items: center; }
+.view--whiteboard .view__actions select { width: auto; min-width: 150px; }

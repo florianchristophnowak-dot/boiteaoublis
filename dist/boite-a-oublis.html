@@ -1,6 +1,6 @@
 <!--
-  Boîte à Oublis 1.1.0 – © Florian Nowak
-  Erzeugt am 2026-09-10T21:40:50.000Z aus app/index.html.
+  Boîte à Oublis 1.2.0 – © Florian Nowak
+  Erzeugt am 2026-11-06T22:07:25.556Z aus app/index.html.
   Diese Datei ist vollständig eigenständig: einfach im Browser öffnen.
 -->
 <!doctype html>
@@ -947,6 +947,216 @@ table.mini tr:last-child td { border-bottom: 0; }
 
   </style>
   <style>
+/* styles/whiteboard.css */
+/* ==========================================================================
+   Whiteboard – Handschrift auf einer unbegrenzten Fläche
+   Die Tinte wird auf eine Leinwand gezeichnet; die Farben dafür stehen hier
+   als Token, damit dieselbe Tinte auf hellem wie dunklem Papier lesbar bleibt.
+   Blau, Rot und Grün entsprechen den Genusfarben der App.
+   ========================================================================== */
+
+:root {
+  --wb-paper: #fdfcfa;
+  --wb-grid: #e3ddd3;
+  --wb-select: #2b7bb9;
+  --wb-muted: #6b7382;
+
+  --wb-c-ink: #1a1f28;
+  --wb-c-blue: #0f3f96;
+  --wb-c-red: #9c1223;
+  --wb-c-green: #10603a;
+  --wb-c-orange: #c26240;
+  --wb-c-amber: #9a6512;
+  --wb-c-purple: #5c4a99;
+  --wb-c-grey: #6b7382;
+
+  --wb-c-yellow: #f6d13c;
+  --wb-c-mint: #8fe3b3;
+  --wb-c-sky: #8ecbf5;
+  --wb-c-pink: #f5a3c7;
+  --wb-c-peach: #f9b98a;
+}
+
+:root[data-theme="dark"] {
+  --wb-paper: #181d25;
+  --wb-grid: #2c3542;
+  --wb-select: #63b3ed;
+  --wb-muted: #9aa4b2;
+
+  --wb-c-ink: #eef1f5;
+  --wb-c-blue: #7db0f7;
+  --wb-c-red: #f5919c;
+  --wb-c-green: #77d3a5;
+  --wb-c-orange: #e2916d;
+  --wb-c-amber: #dcb063;
+  --wb-c-purple: #b0a0ea;
+  --wb-c-grey: #9aa4b2;
+
+  --wb-c-yellow: #f2cf3a;
+  --wb-c-mint: #5fc993;
+  --wb-c-sky: #62b2ee;
+  --wb-c-pink: #ec86b4;
+  --wb-c-peach: #f2a16b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --wb-paper: #181d25;
+    --wb-grid: #2c3542;
+    --wb-select: #63b3ed;
+    --wb-muted: #9aa4b2;
+
+    --wb-c-ink: #eef1f5;
+    --wb-c-blue: #7db0f7;
+    --wb-c-red: #f5919c;
+    --wb-c-green: #77d3a5;
+    --wb-c-orange: #e2916d;
+    --wb-c-amber: #dcb063;
+    --wb-c-purple: #b0a0ea;
+    --wb-c-grey: #9aa4b2;
+
+    --wb-c-yellow: #f2cf3a;
+    --wb-c-mint: #5fc993;
+    --wb-c-sky: #62b2ee;
+    --wb-c-pink: #ec86b4;
+    --wb-c-peach: #f2a16b;
+  }
+}
+
+/* --- Ansicht: die Fläche füllt den Platz unter der Kopfzeile ------------- */
+
+.view--whiteboard {
+  max-width: none; height: 100%; display: flex; flex-direction: column;
+  padding: var(--sp-3) var(--sp-4) var(--sp-3);
+}
+.view--whiteboard .view__head { margin-bottom: var(--sp-3); }
+.view--whiteboard .view__head h1 { font-size: var(--fs-xl); }
+@media (max-width: 900px) { .view--whiteboard { padding: var(--sp-2); } }
+
+.wb {
+  position: relative; flex: 1 1 auto; min-height: 420px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--wb-paper); box-shadow: var(--shadow-1);
+  user-select: none; -webkit-user-select: none;
+}
+.wb:fullscreen { border: 0; border-radius: 0; }
+
+.wb-ink, .wb-live { position: absolute; inset: 0; display: block; }
+.wb-ink { touch-action: none; cursor: crosshair; }
+.wb-live { pointer-events: none; }
+
+.wb[data-tool="hand"] .wb-ink, .wb[data-space="true"] .wb-ink { cursor: grab; }
+.wb[data-panning="true"] .wb-ink { cursor: grabbing !important; }
+.wb[data-tool="eraser"] .wb-ink { cursor: none; }
+.wb[data-tool="stamp"] .wb-ink { cursor: cell; }
+.wb[data-tool="lasso"] .wb-ink { cursor: default; }
+
+/* --- Schwebende Leisten --------------------------------------------------- */
+
+.wb-tools, .wb-options, .wb-zoom, .wb-hint {
+  position: absolute; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow-2); z-index: 2;
+}
+
+.wb-tools {
+  left: var(--sp-3); top: var(--sp-3); display: flex; flex-direction: column; gap: 2px;
+  padding: 4px; border-radius: var(--r-md);
+}
+.wb-tool {
+  width: 40px; height: 40px; display: grid; place-items: center; border: 0;
+  border-radius: var(--r-sm); background: transparent; color: var(--ink-2); cursor: pointer;
+  font: inherit; padding: 0;
+}
+.wb-tool:hover { background: var(--surface-sunken); color: var(--ink); }
+.wb-tool[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.wb-tool:disabled { opacity: .4; cursor: default; }
+.wb-tool:disabled:hover { background: transparent; color: var(--ink-2); }
+.wb-tools__sep { height: 1px; background: var(--line); margin: 3px 4px; }
+
+.wb-options {
+  left: 66px; top: var(--sp-3); right: var(--sp-3); max-width: max-content;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  padding: 6px 10px; border-radius: var(--r-md); font-size: var(--fs-sm); color: var(--ink-2);
+}
+.wb-options__group { display: flex; align-items: center; gap: 4px; }
+.wb-options__label { color: var(--muted); font-size: var(--fs-xs); margin-right: 2px; }
+.wb-options__sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+.wb-options .btn--sm { min-height: 28px; }
+
+.wb-swatch {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--surface); padding: 0;
+  background: var(--sw); cursor: pointer; box-shadow: 0 0 0 1px var(--line-strong);
+}
+.wb-swatch:hover { transform: scale(1.08); }
+.wb-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.wb-swatch--soft { opacity: .8; }
+
+.wb-width, .wb-stamp, .wb-ustyle {
+  display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface); cursor: pointer; padding: 0; color: var(--ink-2); font: inherit;
+}
+.wb-width { width: 32px; height: 28px; }
+.wb-width i { display: block; border-radius: 50%; background: currentColor; }
+.wb-stamp { width: 36px; height: 30px; font-weight: 700; font-size: 12px; color: var(--stamp, var(--ink)); }
+.wb-stamp svg { width: 24px; height: 24px; }
+.wb-ustyle { width: 40px; height: 28px; }
+.wb-ustyle svg { width: 30px; height: 14px; }
+.wb-width:hover, .wb-stamp:hover, .wb-ustyle:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.wb-width[aria-pressed="true"], .wb-stamp[aria-pressed="true"], .wb-ustyle[aria-pressed="true"] {
+  border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.wb-seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
+.wb-seg button {
+  border: 0; background: var(--surface); padding: 4px 10px; font: inherit; font-size: var(--fs-sm);
+  cursor: pointer; color: var(--ink-2); min-height: 26px;
+}
+.wb-seg button + button { border-left: 1px solid var(--line); }
+.wb-seg button:hover { background: var(--surface-2); }
+.wb-seg button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+
+.wb-zoom {
+  right: var(--sp-3); bottom: var(--sp-3); display: flex; align-items: center; gap: 2px;
+  padding: 4px; border-radius: var(--r-md);
+}
+.wb-zoom button {
+  min-width: 32px; height: 32px; border: 0; background: transparent; border-radius: var(--r-sm);
+  font: inherit; font-size: var(--fs-sm); color: var(--ink-2); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px;
+}
+.wb-zoom button:hover { background: var(--surface-sunken); color: var(--ink); }
+.wb-zoom__level { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.wb-hint {
+  left: var(--sp-3); bottom: var(--sp-3); display: flex; align-items: center; gap: var(--sp-3);
+  font-size: var(--fs-xs); color: var(--muted); border-radius: var(--r-pill); padding: 5px 12px;
+  box-shadow: var(--shadow-1);
+}
+.wb-hint label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--ink-2); }
+.wb-hint input { margin: 0; }
+
+@media (max-width: 760px) {
+  .wb-tools { flex-direction: row; top: var(--sp-2); left: var(--sp-2); }
+  .wb-tool { width: 36px; height: 36px; }
+  .wb-tools__sep { width: 1px; height: auto; margin: 4px 3px; }
+  .wb-options { top: 58px; left: var(--sp-2); right: var(--sp-2); max-width: none; }
+  .wb-hint span { display: none; }
+  .wb-zoom__fit, .wb-zoom__reset { display: none; }
+}
+
+/* --- Übersicht: Kacheln mit Vorschau -------------------------------------- */
+
+.wb-thumb {
+  display: block; width: 100%; height: auto; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--wb-paper);
+}
+
+/* Kopfzeile des Editors: die Hintergrundwahl bleibt so breit wie ihr Inhalt */
+.view--whiteboard .view__actions { align-items: center; }
+.view--whiteboard .view__actions select { width: auto; min-width: 150px; }
+
+  </style>
+  <style>
 /* styles/projection.css */
 /* ==========================================================================
    Rahmen der Projektion innerhalb der Lehreransicht
@@ -1420,14 +1630,18 @@ body[data-projecting="true"] .toast-root { display: none; }
    und Satz. Ein dort angelegtes Element ist ein gewöhnlicher Eintrag des
    Bestands und lässt sich jederzeit um Artikel, Übersetzung, Beispiel und
    alles Weitere ergänzen.
+
+   Das Whiteboard schließlich ist eine unbegrenzte Fläche für Handschrift:
+   Striche, Unterstreichungen und Korrekturzeichen werden als Vektoren in
+   Weltkoordinaten gespeichert und bleiben in jeder Vergrößerung scharf.
    ========================================================================== */
 (function (BAO) {
   'use strict';
 
   var util = BAO.util;
 
-  var APP_VERSION = '1.1.0';
-  var SCHEMA_VERSION = 2;
+  var APP_VERSION = '1.2.0';
+  var SCHEMA_VERSION = 3;
   var EXPORT_KIND = 'boite-a-oublis.backup';
 
   /* --- Status eines Wortschatzeintrags ------------------------------------ */
@@ -1663,6 +1877,65 @@ body[data-projecting="true"] .toast-root { display: none; }
     }, data || {});
   }
 
+  /* --- Whiteboard: unbegrenzte Fläche für Handschrift ----------------------
+     Ein Whiteboard gehört wie eine Tafel einer Lerngruppe. Es enthält eine
+     geordnete Liste von Strichen in Weltkoordinaten (Pixel bei Zoomstufe 1);
+     die Fläche selbst hat keinen Rand. Ein Strich ist je nach Werkzeug:
+
+       pen | marker | highlighter
+         { id, tool, color, width, points: [x, y, p, x, y, p, …] }
+         p = Druck 0…1 (Stift) – bestimmt die Breite entlang des Strichs
+       underline   (Unterstreichung wie in Capy-note: waagerecht, mit Stil)
+         { id, tool, color, width, x, y, w, style, double, hook }
+         style = solid | dashed | dotted | wavy; hook = Häkchen am rechten Ende
+       stamp       (Korrekturzeichen: handschriftliches Häkchen u. a.)
+         { id, tool, color, variant, text, x, y, size }
+         variant = check | check_crossed | omission | text
+
+     Farben sind Schlüssel einer festen Palette (ink, blue, red, …), damit
+     dieselbe Tinte auf hellem und dunklem Grund lesbar bleibt. */
+
+  var WHITEBOARD_BACKGROUNDS = [
+    { id: 'plain', label: 'Blanko' },
+    { id: 'lines', label: 'Linien' },
+    { id: 'grid',  label: 'Kästchen' },
+    { id: 'dots',  label: 'Punkte' }
+  ];
+  var STROKE_TOOLS = ['pen', 'marker', 'highlighter', 'underline', 'stamp'];
+  var UNDERLINE_STYLES = ['solid', 'dashed', 'dotted', 'wavy'];
+  var STAMP_VARIANTS = ['check', 'check_crossed', 'omission', 'text'];
+
+  function makeWhiteboard(data) {
+    return Object.assign({
+      id: util.uid('wbd'),
+      subjectId: '',
+      groupId: '',
+      unitId: '',
+      title: 'Neues Whiteboard',
+      note: '',
+      favorite: false,
+      background: 'plain',    // plain | lines | grid | dots
+      strokes: [],
+      view: { cx: 0, cy: 0, zoom: 1 },   // zuletzt sichtbare Mitte und Zoomstufe
+      createdAt: util.nowISO(),
+      updatedAt: util.nowISO(),
+      lastUsedAt: ''
+    }, data || {});
+  }
+
+  function makeStroke(data) {
+    var tool = data && STROKE_TOOLS.indexOf(data.tool) >= 0 ? data.tool : 'pen';
+    var base = { id: util.uid('stk'), tool: tool, color: 'ink', width: 2.4 };
+    if (tool === 'underline') {
+      Object.assign(base, { x: 0, y: 0, w: 0, style: 'solid', double: false, hook: false });
+    } else if (tool === 'stamp') {
+      Object.assign(base, { variant: 'check', text: '', x: 0, y: 0, size: 30, color: 'red' });
+    } else {
+      base.points = [];
+    }
+    return Object.assign(base, data || {});
+  }
+
   /* --- Voreinstellungen ---------------------------------------------------- */
   function defaultSettings() {
     return {
@@ -1678,6 +1951,8 @@ body[data-projecting="true"] .toast-root { display: none; }
       maxItemsPerSlide: 12,
       showProgressOnStage: true,
       railCollapsed: false,
+      // Zuletzt gewählte Werkzeuge des Whiteboards (siehe whiteboard/canvas.js)
+      whiteboard: {},
       scenes: SCENES.slice(),
       fieldLevels: FIELDS.reduce(function (acc, f) { acc[f.key] = f.level; return acc; }, {})
     };
@@ -1700,11 +1975,12 @@ body[data-projecting="true"] .toast-root { display: none; }
       lexemes: [],
       starters: [],
       banks: [],
-      boards: []
+      boards: [],
+      whiteboards: []
     };
   }
 
-  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'functions'];
+  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
 
   /* --- Prüfung und Reparatur ----------------------------------------------- */
 
@@ -1788,6 +2064,51 @@ body[data-projecting="true"] .toast-root { display: none; }
     });
     if (lostOnBoards) warnings.push(lostOnBoards + ' Tafel-Elemente verwiesen ins Leere und wurden entfernt.');
 
+    // Whiteboards: Striche ohne brauchbare Geometrie fallen weg, Zahlen werden
+    // auf endliche Werte zurückgeholt – ein einziger NaN ließe sonst die ganze
+    // Fläche leer erscheinen.
+    var brokenStrokes = 0;
+    state.whiteboards.forEach(function (wb) {
+      if (!Array.isArray(wb.strokes)) wb.strokes = [];
+      if (WHITEBOARD_BACKGROUNDS.map(function (b) { return b.id; }).indexOf(wb.background) < 0) wb.background = 'plain';
+      var view = wb.view && typeof wb.view === 'object' ? wb.view : {};
+      wb.view = {
+        cx: isFinite(view.cx) ? Number(view.cx) : 0,
+        cy: isFinite(view.cy) ? Number(view.cy) : 0,
+        zoom: isFinite(view.zoom) ? util.clamp(Number(view.zoom), 0.1, 8) : 1
+      };
+      var seenStrokes = Object.create(null);
+      wb.strokes = wb.strokes.filter(function (stroke) {
+        if (!stroke || typeof stroke !== 'object' || STROKE_TOOLS.indexOf(stroke.tool) < 0) { brokenStrokes += 1; return false; }
+        if (!stroke.id || seenStrokes[stroke.id]) stroke.id = util.uid('stk');
+        seenStrokes[stroke.id] = true;
+        if (typeof stroke.color !== 'string' || !stroke.color) stroke.color = stroke.tool === 'stamp' ? 'red' : 'ink';
+        stroke.width = isFinite(stroke.width) && stroke.width > 0 ? Number(stroke.width) : 2.4;
+        if (stroke.tool === 'underline') {
+          if (!isFinite(stroke.x) || !isFinite(stroke.y) || !isFinite(stroke.w) || stroke.w <= 0) { brokenStrokes += 1; return false; }
+          if (UNDERLINE_STYLES.indexOf(stroke.style) < 0) stroke.style = 'solid';
+          stroke.double = !!stroke.double;
+          stroke.hook = !!stroke.hook;
+          return true;
+        }
+        if (stroke.tool === 'stamp') {
+          if (!isFinite(stroke.x) || !isFinite(stroke.y)) { brokenStrokes += 1; return false; }
+          if (STAMP_VARIANTS.indexOf(stroke.variant) < 0) stroke.variant = 'check';
+          stroke.text = typeof stroke.text === 'string' ? stroke.text.slice(0, 12) : '';
+          stroke.size = isFinite(stroke.size) && stroke.size > 0 ? Number(stroke.size) : 30;
+          return true;
+        }
+        if (!Array.isArray(stroke.points) || stroke.points.length < 3
+          || !stroke.points.every(function (n) { return typeof n === 'number' && isFinite(n); })) {
+          brokenStrokes += 1;
+          return false;
+        }
+        if (stroke.points.length % 3) stroke.points = stroke.points.slice(0, stroke.points.length - stroke.points.length % 3);
+        return true;
+      });
+    });
+    if (brokenStrokes) warnings.push(brokenStrokes + ' Striche auf Whiteboards waren beschädigt und wurden entfernt.');
+
     if (typeof state.schemaVersion !== 'number') {
       state.schemaVersion = SCHEMA_VERSION;
       warnings.push('Die Versionsangabe fehlte und wurde ergänzt.');
@@ -1826,7 +2147,13 @@ body[data-projecting="true"] .toast-root { display: none; }
     makeSection: makeSection,
     makeBankItem: makeBankItem,
     makeBoard: makeBoard,
-    makeBoardItem: makeBoardItem
+    makeBoardItem: makeBoardItem,
+    WHITEBOARD_BACKGROUNDS: WHITEBOARD_BACKGROUNDS,
+    STROKE_TOOLS: STROKE_TOOLS,
+    UNDERLINE_STYLES: UNDERLINE_STYLES,
+    STAMP_VARIANTS: STAMP_VARIANTS,
+    makeWhiteboard: makeWhiteboard,
+    makeStroke: makeStroke
   };
 })(window.BAO = window.BAO || {});
 
@@ -1878,6 +2205,16 @@ body[data-projecting="true"] .toast-root { display: none; }
         // Ein bestehender Bestand behält die vollständige Oberfläche. Wer die
         // einfache Grundform sehen möchte, schaltet sie in der Kopfzeile um.
         if (typeof state.settings.simpleMode !== 'boolean') state.settings.simpleMode = false;
+        return state;
+      }
+    },
+    {
+      to: 3,
+      describe: 'Whiteboards für Handschrift ergänzt',
+      run: function (state) {
+        if (!Array.isArray(state.whiteboards)) state.whiteboards = [];
+        if (!state.settings) state.settings = {};
+        if (!state.settings.whiteboard || typeof state.settings.whiteboard !== 'object') state.settings.whiteboard = {};
         return state;
       }
     }
@@ -2520,6 +2857,27 @@ body[data-projecting="true"] .toast-root { display: none; }
       })
     ];
 
+    /* --- Whiteboard: ein Beispiel mit Handschrift-Werkzeugen ---------------- */
+    var wave = [];
+    for (var i = 0; i <= 44; i++) {
+      wave.push(Math.round((40 + i * 4.2) * 10) / 10, Math.round((60 + Math.sin(i / 2.1) * 9) * 10) / 10,
+        Math.round((0.45 + 0.3 * Math.abs(Math.sin(i / 3))) * 100) / 100);
+    }
+    state.whiteboards = [
+      schema.makeWhiteboard({
+        id: 'wbd_fr_notes', subjectId: 'sub_fr', groupId: 'grp_fr9b', unitId: 'unt_fr_stage',
+        title: 'Tafelbild – Handschrift', background: 'lines', favorite: false,
+        note: 'Mit dem Stift schreiben, mit einem Finger verschieben, mit zwei Fingern zoomen.',
+        strokes: [
+          schema.makeStroke({ tool: 'pen', color: 'ink', width: 2.4, points: wave }),
+          schema.makeStroke({ tool: 'highlighter', color: 'yellow', width: 20, points: [60, 60, 0.5, 150, 60, 0.5] }),
+          schema.makeStroke({ tool: 'underline', color: 'red', width: 2.4, x: 40, y: 82, w: 190, style: 'wavy', double: false, hook: true }),
+          schema.makeStroke({ tool: 'stamp', variant: 'check', color: 'red', x: 262, y: 60, size: 30 }),
+          schema.makeStroke({ tool: 'stamp', variant: 'text', text: 'Gr', color: 'red', x: 306, y: 60, size: 30 })
+        ]
+      })
+    ];
+
     /* --- Ausgangslage der Oberfläche -------------------------------------- */
     // Ein frischer Bestand startet in der einfachen Grundform. Die
     // vollständige Ansicht ist einen Klick in der Kopfzeile entfernt.
@@ -2561,6 +2919,7 @@ body[data-projecting="true"] .toast-root { display: none; }
   function starter(state, id) { return byId(state.starters, id); }
   function bank(state, id) { return byId(state.banks, id); }
   function board(state, id) { return byId(state.boards || [], id); }
+  function whiteboard(state, id) { return byId(state.whiteboards || [], id); }
 
   function functions(state) { return util.sortBy(state.functions, function (f) { return f.order; }); }
   function functionLabel(state, id) {
@@ -2616,6 +2975,16 @@ body[data-projecting="true"] .toast-root { display: none; }
 
   function boardsOfGroup(state, groupId) {
     return (state.boards || []).filter(function (b) { return b.groupId === groupId; })
+      .sort(function (a, b) {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+        var la = a.lastUsedAt || a.updatedAt || '';
+        var lb = b.lastUsedAt || b.updatedAt || '';
+        return lb.localeCompare(la);
+      });
+  }
+
+  function whiteboardsOfGroup(state, groupId) {
+    return (state.whiteboards || []).filter(function (w) { return w.groupId === groupId; })
       .sort(function (a, b) {
         if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
         var la = a.lastUsedAt || a.updatedAt || '';
@@ -2771,18 +3140,20 @@ body[data-projecting="true"] .toast-root { display: none; }
       lexemes: state.lexemes.length,
       starters: state.starters.length,
       banks: state.banks.length,
-      boards: (state.boards || []).length
+      boards: (state.boards || []).length,
+      whiteboards: (state.whiteboards || []).length
     };
   }
 
   BAO.select = {
     byId: byId,
     subjects: subjects, subject: subject, group: group, unit: unit,
-    lexeme: lexeme, starter: starter, bank: bank, board: board,
+    lexeme: lexeme, starter: starter, bank: bank, board: board, whiteboard: whiteboard,
     functions: functions, functionLabel: functionLabel,
     groupsOfSubject: groupsOfSubject, unitsOfGroup: unitsOfGroup, currentUnit: currentUnit,
     lexemesOfGroup: lexemesOfGroup, startersOfGroup: startersOfGroup, banksOfGroup: banksOfGroup,
-    boardsOfGroup: boardsOfGroup, resolveBoardItem: resolveBoardItem, boardEntries: boardEntries,
+    boardsOfGroup: boardsOfGroup, whiteboardsOfGroup: whiteboardsOfGroup,
+    resolveBoardItem: resolveBoardItem, boardEntries: boardEntries,
     belongsToBoard: belongsToBoard, isBareEntry: isBareEntry,
     statusCounts: statusCounts, bankItemCount: bankItemCount, resolveItem: resolveItem, bankIsEmpty: bankIsEmpty,
     topicsOfGroup: topicsOfGroup, tagsOfGroup: tagsOfGroup, usageOfEntry: usageOfEntry,
@@ -2860,6 +3231,14 @@ body[data-projecting="true"] .toast-root { display: none; }
       if (s) results.push({ type: 'board', score: s + 16, title: b.title,
         meta: 'Tafel · ' + (b.items || []).length + ' Elemente' + (g ? ' · ' + g.name : ''),
         id: b.id, groupId: b.groupId, subjectId: b.subjectId });
+    });
+
+    (state.whiteboards || []).forEach(function (w) {
+      var g = select.group(state, w.groupId);
+      var s = score(w.title + ' ' + (w.note || ''), needle);
+      if (s) results.push({ type: 'whiteboard', score: s + 16, title: w.title,
+        meta: 'Whiteboard · ' + (w.strokes || []).length + ' Striche' + (g ? ' · ' + g.name : ''),
+        id: w.id, groupId: w.groupId, subjectId: w.subjectId });
     });
 
     state.units.forEach(function (u) {
@@ -3170,14 +3549,15 @@ body[data-projecting="true"] .toast-root { display: none; }
       lexemes: (state.lexemes || []).length,
       starters: (state.starters || []).length,
       banks: (state.banks || []).length,
-      boards: (state.boards || []).length
+      boards: (state.boards || []).length,
+      whiteboards: (state.whiteboards || []).length
     };
   }
 
   var COUNT_LABELS = {
     subjects: 'Fächer', groups: 'Lerngruppen', units: 'Unterrichtsreihen',
     lexemes: 'Wortschatzeinträge', starters: 'Satzanfänge', banks: 'Wortbanken',
-    boards: 'Tafeln'
+    boards: 'Tafeln', whiteboards: 'Whiteboards'
   };
 
   function buildExport(state) {
@@ -3259,7 +3639,7 @@ body[data-projecting="true"] .toast-root { display: none; }
 
   /* --- Zusammenführen ------------------------------------------------------ */
 
-  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'functions'];
+  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
 
   function newerThan(a, b) {
     var ta = (a && (a.updatedAt || a.createdAt)) || '';
@@ -3652,7 +4032,20 @@ body[data-projecting="true"] .toast-root { display: none; }
     beamer: 'M3 8h18v8H3zM7 16v3M17 16v3M12 8V5',
     focus: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
     school: 'M12 4 3 8.5 12 13l9-4.5zM7 11v5.2c0 .7 2.2 2.3 5 2.3s5-1.6 5-2.3V11',
-    archive: 'M3.5 6.5h17v3.5h-17zM5.5 10v8.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V10M10 13.5h4'
+    archive: 'M3.5 6.5h17v3.5h-17zM5.5 10v8.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V10M10 13.5h4',
+    // Whiteboard und seine Werkzeuge
+    whiteboard: 'M3 5h18v12H3zM9 17l-2 4M15 17l2 4M7 12c1.5-2.2 3-2.2 4.5 0s3 2.2 4.5 0',
+    pen: 'M4 20l4.2-1.1L18.5 8.6a2.2 2.2 0 0 0-3.1-3.1L5.1 15.8zM13.2 7.7l3.1 3.1',
+    marker: 'M4 21h16M6.5 17.5l8-8 3.5 3.5-8 8H6.5zM13.5 8.5l2-2a1.5 1.5 0 0 1 2.1 0l1.4 1.4a1.5 1.5 0 0 1 0 2.1l-2 2',
+    highlighter: 'M3 21h18M8.5 17.5 5.5 14.5l8-8 5 5-8 8zM5.5 14.5l-1.5 3M13.5 6.5l1.5-1.5 5 5-1.5 1.5',
+    underline: 'M6.5 4v6.5a5.5 5.5 0 0 0 11 0V4M4.5 20h15',
+    stamp: 'M4.5 12.5 9.5 18 19.5 6.5',
+    eraser: 'M5.5 16 14 7.5a2 2 0 0 1 2.8 0l2.7 2.7a2 2 0 0 1 0 2.8L13 19.5H8.5zM9.8 11.7l5.5 5.5M4 20h16',
+    lasso: 'M12 4c4.4 0 8 2.5 8 5.5S16.4 15 12 15 4 12.5 4 9.5 7.6 4 12 4zM8.2 14.6c-1.4 1.8-1.5 3.8-.2 5.9M8 18.2c1.3-.5 2.6-.2 3.7 1',
+    hand: 'M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V12M14 11.5V6a1.5 1.5 0 0 1 3 0v7.5M17 13V9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-5-2.7L5 13.5a1.5 1.5 0 0 1 2.5-1.6L8 13',
+    undo: 'M9 14 4 9l5-5M4 9h9.5a5.5 5.5 0 0 1 0 11H10',
+    redo: 'm15 14 5-5-5-5M20 9h-9.5a5.5 5.5 0 0 0 0 11H14',
+    fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z'
   };
 
   function icon(name, size) {
@@ -7056,6 +7449,1822 @@ body { position: relative; }
 })(window.BAO = window.BAO || {});
 
   </script>
+<!-- Whiteboard: Handschrift auf unbegrenzter Fläche -->
+  <script>
+/* js/whiteboard/ink.js */
+/* ==========================================================================
+   Whiteboard – Geometrie der Striche
+   Reine Rechenfunktionen ohne DOM: Begrenzungsrahmen, Radieren (ganz und
+   teilweise), Lasso-Auswahl, Verschieben und Einpassen der Ansicht.
+   Alle Koordinaten sind Weltkoordinaten – Pixel bei Zoomstufe 1. Die Fläche
+   hat keinen Rand; die Ansicht bestimmt nur, welcher Ausschnitt zu sehen ist.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+
+  /* --- Breite ----------------------------------------------------------------- */
+
+  /**
+   * Linienbreite an einer Stelle des Strichs aus dem gemessenen Druck.
+   * Ohne Druckangabe (Maus, viele Touchscreens) meldet der Browser 0,5 –
+   * dann ergibt sich genau die Grundbreite des Werkzeugs.
+   */
+  function widthAt(stroke, pressure) {
+    var p = typeof pressure === 'number' && pressure > 0 ? Math.min(pressure, 1) : 0.5;
+    if (stroke.tool === 'pen') return stroke.width * (0.55 + 0.9 * p);
+    if (stroke.tool === 'marker') return stroke.width * (0.7 + 0.6 * p);
+    return stroke.width;
+  }
+
+  function maxWidth(stroke) { return widthAt(stroke, 1); }
+
+  /* Maße der Unterstreichung – dieselben Verhältnisse wie in Capy-note, damit
+     eine dort vertraute Linie hier genauso aussieht. */
+  function hookLength(width) { return Math.max(6, width * 3.2); }
+  function doubleGap(width) { return Math.max(2.8, width * 1.35); }
+  function waveAmplitude(width) { return 2 + width * 0.3; }
+  function waveLength(width) { return 6 + width * 0.5; }
+
+  /** Die waagerechten Linien einer Unterstreichung (eine oder zwei). */
+  function underlineLines(stroke) {
+    if (!stroke.double) return [stroke.y];
+    var gap = doubleGap(stroke.width);
+    return [stroke.y - gap / 2, stroke.y + gap / 2];
+  }
+
+  /** Das Häkchen am rechten Ende als Strecke [x1, y1, x2, y2] – oder null. */
+  function underlineHook(stroke) {
+    if (!stroke.hook) return null;
+    var lines = underlineLines(stroke);
+    var y = lines[lines.length - 1];
+    var len = hookLength(stroke.width);
+    var x = stroke.x + stroke.w;
+    return [x, y, x - len * 0.28, y + len * 0.52];
+  }
+
+  /* --- Begrenzungsrahmen ------------------------------------------------------- */
+
+  /** Rahmen eines Strichs einschließlich seiner Breite – null ohne Geometrie. */
+  function bbox(stroke) {
+    if (stroke.tool === 'underline') {
+      var pad = stroke.width + (stroke.double ? doubleGap(stroke.width) / 2 : 0)
+        + (stroke.style === 'wavy' ? waveAmplitude(stroke.width) : 0);
+      return {
+        x0: stroke.x - stroke.width, y0: stroke.y - pad,
+        x1: stroke.x + stroke.w + stroke.width,
+        y1: stroke.y + pad + (stroke.hook ? hookLength(stroke.width) * 0.52 : 0)
+      };
+    }
+    if (stroke.tool === 'stamp') {
+      var half = stroke.size / 2 + 2;
+      return { x0: stroke.x - half, y0: stroke.y - half, x1: stroke.x + half, y1: stroke.y + half };
+    }
+    var pts = stroke.points || [];
+    var r = maxWidth(stroke) / 2;
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (var i = 0; i + 1 < pts.length; i += 3) {
+      if (pts[i] < x0) x0 = pts[i];
+      if (pts[i] > x1) x1 = pts[i];
+      if (pts[i + 1] < y0) y0 = pts[i + 1];
+      if (pts[i + 1] > y1) y1 = pts[i + 1];
+    }
+    if (x0 === Infinity) return null;
+    return { x0: x0 - r, y0: y0 - r, x1: x1 + r, y1: y1 + r };
+  }
+
+  function unionBox(a, b) {
+    if (!a) return b ? { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 } : null;
+    if (!b) return { x0: a.x0, y0: a.y0, x1: a.x1, y1: a.y1 };
+    return {
+      x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),
+      x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1)
+    };
+  }
+
+  function boxesIntersect(a, b) {
+    return !!a && !!b && a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
+  }
+
+  function pointInBox(x, y, box) {
+    return !!box && x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+  }
+
+  /** Rahmen um alles, was auf der Fläche liegt. */
+  function contentBox(strokes) {
+    var box = null;
+    (strokes || []).forEach(function (stroke) { box = unionBox(box, bbox(stroke)); });
+    return box;
+  }
+
+  /* --- Abstände -------------------------------------------------------------- */
+
+  function distPointSegment(px, py, ax, ay, bx, by) {
+    var dx = bx - ax;
+    var dy = by - ay;
+    if (dx === 0 && dy === 0) return Math.hypot(px - ax, py - ay);
+    var t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  function orientation(ax, ay, bx, by, cx, cy) {
+    var v = (by - ay) * (cx - bx) - (bx - ax) * (cy - by);
+    return v > 1e-9 ? 1 : (v < -1e-9 ? -1 : 0);
+  }
+
+  function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    var o1 = orientation(ax, ay, bx, by, cx, cy);
+    var o2 = orientation(ax, ay, bx, by, dx, dy);
+    var o3 = orientation(cx, cy, dx, dy, ax, ay);
+    var o4 = orientation(cx, cy, dx, dy, bx, by);
+    return o1 !== o2 && o3 !== o4 && o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0;
+  }
+
+  function distSegmentSegment(ax, ay, bx, by, cx, cy, dx, dy) {
+    if (segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy)) return 0;
+    return Math.min(
+      distPointSegment(ax, ay, cx, cy, dx, dy), distPointSegment(bx, by, cx, cy, dx, dy),
+      distPointSegment(cx, cy, ax, ay, bx, by), distPointSegment(dx, dy, ax, ay, bx, by)
+    );
+  }
+
+  /* --- Radieren -------------------------------------------------------------- */
+
+  /**
+   * Berührt der Radierer – eine Kapsel von (ax, ay) nach (bx, by) mit dem
+   * Radius r – den Strich?
+   */
+  function strokeHit(stroke, ax, ay, bx, by, r) {
+    if (stroke.tool === 'underline') {
+      var reach = r + stroke.width / 2 + (stroke.style === 'wavy' ? waveAmplitude(stroke.width) : 0);
+      var lines = underlineLines(stroke);
+      for (var l = 0; l < lines.length; l++) {
+        if (distSegmentSegment(stroke.x, lines[l], stroke.x + stroke.w, lines[l], ax, ay, bx, by) <= reach) return true;
+      }
+      var hook = underlineHook(stroke);
+      return !!hook && distSegmentSegment(hook[0], hook[1], hook[2], hook[3], ax, ay, bx, by) <= reach;
+    }
+    if (stroke.tool === 'stamp') {
+      return distPointSegment(stroke.x, stroke.y, ax, ay, bx, by) <= r + stroke.size * 0.45;
+    }
+    var pts = stroke.points;
+    var reachPen = r + maxWidth(stroke) / 2;
+    if (pts.length < 3) return false;
+    if (pts.length === 3) return distPointSegment(pts[0], pts[1], ax, ay, bx, by) <= reachPen;
+    for (var i = 3; i < pts.length; i += 3) {
+      if (distSegmentSegment(pts[i - 3], pts[i - 2], pts[i], pts[i + 1], ax, ay, bx, by) <= reachPen) return true;
+    }
+    return false;
+  }
+
+  function eraserBox(ax, ay, bx, by, r) {
+    return { x0: Math.min(ax, bx) - r, y0: Math.min(ay, by) - r, x1: Math.max(ax, bx) + r, y1: Math.max(ay, by) + r };
+  }
+
+  /** Nimmt jeden Strich ganz weg, den der Radierer berührt. */
+  function eraseWhole(strokes, ax, ay, bx, by, r) {
+    var box = eraserBox(ax, ay, bx, by, r);
+    var changed = false;
+    var out = strokes.filter(function (stroke) {
+      if (!boxesIntersect(bbox(stroke), box)) return true;
+      if (!strokeHit(stroke, ax, ay, bx, by, r)) return true;
+      changed = true;
+      return false;
+    });
+    return { strokes: changed ? out : strokes, changed: changed };
+  }
+
+  /**
+   * Radiert nur, was unter dem Radierer liegt. Ein Strich zerfällt dabei in
+   * Teilstücke, die als eigene Striche mit derselben Tinte weiterleben.
+   * Unterstreichungen und Korrekturzeichen verschwinden als Ganzes.
+   */
+  function erasePartial(strokes, ax, ay, bx, by, r) {
+    var box = eraserBox(ax, ay, bx, by, r);
+    var changed = false;
+    var out = [];
+
+    strokes.forEach(function (stroke) {
+      if (!boxesIntersect(bbox(stroke), box)) { out.push(stroke); return; }
+      if (stroke.tool === 'underline' || stroke.tool === 'stamp') {
+        if (strokeHit(stroke, ax, ay, bx, by, r)) changed = true; else out.push(stroke);
+        return;
+      }
+
+      var pts = stroke.points;
+      var n = pts.length / 3;
+      var reach = r + maxWidth(stroke) / 2;
+      var hitPoint = new Array(n);
+      var hitSeg = new Array(n);
+      var any = false;
+      var i;
+      for (i = 0; i < n; i++) {
+        hitPoint[i] = distPointSegment(pts[3 * i], pts[3 * i + 1], ax, ay, bx, by) <= reach;
+        if (hitPoint[i]) any = true;
+      }
+      // Schnelle Striche haben weite Lücken zwischen den Punkten – auch ein
+      // Teilstück ohne getroffenen Punkt kann unter dem Radierer liegen.
+      for (i = 0; i + 1 < n; i++) {
+        hitSeg[i] = !hitPoint[i] && !hitPoint[i + 1]
+          && distSegmentSegment(pts[3 * i], pts[3 * i + 1], pts[3 * i + 3], pts[3 * i + 4], ax, ay, bx, by) <= reach;
+        if (hitSeg[i]) any = true;
+      }
+      if (!any) { out.push(stroke); return; }
+      changed = true;
+
+      var run = [];
+      function flush() {
+        if (run.length >= 2) {
+          var points = [];
+          run.forEach(function (index) { points.push(pts[3 * index], pts[3 * index + 1], pts[3 * index + 2]); });
+          out.push(Object.assign({}, stroke, { id: util.uid('stk'), points: points }));
+        }
+        run = [];
+      }
+      for (i = 0; i < n; i++) {
+        if (hitPoint[i]) { flush(); continue; }
+        run.push(i);
+        if (hitSeg[i]) flush();
+      }
+      flush();
+    });
+
+    return { strokes: changed ? out : strokes, changed: changed };
+  }
+
+  /* --- Lasso ------------------------------------------------------------------ */
+
+  /** Liegt der Punkt im Polygon (flache Liste [x, y, x, y, …])? */
+  function pointInPolygon(x, y, poly) {
+    var inside = false;
+    var n = poly.length / 2;
+    for (var i = 0, j = n - 1; i < n; j = i++) {
+      var xi = poly[2 * i], yi = poly[2 * i + 1];
+      var xj = poly[2 * j], yj = poly[2 * j + 1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  function polygonBox(poly) {
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (var i = 0; i + 1 < poly.length; i += 2) {
+      if (poly[i] < x0) x0 = poly[i];
+      if (poly[i] > x1) x1 = poly[i];
+      if (poly[i + 1] < y0) y0 = poly[i + 1];
+      if (poly[i + 1] > y1) y1 = poly[i + 1];
+    }
+    return x0 === Infinity ? null : { x0: x0, y0: y0, x1: x1, y1: y1 };
+  }
+
+  /** Stichproben eines Strichs für die Auswahl: höchstens 24 Punkte. */
+  function samplePoints(stroke) {
+    if (stroke.tool === 'stamp') return [stroke.x, stroke.y];
+    if (stroke.tool === 'underline') {
+      var out = [];
+      for (var k = 0; k <= 4; k++) out.push(stroke.x + stroke.w * k / 4, stroke.y);
+      return out;
+    }
+    var pts = stroke.points;
+    var n = pts.length / 3;
+    var step = Math.max(1, Math.floor(n / 24));
+    var samples = [];
+    for (var i = 0; i < n; i += step) samples.push(pts[3 * i], pts[3 * i + 1]);
+    return samples;
+  }
+
+  /**
+   * Wählt die Striche aus, die mehrheitlich innerhalb des Lassos liegen.
+   * Ein Strich zählt als eingekreist, wenn mehr als die Hälfte seiner
+   * Stichproben im Polygon liegt.
+   */
+  function lassoSelect(strokes, poly) {
+    var box = polygonBox(poly);
+    if (!box || poly.length < 6) return [];
+    var ids = [];
+    strokes.forEach(function (stroke) {
+      if (!boxesIntersect(bbox(stroke), box)) return;
+      var samples = samplePoints(stroke);
+      var inside = 0;
+      var total = samples.length / 2;
+      for (var i = 0; i + 1 < samples.length; i += 2) {
+        if (pointInPolygon(samples[i], samples[i + 1], poly)) inside += 1;
+      }
+      if (inside * 2 > total) ids.push(stroke.id);
+    });
+    return ids;
+  }
+
+  /* --- Verschieben ------------------------------------------------------------ */
+
+  function round1(v) { return Math.round(v * 10) / 10; }
+
+  /** Liefert eine verschobene Kopie des Strichs – das Original bleibt. */
+  function translate(stroke, dx, dy) {
+    if (stroke.tool === 'underline' || stroke.tool === 'stamp') {
+      return Object.assign({}, stroke, { x: round1(stroke.x + dx), y: round1(stroke.y + dy) });
+    }
+    var pts = stroke.points;
+    var moved = new Array(pts.length);
+    for (var i = 0; i < pts.length; i += 3) {
+      moved[i] = round1(pts[i] + dx);
+      moved[i + 1] = round1(pts[i + 1] + dy);
+      moved[i + 2] = pts[i + 2];
+    }
+    return Object.assign({}, stroke, { points: moved });
+  }
+
+  /* --- Ansicht ---------------------------------------------------------------- */
+
+  /** Ansicht (Mitte und Zoom), die den Rahmen vollständig zeigt. */
+  function fitView(box, width, height, padding, limits) {
+    limits = limits || {};
+    var pad = padding || 40;
+    var w = Math.max(box.x1 - box.x0, 1);
+    var h = Math.max(box.y1 - box.y0, 1);
+    var zoom = Math.min((width - 2 * pad) / w, (height - 2 * pad) / h, limits.max || 2);
+    zoom = util.clamp(zoom, limits.min || 0.15, limits.max || 6);
+    return { cx: (box.x0 + box.x1) / 2, cy: (box.y0 + box.y1) / 2, zoom: zoom };
+  }
+
+  BAO.ink = {
+    widthAt: widthAt,
+    maxWidth: maxWidth,
+    hookLength: hookLength,
+    doubleGap: doubleGap,
+    waveAmplitude: waveAmplitude,
+    waveLength: waveLength,
+    underlineLines: underlineLines,
+    underlineHook: underlineHook,
+    bbox: bbox,
+    unionBox: unionBox,
+    boxesIntersect: boxesIntersect,
+    pointInBox: pointInBox,
+    contentBox: contentBox,
+    distPointSegment: distPointSegment,
+    distSegmentSegment: distSegmentSegment,
+    strokeHit: strokeHit,
+    eraseWhole: eraseWhole,
+    erasePartial: erasePartial,
+    pointInPolygon: pointInPolygon,
+    polygonBox: polygonBox,
+    lassoSelect: lassoSelect,
+    translate: translate,
+    fitView: fitView,
+    round1: round1
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/whiteboard/canvas.js */
+/* ==========================================================================
+   Whiteboard – Zeichenfläche
+   Eine unbegrenzte Fläche für Handschrift. Der Stift schreibt, der Finger
+   verschiebt und zoomt (zwei Finger), die Maus kann beides. Gezeichnet wird
+   in Weltkoordinaten; die Ansicht (Mitte + Zoomstufe) rechnet sie auf den
+   Bildschirm um – deshalb bleibt alles in jeder Vergrößerung scharf.
+
+   Zwei übereinanderliegende Leinwände: die untere trägt alle fertigen
+   Striche, die obere nur das, was sich gerade bewegt (den entstehenden
+   Strich, den Radierer, das Lasso, die Auswahl). So muss während des
+   Schreibens nie die ganze Fläche neu gezeichnet werden.
+
+   Striche landen im Bestand (BAO.store) und werden wie alles andere lokal
+   gespeichert, exportiert und per Strg + Z zurückgenommen.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var ink = BAO.ink;
+  var schema = BAO.schema;
+  var select = BAO.select;
+
+  var MIN_ZOOM = 0.15;
+  var MAX_ZOOM = 6;
+  var GRID_STEP = 40;                 // Linienabstand in Weltpixeln
+
+  /* --- Werkzeuge --------------------------------------------------------------- */
+
+  var TOOLS = [
+    { id: 'pen',         label: 'Stift',            key: 't', hint: 'Handschrift – druckempfindlich' },
+    { id: 'marker',      label: 'Marker',           key: 'm', hint: 'breiter Filzstift' },
+    { id: 'highlighter', label: 'Textmarker',       key: 'x', hint: 'halbtransparent, liegt hinter der Tinte' },
+    { id: 'underline',   label: 'Unterstreichen',   key: 'u', hint: 'waagerechte Linie – einfach, doppelt, mit Häkchen' },
+    { id: 'stamp',       label: 'Korrekturzeichen', key: 'k', hint: 'Häkchen, halbes Häkchen, Auslassungszeichen, Kürzel' },
+    { id: 'eraser',      label: 'Radierer',         key: 'r', hint: 'ganze Striche oder nur Teile' },
+    { id: 'lasso',       label: 'Auswahl',          key: 'l', hint: 'einkreisen – dann verschieben, umfärben, löschen' },
+    { id: 'hand',        label: 'Verschieben',      key: 'h', hint: 'Fläche verschieben (auch mit Stift oder Maus)' }
+  ];
+
+  /* Farben sind Schlüssel: dieselbe Tinte bleibt auf hellem und dunklem Grund
+     lesbar. Blau, Rot und Grün entsprechen den Genusfarben der App. */
+  var INK_COLORS = ['ink', 'blue', 'red', 'green', 'orange', 'amber', 'purple', 'grey'];
+  var HIGHLIGHT_COLORS = ['yellow', 'mint', 'sky', 'pink', 'peach'];
+  var COLOR_LABELS = {
+    ink: 'Tinte', blue: 'Blau', red: 'Rot', green: 'Grün', orange: 'Orange', amber: 'Ocker',
+    purple: 'Violett', grey: 'Grau', yellow: 'Gelb', mint: 'Mint', sky: 'Himmelblau', pink: 'Rosa', peach: 'Pfirsich'
+  };
+  var FALLBACK_COLORS = {
+    paper: '#fdfcfa', grid: '#e4ded4', select: '#2b7bb9', muted: '#6b7382',
+    ink: '#1a1f28', blue: '#0f3f96', red: '#9c1223', green: '#10603a', orange: '#c26240',
+    amber: '#9a6512', purple: '#5c4a99', grey: '#6b7382',
+    yellow: '#f6d13c', mint: '#8fe3b3', sky: '#8ecbf5', pink: '#f5a3c7', peach: '#f9b98a'
+  };
+
+  var WIDTHS = {
+    pen: [1.6, 2.4, 3.6],
+    marker: [4, 6, 9],
+    highlighter: [14, 20, 28],
+    underline: [1.6, 2.4, 3.6]
+  };
+  var WIDTH_LABELS = ['fein', 'mittel', 'breit'];
+  var ERASER_SIZES = [8, 16, 32];     // Radius in Bildschirmpixeln
+  var STAMP_SIZES = [22, 30, 44];
+
+  /* Korrekturzeichen – Formen und Kürzel wie in Capy-note. Die drei
+     handschriftlichen Zeichen sind Vektoren in einem 100×100-Raster. */
+  var STAMP_PATHS = {
+    check:         { main: 'M 24 36 Q 24 52 28 66 Q 31 78 36 72 Q 55 38 88 9', width: 8 },
+    check_crossed: { main: 'M 24 36 Q 24 52 28 66 Q 31 78 36 72 Q 55 38 88 9', accent: 'M 48 45 Q 60 44 74 45', width: 8 },
+    omission:      { main: 'M 23 16 Q 31 40 45 86 Q 61 40 81 16', width: 8.5 }
+  };
+  var STAMPS = [
+    { id: 'check',         variant: 'check',         label: 'Häkchen',                      color: 'red' },
+    { id: 'check_crossed', variant: 'check_crossed', label: 'halbes Häkchen (durchgestrichen)', color: 'red' },
+    { id: 'omission',      variant: 'omission',      label: 'Auslassungszeichen',           color: 'red' },
+    { id: 'gr',   variant: 'text', text: 'Gr',   label: 'Grammatik',    color: 'red' },
+    { id: 'o',    variant: 'text', text: 'O',    label: 'Orthographie', color: 'orange' },
+    { id: 'v',    variant: 'text', text: 'V',    label: 'Vokabular',    color: 'amber' },
+    { id: 'conj', variant: 'text', text: 'Conj', label: 'Konjugation',  color: 'green' },
+    { id: 'acc',  variant: 'text', text: 'Acc',  label: 'Akzent',       color: 'blue' },
+    { id: 'g',    variant: 'text', text: 'G',    label: 'Genus',        color: 'purple' }
+  ];
+  var UNDERLINE_STYLES = [
+    { id: 'solid',  label: 'durchgezogen', glyph: '—' },
+    { id: 'dashed', label: 'gestrichelt',  glyph: '– –' },
+    { id: 'dotted', label: 'gepunktet',    glyph: '···' },
+    { id: 'wavy',   label: 'wellig',       glyph: '∿' }
+  ];
+
+  var DEFAULT_TOOLS = {
+    tool: 'pen',
+    pen:         { color: 'ink', width: 1 },
+    marker:      { color: 'blue', width: 1 },
+    highlighter: { color: 'yellow', width: 1 },
+    underline:   { color: 'red', width: 1, style: 'solid', double: false, hook: false },
+    stamp:       { color: 'red', size: 1, stamp: 'check' },
+    eraser:      { mode: 'stroke', size: 1 },
+    touchDraws:  false
+  };
+
+  var CANVAS_FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
+
+  function stampDef(id) {
+    for (var i = 0; i < STAMPS.length; i++) if (STAMPS[i].id === id) return STAMPS[i];
+    return STAMPS[0];
+  }
+
+  function toolDef(id) {
+    for (var i = 0; i < TOOLS.length; i++) if (TOOLS[i].id === id) return TOOLS[i];
+    return null;
+  }
+
+  function isDrawingTool(id) { return id === 'pen' || id === 'marker' || id === 'highlighter'; }
+
+  /** Zuletzt gewählte Werkzeuge aus den Einstellungen, mit Rückfallwerten. */
+  function readTools() {
+    var saved = (BAO.store.getState().settings || {}).whiteboard || {};
+    var tools = util.clone(DEFAULT_TOOLS);
+    Object.keys(DEFAULT_TOOLS).forEach(function (key) {
+      if (saved[key] === undefined) return;
+      if (typeof DEFAULT_TOOLS[key] === 'object') Object.assign(tools[key], saved[key]);
+      else tools[key] = saved[key];
+    });
+    if (!toolDef(tools.tool)) tools.tool = 'pen';
+    ['pen', 'marker', 'highlighter', 'underline'].forEach(function (id) {
+      tools[id].width = util.clamp(parseInt(tools[id].width, 10) || 0, 0, 2);
+    });
+    tools.stamp.size = util.clamp(parseInt(tools.stamp.size, 10) || 0, 0, 2);
+    tools.eraser.size = util.clamp(parseInt(tools.eraser.size, 10) || 0, 0, 2);
+    if (tools.eraser.mode !== 'partial') tools.eraser.mode = 'stroke';
+    return tools;
+  }
+
+  function saveTools(tools) {
+    BAO.store.commit('Werkzeug gewählt', function (draft) {
+      draft.settings.whiteboard = util.clone(tools);
+    }, { undoable: false });
+  }
+
+  /* --- Zugriff auf den Bestand ------------------------------------------------- */
+
+  function mutate(whiteboardId, label, fn, options) {
+    return BAO.store.commit(label, function (draft) {
+      var board = select.whiteboard(draft, whiteboardId);
+      if (!board) return false;
+      if (fn(board, draft) === false) return false;
+      board.updatedAt = util.nowISO();
+    }, options);
+  }
+
+  function addStroke(whiteboardId, stroke) {
+    return mutate(whiteboardId, 'Strich gezeichnet', function (board) { board.strokes.push(stroke); });
+  }
+
+  function replaceStrokes(whiteboardId, strokes, label) {
+    return mutate(whiteboardId, label || 'Striche geändert', function (board) { board.strokes = util.clone(strokes); });
+  }
+
+  function setView(whiteboardId, view) {
+    return mutate(whiteboardId, 'Whiteboard-Ansicht', function (board) {
+      board.view = { cx: ink.round1(view.cx), cy: ink.round1(view.cy), zoom: Math.round(view.zoom * 1000) / 1000 };
+    }, { undoable: false });
+  }
+
+  function setBackground(whiteboardId, background) {
+    return mutate(whiteboardId, 'Whiteboard-Hintergrund', function (board) { board.background = background; });
+  }
+
+  function clearStrokes(whiteboardId) {
+    return mutate(whiteboardId, 'Whiteboard geleert', function (board) {
+      if (!board.strokes.length) return false;
+      board.strokes = [];
+    });
+  }
+
+  /* --- Farben ------------------------------------------------------------------- */
+
+  function resolveColors(doc) {
+    var out = Object.assign({}, FALLBACK_COLORS);
+    try {
+      var style = (doc || document).defaultView.getComputedStyle((doc || document).documentElement);
+      Object.keys(FALLBACK_COLORS).forEach(function (key) {
+        var value = style.getPropertyValue('--wb-' + (key === 'paper' || key === 'grid' || key === 'select' || key === 'muted' ? key : 'c-' + key)).trim();
+        if (value) out[key] = value;
+      });
+    } catch (err) { /* ohne Stylesheet bleiben die Rückfallfarben */ }
+    return out;
+  }
+
+  function colorOf(colors, key) {
+    if (!key) return colors.ink;
+    if (key.charAt(0) === '#') return key;
+    return colors[key] || colors.ink;
+  }
+
+  /* --- Zeichnen ------------------------------------------------------------------ */
+
+  function applyView(ctx, view, size) {
+    var ox = view.cx - size.w / 2 / view.zoom;
+    var oy = view.cy - size.h / 2 / view.zoom;
+    ctx.setTransform(size.dpr * view.zoom, 0, 0, size.dpr * view.zoom,
+      -ox * view.zoom * size.dpr, -oy * view.zoom * size.dpr);
+  }
+
+  function visibleBox(view, size) {
+    var ox = view.cx - size.w / 2 / view.zoom;
+    var oy = view.cy - size.h / 2 / view.zoom;
+    return { x0: ox, y0: oy, x1: ox + size.w / view.zoom, y1: oy + size.h / view.zoom };
+  }
+
+  function drawBackground(ctx, kind, colors, size, view) {
+    ctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
+    ctx.fillStyle = colors.paper;
+    ctx.fillRect(0, 0, size.w, size.h);
+    if (kind !== 'lines' && kind !== 'grid' && kind !== 'dots') return;
+
+    var zoom = view.zoom;
+    var step = GRID_STEP;
+    while (step * zoom < 14) step *= 2;         // stark verkleinert: gröberes Raster
+    var ox = view.cx - size.w / 2 / zoom;
+    var oy = view.cy - size.h / 2 / zoom;
+    var startX = Math.floor(ox / step) * step;
+    var startY = Math.floor(oy / step) * step;
+    var endX = ox + size.w / zoom;
+    var endY = oy + size.h / zoom;
+    var x, y;
+
+    ctx.strokeStyle = colors.grid;
+    ctx.fillStyle = colors.grid;
+    ctx.lineWidth = 1;
+    if (kind === 'dots') {
+      for (x = startX; x <= endX; x += step) {
+        for (y = startY; y <= endY; y += step) {
+          ctx.beginPath();
+          ctx.arc((x - ox) * zoom, (y - oy) * zoom, 1.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      return;
+    }
+    ctx.beginPath();
+    for (y = startY; y <= endY; y += step) {
+      var sy = Math.round((y - oy) * zoom) + 0.5;
+      ctx.moveTo(0, sy);
+      ctx.lineTo(size.w, sy);
+    }
+    if (kind === 'grid') {
+      for (x = startX; x <= endX; x += step) {
+        var sx = Math.round((x - ox) * zoom) + 0.5;
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, size.h);
+      }
+    }
+    ctx.stroke();
+  }
+
+  /* Ein Strich wird als Folge von Kurvenstücken gezeichnet: Stück i führt
+     vom Mittelpunkt vor dem Stützpunkt i zum Mittelpunkt dahinter, mit dem
+     Stützpunkt als Kontrollpunkt. Das glättet die Handschrift, ohne dass
+     Punkte verloren gehen. */
+  function pieceStart(pts, i) {
+    if (i === 0) return [pts[0], pts[1]];
+    return [(pts[3 * i - 3] + pts[3 * i]) / 2, (pts[3 * i - 2] + pts[3 * i + 1]) / 2];
+  }
+
+  function tracePiece(ctx, pts, n, i) {
+    var x = pts[3 * i];
+    var y = pts[3 * i + 1];
+    if (i === 0) {
+      if (n > 1) ctx.lineTo((x + pts[3]) / 2, (y + pts[4]) / 2);
+    } else if (i < n - 1) {
+      ctx.quadraticCurveTo(x, y, (x + pts[3 * i + 3]) / 2, (y + pts[3 * i + 4]) / 2);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+
+  function traceAll(ctx, pts) {
+    var n = pts.length / 3;
+    ctx.moveTo(pts[0], pts[1]);
+    for (var i = 0; i < n; i++) tracePiece(ctx, pts, n, i);
+  }
+
+  /** Druckempfindlicher Strich: Stücke ähnlicher Breite werden gebündelt. */
+  function drawPressureStroke(ctx, stroke, minWidth) {
+    var pts = stroke.points;
+    var n = pts.length / 3;
+    var runWidth = Math.max(ink.widthAt(stroke, pts[2]), minWidth);
+    var runLength = 0;
+    ctx.beginPath();
+    ctx.moveTo(pts[0], pts[1]);
+    for (var i = 0; i < n; i++) {
+      var w = Math.max(ink.widthAt(stroke, pts[3 * i + 2]), minWidth);
+      if (runLength && Math.abs(w - runWidth) > Math.max(0.25, runWidth * 0.14)) {
+        ctx.lineWidth = runWidth;
+        ctx.stroke();
+        var start = pieceStart(pts, i);
+        ctx.beginPath();
+        ctx.moveTo(start[0], start[1]);
+        runWidth = w;
+        runLength = 0;
+      }
+      tracePiece(ctx, pts, n, i);
+      runLength += 1;
+    }
+    ctx.lineWidth = runWidth;
+    ctx.stroke();
+  }
+
+  var pathCache = {};
+  function stampPath(d) {
+    if (!pathCache[d]) pathCache[d] = new Path2D(d);
+    return pathCache[d];
+  }
+
+  function drawStamp(ctx, stroke, color) {
+    var size = Math.max(6, stroke.size);
+    ctx.save();
+    if (stroke.variant === 'text') {
+      ctx.fillStyle = color;
+      ctx.font = '700 ' + (size * 0.62) + 'px ' + CANVAS_FONT;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(stroke.text || '', stroke.x, stroke.y);
+    } else {
+      var def = STAMP_PATHS[stroke.variant] || STAMP_PATHS.check;
+      ctx.translate(stroke.x - size / 2, stroke.y - size / 2);
+      ctx.scale(size / 100, size / 100);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = def.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke(stampPath(def.main));
+      if (def.accent) ctx.stroke(stampPath(def.accent));
+    }
+    ctx.restore();
+  }
+
+  /** Unterstreichung wie in Capy-note: Stil, einfach/doppelt, Häkchen rechts. */
+  function drawUnderline(ctx, stroke, color, minWidth) {
+    var lw = Math.max(stroke.width, minWidth || 0, 0.4);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ink.underlineLines(stroke).forEach(function (yy) {
+      ctx.beginPath();
+      if (stroke.style === 'wavy') {
+        ctx.setLineDash([]);
+        var amp = ink.waveAmplitude(lw);
+        var wl = ink.waveLength(lw);
+        var stepPx = Math.max(0.5, wl / 10);
+        for (var px = 0; px < stroke.w; px += stepPx) {
+          var wy = yy + Math.sin((px / wl) * Math.PI * 2) * amp;
+          if (px === 0) ctx.moveTo(stroke.x, wy); else ctx.lineTo(stroke.x + px, wy);
+        }
+        ctx.lineTo(stroke.x + stroke.w, yy + Math.sin((stroke.w / wl) * Math.PI * 2) * amp);
+      } else {
+        if (stroke.style === 'dashed') ctx.setLineDash([lw * 4, lw * 2.2]);
+        else if (stroke.style === 'dotted') ctx.setLineDash([lw * 0.4, lw * 2.2]);
+        else ctx.setLineDash([]);
+        ctx.moveTo(stroke.x, yy);
+        ctx.lineTo(stroke.x + stroke.w, yy);
+      }
+      ctx.stroke();
+    });
+    var hook = ink.underlineHook(stroke);
+    if (hook) {
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(hook[0], hook[1]);
+      ctx.lineTo(hook[2], hook[3]);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawStroke(ctx, stroke, colors, minWidth) {
+    var color = colorOf(colors, stroke.color);
+    minWidth = minWidth || 0;
+    if (stroke.tool === 'stamp') { drawStamp(ctx, stroke, color); return; }
+    if (stroke.tool === 'underline') { drawUnderline(ctx, stroke, color, minWidth); return; }
+    var pts = stroke.points;
+    var n = pts.length / 3;
+    if (!n) return;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineJoin = 'round';
+    if (stroke.tool === 'highlighter') {
+      ctx.globalAlpha = 0.42;
+      ctx.lineCap = 'butt';
+      if (n === 1) {
+        ctx.beginPath();
+        ctx.arc(pts[0], pts[1], stroke.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.lineWidth = Math.max(stroke.width, minWidth);
+        ctx.beginPath();
+        traceAll(ctx, pts);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    ctx.lineCap = 'round';
+    if (n === 1) {
+      ctx.beginPath();
+      ctx.arc(pts[0], pts[1], Math.max(ink.widthAt(stroke, pts[2]), minWidth) / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    drawPressureStroke(ctx, stroke, minWidth);
+  }
+
+  /* Rahmen werden je Strich zwischengespeichert; der Bestand tauscht die
+     Objekte bei jeder Änderung aus, deshalb gilt die Kennung mit einer
+     kleinen Signatur der Geometrie als Schlüssel. */
+  var boxCache = new Map();
+  function signature(stroke) {
+    if (stroke.tool === 'underline') return stroke.x + ',' + stroke.y + ',' + stroke.w + ',' + stroke.width + ',' + stroke.double + ',' + stroke.hook + ',' + stroke.style;
+    if (stroke.tool === 'stamp') return stroke.x + ',' + stroke.y + ',' + stroke.size;
+    var pts = stroke.points;
+    return pts.length + ':' + pts[0] + ',' + pts[1] + ':' + stroke.width;
+  }
+  function boxOf(stroke) {
+    var cached = boxCache.get(stroke.id);
+    var sig = signature(stroke);
+    if (cached && cached.sig === sig) return cached.box;
+    var box = ink.bbox(stroke);
+    boxCache.set(stroke.id, { sig: sig, box: box });
+    if (boxCache.size > 20000) boxCache.clear();
+    return box;
+  }
+
+  /**
+   * Zeichnet eine Strichliste: Textmarker zuerst, damit sie hinter der
+   * Tinte liegen. options: { colors, cull, exclude, minWidth }
+   */
+  function drawStrokes(ctx, strokes, options) {
+    options = options || {};
+    var colors = options.colors || resolveColors();
+    var cull = options.cull || null;
+    var exclude = options.exclude || null;
+    var later = [];
+    strokes.forEach(function (stroke) {
+      if (exclude && exclude[stroke.id]) return;
+      if (cull && !ink.boxesIntersect(boxOf(stroke), cull)) return;
+      if (stroke.tool === 'highlighter') drawStroke(ctx, stroke, colors, options.minWidth);
+      else later.push(stroke);
+    });
+    later.forEach(function (stroke) { drawStroke(ctx, stroke, colors, options.minWidth); });
+  }
+
+  /** Kleines Vorschaubild für die Kacheln der Übersicht. */
+  function thumbnail(board, width, height) {
+    var canvas = document.createElement('canvas');
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    var ctx = canvas.getContext('2d');
+    var size = { w: width, h: height, dpr: dpr };
+    var colors = resolveColors();
+    var strokes = board.strokes || [];
+    var box = ink.contentBox(strokes);
+    var view = box
+      ? ink.fitView(box, width, height, 10, { min: 0.02, max: 1.2 })
+      : { cx: 0, cy: 0, zoom: 0.5 };
+    drawBackground(ctx, board.background, colors, size, view);
+    applyView(ctx, view, size);
+    drawStrokes(ctx, strokes, { colors: colors, minWidth: 1.2 / view.zoom });
+    return canvas;
+  }
+
+  /* --- Steuerung einer Fläche ------------------------------------------------- */
+
+  var viewMemory = {};                // zuletzt gesehene Ansicht je Whiteboard (für Neuaufbauten)
+
+  function modalOpen() {
+    var root = document.getElementById('modal-root');
+    return !!(root && root.firstChild);
+  }
+
+  function isTyping(event) {
+    var target = event.target;
+    if (!target) return false;
+    var tag = (target.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+  }
+
+  /**
+   * Baut die Zeichenfläche in einen Behälter und liefert die Steuerung.
+   * options: { whiteboardId }
+   */
+  function mount(container, options) {
+    options = options || {};
+    var whiteboardId = options.whiteboardId;
+    var doc = container.ownerDocument;
+    var win = doc.defaultView;
+
+    var inkCanvas = doc.createElement('canvas');
+    inkCanvas.className = 'wb-ink';
+    var liveCanvas = doc.createElement('canvas');
+    liveCanvas.className = 'wb-live';
+    container.appendChild(inkCanvas);
+    container.appendChild(liveCanvas);
+    var ictx = inkCanvas.getContext('2d');
+    var lctx = liveCanvas.getContext('2d');
+
+    var size = { w: 0, h: 0, dpr: 1 };
+    var colors = resolveColors(doc);
+    var tools = readTools();
+    var board = currentBoard();
+    var view = viewMemory[whiteboardId]
+      ? Object.assign({}, viewMemory[whiteboardId])
+      : (board && board.view ? { cx: board.view.cx || 0, cy: board.view.cy || 0, zoom: util.clamp(board.view.zoom || 1, MIN_ZOOM, MAX_ZOOM) } : { cx: 0, cy: 0, zoom: 1 });
+    var selection = { ids: [], set: {}, box: null };
+    var gesture = null;                 // laufende Eingabe (siehe start…-Funktionen)
+    var touches = new Map();            // aktive Finger: pointerId -> {x, y}
+    var hover = null;                   // Stift/Maus über der Fläche (Radierer-Kreis)
+    var spaceDown = false;
+    var listeners = [];
+    var dirty = { ink: true, live: true };
+    var frame = 0;
+    var lastPaint = { view: null, ms: 0 };
+    var settleTimer = null;
+    var wheelBurst = false;
+    var destroyed = false;
+
+    function currentBoard() { return select.whiteboard(BAO.store.getState(), whiteboardId); }
+    function strokesNow() {
+      if (gesture && gesture.working) return gesture.working;
+      var b = currentBoard();
+      return b ? b.strokes : [];
+    }
+    function strokeById(id) {
+      var list = strokesNow();
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+      return null;
+    }
+
+    function emit(reason) {
+      listeners.forEach(function (fn) {
+        try { fn(reason, api); } catch (err) { console.error('Fehler im Whiteboard-Beobachter:', err); }
+      });
+    }
+
+    /* --- Koordinaten ---------------------------------------------------------- */
+
+    function screenPoint(event) {
+      var rect = inkCanvas.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    }
+    function toWorld(p) {
+      return { x: view.cx + (p.x - size.w / 2) / view.zoom, y: view.cy + (p.y - size.h / 2) / view.zoom };
+    }
+    function rememberView() {
+      viewMemory[whiteboardId] = { cx: view.cx, cy: view.cy, zoom: view.zoom };
+    }
+    var persistView = util.debounce(function () {
+      if (destroyed) return;
+      rememberView();
+      setView(whiteboardId, view);
+    }, 800);
+    function viewChanged() {
+      dirty.ink = true;
+      dirty.live = true;
+      schedule();
+      persistView();
+      emit('view');
+    }
+
+    /* --- Zeichnen --------------------------------------------------------------- */
+
+    function schedule() {
+      if (frame || destroyed) return;
+      frame = win.requestAnimationFrame(tick);
+    }
+    function tick() {
+      frame = 0;
+      if (destroyed) return;
+      if (dirty.ink) { dirty.ink = false; paintInkOrShift(); }
+      if (dirty.live) { dirty.live = false; paintLive(); }
+    }
+
+    /* Beim Verschieben einer großen Fläche wird nicht jedes Bild neu
+       gezeichnet: Die fertige Leinwand wird per CSS verschoben und skaliert,
+       und erst nach einer kurzen Ruhe folgt der saubere Neuaufbau. */
+    function paintInkOrShift() {
+      var shifting = (gesture && (gesture.kind === 'pan' || gesture.kind === 'pinch')) || wheelBurst;
+      if (shifting && lastPaint.view && lastPaint.ms > 9) {
+        var lv = lastPaint.view;
+        var ox = view.cx - size.w / 2 / view.zoom;
+        var oy = view.cy - size.h / 2 / view.zoom;
+        var lox = lv.cx - size.w / 2 / lv.zoom;
+        var loy = lv.cy - size.h / 2 / lv.zoom;
+        inkCanvas.style.transformOrigin = '0 0';
+        inkCanvas.style.transform = 'translate(' + ((lox - ox) * view.zoom) + 'px,' + ((loy - oy) * view.zoom) + 'px) scale(' + (view.zoom / lv.zoom) + ')';
+        if (settleTimer) clearTimeout(settleTimer);
+        settleTimer = setTimeout(function () {
+          settleTimer = null;
+          wheelBurst = false;
+          if (destroyed) return;
+          paintInk();
+          if (dirty.live) { dirty.live = false; paintLive(); }
+        }, 140);
+        return;
+      }
+      wheelBurst = false;
+      paintInk();
+    }
+
+    function paintInk() {
+      var started = win.performance ? win.performance.now() : Date.now();
+      var b = currentBoard();
+      inkCanvas.style.transform = '';
+      if (!b) return;
+      var strokes = strokesNow();
+      drawBackground(ictx, b.background, colors, size, view);
+      if (!strokes.length && !gesture) {
+        ictx.fillStyle = colors.muted;
+        ictx.globalAlpha = 0.7;
+        ictx.font = '500 15px ' + CANVAS_FONT;
+        ictx.textAlign = 'center';
+        ictx.textBaseline = 'middle';
+        ictx.fillText('Einfach losschreiben – mit dem Stift. Der Finger verschiebt die Fläche.', size.w / 2, size.h / 2);
+        ictx.globalAlpha = 1;
+      }
+      applyView(ictx, view, size);
+      drawStrokes(ictx, strokes, {
+        colors: colors, cull: visibleBox(view, size),
+        exclude: gesture && gesture.hideSelected ? selection.set : null
+      });
+      ictx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
+      lastPaint.view = { cx: view.cx, cy: view.cy, zoom: view.zoom };
+      lastPaint.ms = (win.performance ? win.performance.now() : Date.now()) - started;
+    }
+
+    function drawSelectionMarks(ctx, dx, dy) {
+      var z = view.zoom;
+      ctx.save();
+      ctx.translate(dx || 0, dy || 0);
+      ctx.strokeStyle = colors.select;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = 0.4;
+      selection.ids.forEach(function (id) {
+        var stroke = strokeById(id);
+        if (!stroke) return;
+        if (stroke.tool === 'underline' || stroke.tool === 'stamp') {
+          var box = ink.bbox(stroke);
+          ctx.lineWidth = 2 / z;
+          ctx.strokeRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+          return;
+        }
+        var pts = stroke.points;
+        if (pts.length === 3) {
+          ctx.beginPath();
+          ctx.arc(pts[0], pts[1], ink.maxWidth(stroke) / 2 + 4 / z, 0, Math.PI * 2);
+          ctx.fillStyle = colors.select;
+          ctx.fill();
+          return;
+        }
+        ctx.lineWidth = ink.maxWidth(stroke) + 6 / z;
+        ctx.beginPath();
+        traceAll(ctx, pts);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      if (selection.box) {
+        var pad = 8 / z;
+        ctx.setLineDash([6 / z, 4 / z]);
+        ctx.lineWidth = 1.5 / z;
+        ctx.strokeRect(selection.box.x0 - pad, selection.box.y0 - pad,
+          selection.box.x1 - selection.box.x0 + 2 * pad, selection.box.y1 - selection.box.y0 + 2 * pad);
+      }
+      ctx.restore();
+    }
+
+    function paintLive() {
+      lctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
+      lctx.clearRect(0, 0, size.w, size.h);
+      var eraserCursor = tools.tool === 'eraser' && hover && (!gesture || gesture.kind === 'erase');
+      if (!gesture && !selection.ids.length && !eraserCursor) return;
+      applyView(lctx, view, size);
+      var z = view.zoom;
+
+      if (selection.ids.length && !(gesture && gesture.kind === 'move')) drawSelectionMarks(lctx, 0, 0);
+
+      if (gesture) {
+        if (gesture.kind === 'draw' || gesture.kind === 'underline') {
+          drawStroke(lctx, gesture.stroke, colors);
+        } else if (gesture.kind === 'lasso') {
+          lctx.save();
+          lctx.strokeStyle = colors.select;
+          lctx.lineWidth = 1.5 / z;
+          lctx.setLineDash([5 / z, 4 / z]);
+          lctx.beginPath();
+          for (var i = 0; i + 1 < gesture.poly.length; i += 2) {
+            if (i === 0) lctx.moveTo(gesture.poly[0], gesture.poly[1]);
+            else lctx.lineTo(gesture.poly[i], gesture.poly[i + 1]);
+          }
+          lctx.closePath();
+          lctx.stroke();
+          lctx.restore();
+        } else if (gesture.kind === 'move') {
+          lctx.save();
+          lctx.translate(gesture.dx, gesture.dy);
+          drawStrokes(lctx, gesture.selected, { colors: colors });
+          lctx.restore();
+          drawSelectionMarks(lctx, gesture.dx, gesture.dy);
+        }
+      }
+
+      if (eraserCursor) {
+        var wp = toWorld(hover);
+        lctx.save();
+        lctx.strokeStyle = colors.ink;
+        lctx.globalAlpha = 0.6;
+        lctx.lineWidth = 1 / z;
+        lctx.beginPath();
+        lctx.arc(wp.x, wp.y, eraserRadius(), 0, Math.PI * 2);
+        lctx.stroke();
+        lctx.restore();
+      }
+      lctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
+    }
+
+    /* --- Größe --------------------------------------------------------------- */
+
+    function resize() {
+      var w = container.clientWidth;
+      var h = container.clientHeight;
+      if (!w || !h) return;
+      var dpr = Math.min(win.devicePixelRatio || 1, 3);
+      if (w === size.w && h === size.h && dpr === size.dpr) return;
+      size = { w: w, h: h, dpr: dpr };
+      [inkCanvas, liveCanvas].forEach(function (canvas) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+      });
+      lastPaint.view = null;
+      dirty.ink = true;
+      dirty.live = true;
+      schedule();
+    }
+
+    /* --- Werkzeuge ------------------------------------------------------------- */
+
+    function eraserRadius() { return ERASER_SIZES[tools.eraser.size] / view.zoom; }
+
+    function setTool(id) {
+      if (!toolDef(id) || tools.tool === id) return;
+      tools.tool = id;
+      container.dataset.tool = id;
+      saveTools(tools);
+      dirty.live = true;
+      schedule();
+      emit('tool');
+    }
+
+    function setToolOption(toolId, key, value) {
+      if (!tools[toolId] || typeof tools[toolId] !== 'object') return;
+      tools[toolId][key] = value;
+      if (toolId === 'stamp' && key === 'stamp') tools.stamp.color = stampDef(value).color;
+      saveTools(tools);
+      dirty.live = true;
+      schedule();
+      emit('tool');
+    }
+
+    function setTouchDraws(value) {
+      tools.touchDraws = !!value;
+      saveTools(tools);
+      emit('tool');
+    }
+
+    /* --- Auswahl --------------------------------------------------------------- */
+
+    function selectionBox(ids) {
+      var box = null;
+      ids.forEach(function (id) {
+        var stroke = strokeById(id);
+        if (stroke) box = ink.unionBox(box, ink.bbox(stroke));
+      });
+      return box;
+    }
+
+    function setSelection(ids, quiet) {
+      selection.ids = ids.slice();
+      selection.set = {};
+      ids.forEach(function (id) { selection.set[id] = true; });
+      selection.box = selectionBox(ids);
+      dirty.live = true;
+      schedule();
+      if (!quiet) emit('selection');
+    }
+
+    function clearSelection() {
+      if (!selection.ids.length) return;
+      setSelection([]);
+    }
+
+    function deleteSelection() {
+      if (!selection.ids.length) return false;
+      var set = selection.set;
+      var count = selection.ids.length;
+      var remaining = strokesNow().filter(function (s) { return !set[s.id]; });
+      setSelection([], true);
+      replaceStrokes(whiteboardId, remaining, count === 1 ? 'Strich gelöscht' : 'Striche gelöscht');
+      emit('selection');
+      return true;
+    }
+
+    function recolorSelection(color) {
+      if (!selection.ids.length) return false;
+      var set = selection.set;
+      var changed = strokesNow().map(function (s) {
+        return set[s.id] ? Object.assign({}, s, { color: color }) : s;
+      });
+      replaceStrokes(whiteboardId, changed, 'Strichfarbe geändert');
+      return true;
+    }
+
+    /* --- Eingabe: Hilfen --------------------------------------------------------- */
+
+    function capture(event) {
+      try { inkCanvas.setPointerCapture(event.pointerId); } catch (err) { /* künstliche Ereignisse */ }
+    }
+
+    function coalesced(event) {
+      var list = null;
+      try { list = event.getCoalescedEvents ? event.getCoalescedEvents() : null; } catch (err) { list = null; }
+      return list && list.length ? list : [event];
+    }
+
+    function pressureOf(event) {
+      if (event.pointerType !== 'pen') return 0.5;
+      var p = event.pressure;
+      return typeof p === 'number' && p > 0 ? Math.min(p, 1) : 0.5;
+    }
+
+    /* --- Eingabe: Gesten ----------------------------------------------------- */
+
+    function startDraw(event, wp) {
+      clearSelection();
+      var id = tools.tool;
+      var pref = tools[id];
+      var stroke = schema.makeStroke({
+        tool: id, color: pref.color, width: WIDTHS[id][pref.width], points: []
+      });
+      gesture = {
+        kind: 'draw', pointerId: event.pointerId, type: event.pointerType,
+        stroke: stroke, minDist: 0.9 / view.zoom, smooth: null, pending: null
+      };
+      addDrawPoints(event);
+    }
+
+    function addDrawPoints(event) {
+      var g = gesture;
+      var pts = g.stroke.points;
+      coalesced(event).forEach(function (e) {
+        var wp = toWorld(screenPoint(e));
+        var p = pressureOf(e);
+        g.smooth = g.smooth === null ? p : g.smooth + (p - g.smooth) * 0.4;
+        var n = pts.length;
+        if (n && Math.hypot(wp.x - pts[n - 3], wp.y - pts[n - 2]) < g.minDist) {
+          g.pending = [wp.x, wp.y, g.smooth];
+          return;
+        }
+        if (n >= 3 * 6000) return;        // Schutz vor endlosen Strichen
+        pts.push(ink.round1(wp.x), ink.round1(wp.y), Math.round(g.smooth * 100) / 100);
+        g.pending = null;
+      });
+      dirty.live = true;
+      schedule();
+    }
+
+    function finishDraw(g) {
+      var pts = g.stroke.points;
+      if (g.pending && pts.length >= 3) {
+        var n = pts.length;
+        if (Math.hypot(g.pending[0] - pts[n - 3], g.pending[1] - pts[n - 2]) > 0.05) {
+          pts.push(ink.round1(g.pending[0]), ink.round1(g.pending[1]), Math.round(g.pending[2] * 100) / 100);
+        }
+      }
+      if (pts.length >= 3) addStroke(whiteboardId, g.stroke);
+    }
+
+    function startUnderline(event, wp) {
+      clearSelection();
+      var pref = tools.underline;
+      gesture = {
+        kind: 'underline', pointerId: event.pointerId, type: event.pointerType, startX: wp.x,
+        stroke: schema.makeStroke({
+          tool: 'underline', color: pref.color, width: WIDTHS.underline[pref.width],
+          x: wp.x, y: wp.y, w: 0, style: pref.style, double: !!pref.double, hook: !!pref.hook
+        })
+      };
+    }
+
+    function updateUnderline(wp) {
+      var s = gesture.stroke;
+      s.x = Math.min(gesture.startX, wp.x);
+      s.w = Math.abs(wp.x - gesture.startX);
+      dirty.live = true;
+      schedule();
+    }
+
+    function finishUnderline(g) {
+      var s = g.stroke;
+      if (s.w * view.zoom < 3) return;
+      s.x = ink.round1(s.x);
+      s.y = ink.round1(s.y);
+      s.w = ink.round1(s.w);
+      addStroke(whiteboardId, s);
+    }
+
+    function placeStamp(wp) {
+      clearSelection();
+      var pref = tools.stamp;
+      var def = stampDef(pref.stamp);
+      addStroke(whiteboardId, schema.makeStroke({
+        tool: 'stamp', color: pref.color, variant: def.variant, text: def.text || '',
+        x: ink.round1(wp.x), y: ink.round1(wp.y), size: STAMP_SIZES[pref.size]
+      }));
+    }
+
+    function startErase(event, wp) {
+      clearSelection();
+      var b = currentBoard();
+      gesture = {
+        kind: 'erase', pointerId: event.pointerId, type: event.pointerType,
+        working: b ? b.strokes : [], changed: false, lastX: wp.x, lastY: wp.y,
+        mode: tools.eraser.mode, radius: eraserRadius()
+      };
+      applyErase(wp);
+    }
+
+    function applyErase(wp) {
+      var g = gesture;
+      var run = g.mode === 'partial' ? ink.erasePartial : ink.eraseWhole;
+      var result = run(g.working, g.lastX, g.lastY, wp.x, wp.y, g.radius);
+      if (result.changed) {
+        g.working = result.strokes;
+        g.changed = true;
+        dirty.ink = true;
+      }
+      g.lastX = wp.x;
+      g.lastY = wp.y;
+      dirty.live = true;
+      schedule();
+    }
+
+    function finishErase(g) {
+      if (g.changed) replaceStrokes(whiteboardId, g.working, 'Radiert');
+    }
+
+    function startLasso(event, wp) {
+      gesture = { kind: 'lasso', pointerId: event.pointerId, type: event.pointerType, poly: [wp.x, wp.y] };
+    }
+
+    function updateLasso(wp) {
+      var poly = gesture.poly;
+      var n = poly.length;
+      if (Math.hypot(wp.x - poly[n - 2], wp.y - poly[n - 1]) < 2 / view.zoom) return;
+      poly.push(wp.x, wp.y);
+      dirty.live = true;
+      schedule();
+    }
+
+    function finishLasso(g) {
+      var ids = ink.lassoSelect(strokesNow(), g.poly);
+      setSelection(ids);
+    }
+
+    function startMove(event, wp) {
+      var set = selection.set;
+      gesture = {
+        kind: 'move', pointerId: event.pointerId, type: event.pointerType,
+        startX: wp.x, startY: wp.y, dx: 0, dy: 0, hideSelected: true,
+        selected: strokesNow().filter(function (s) { return set[s.id]; })
+      };
+      dirty.ink = true;
+      dirty.live = true;
+      schedule();
+    }
+
+    function updateMove(wp) {
+      gesture.dx = wp.x - gesture.startX;
+      gesture.dy = wp.y - gesture.startY;
+      dirty.live = true;
+      schedule();
+    }
+
+    function finishMove(g) {
+      dirty.ink = true;
+      if (Math.abs(g.dx) + Math.abs(g.dy) < 0.5) return;
+      var set = selection.set;
+      var moved = strokesNow().map(function (s) { return set[s.id] ? ink.translate(s, g.dx, g.dy) : s; });
+      replaceStrokes(whiteboardId, moved, 'Striche verschoben');
+      selection.box = selectionBox(selection.ids);
+    }
+
+    function startPan(event, sp) {
+      gesture = { kind: 'pan', pointerId: event.pointerId, type: event.pointerType, last: sp };
+      container.dataset.panning = 'true';
+    }
+
+    function updatePan(sp) {
+      view.cx -= (sp.x - gesture.last.x) / view.zoom;
+      view.cy -= (sp.y - gesture.last.y) / view.zoom;
+      gesture.last = sp;
+      viewChanged();
+    }
+
+    function startPinch() {
+      var pts = Array.from(touches.values());
+      var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      gesture = {
+        kind: 'pinch', type: 'touch', pointerId: null,
+        dist: Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)),
+        startZoom: view.zoom, anchor: toWorld(mid)
+      };
+      container.dataset.panning = 'true';
+    }
+
+    function updatePinch() {
+      var pts = Array.from(touches.values());
+      if (pts.length < 2) return;
+      var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      var dist = Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+      view.zoom = util.clamp(gesture.startZoom * dist / gesture.dist, MIN_ZOOM, MAX_ZOOM);
+      // Der Punkt zwischen den Fingern bleibt unter den Fingern.
+      view.cx = gesture.anchor.x - (mid.x - size.w / 2) / view.zoom;
+      view.cy = gesture.anchor.y - (mid.y - size.h / 2) / view.zoom;
+      viewChanged();
+    }
+
+    function endGesture(cancelled) {
+      var g = gesture;
+      if (!g) return;
+      gesture = null;
+      delete container.dataset.panning;
+      if (!cancelled) {
+        if (g.kind === 'draw') finishDraw(g);
+        else if (g.kind === 'underline') finishUnderline(g);
+        else if (g.kind === 'erase') finishErase(g);
+        else if (g.kind === 'lasso') finishLasso(g);
+        else if (g.kind === 'move') finishMove(g);
+      } else if (g.kind === 'erase' || g.kind === 'move') {
+        dirty.ink = true;
+      }
+      if (g.kind === 'pan' || g.kind === 'pinch') persistView();
+      dirty.ink = dirty.ink || g.kind === 'draw' || g.kind === 'underline' || g.kind === 'erase';
+      dirty.live = true;
+      schedule();
+    }
+
+    /* --- Eingabe: Zeigerereignisse ------------------------------------------------- */
+
+    function onPointerDown(event) {
+      if (destroyed) return;
+      if (event.pointerType === 'touch') { onTouchDown(event); return; }
+
+      // Stift oder Maus hat Vorrang vor Fingern, die gerade verschieben.
+      if (touches.size) {
+        touches.clear();
+        if (gesture && (gesture.kind === 'pan' || gesture.kind === 'pinch')) endGesture(false);
+      }
+      if (gesture) return;
+
+      var sp = screenPoint(event);
+      var wp = toWorld(sp);
+      var buttons = event.buttons || 0;
+      var penErases = event.pointerType === 'pen' && ((buttons & 32) !== 0 || (buttons & 2) !== 0);
+      var mousePans = event.pointerType === 'mouse' && (event.button === 1 || event.button === 2);
+      capture(event);
+      event.preventDefault();
+
+      if (mousePans || spaceDown || tools.tool === 'hand') { startPan(event, sp); return; }
+      if (penErases) { startErase(event, wp); return; }
+      if (selection.ids.length && tools.tool === 'lasso' && ink.pointInBox(wp.x, wp.y, selection.box)) {
+        startMove(event, wp);
+        return;
+      }
+      switch (tools.tool) {
+        case 'pen': case 'marker': case 'highlighter': startDraw(event, wp); break;
+        case 'underline': startUnderline(event, wp); break;
+        case 'stamp': placeStamp(wp); break;
+        case 'eraser': startErase(event, wp); break;
+        case 'lasso': clearSelection(); startLasso(event, wp); break;
+        default: startPan(event, sp);
+      }
+    }
+
+    function onTouchDown(event) {
+      if (gesture && gesture.type !== 'touch') return;          // Handballen neben dem Stift
+      var sp = screenPoint(event);
+      touches.set(event.pointerId, sp);
+      capture(event);
+      event.preventDefault();
+
+      if (touches.size === 1) {
+        if (gesture) return;
+        var wp = toWorld(sp);
+        if (selection.ids.length && ink.pointInBox(wp.x, wp.y, selection.box)) { startMove(event, wp); return; }
+        if (tools.touchDraws && tools.tool !== 'hand') {
+          if (isDrawingTool(tools.tool)) { startDraw(event, wp); return; }
+          if (tools.tool === 'underline') { startUnderline(event, wp); return; }
+          if (tools.tool === 'stamp') { placeStamp(wp); return; }
+          if (tools.tool === 'eraser') { startErase(event, wp); return; }
+          if (tools.tool === 'lasso') { clearSelection(); startLasso(event, wp); return; }
+        }
+        startPan(event, sp);
+        return;
+      }
+      if (touches.size === 2) {
+        if (gesture && gesture.kind === 'draw' && gesture.type === 'touch') {
+          // Zwei Finger kurz nach dem Aufsetzen: Das war kein Strich, sondern eine Zoomgeste.
+          if (gesture.stroke.points.length <= 3 * 12) { endGesture(true); }
+          else { touches.delete(event.pointerId); return; }
+        } else if (gesture && gesture.kind !== 'pan') {
+          touches.delete(event.pointerId);
+          return;
+        }
+        startPinch();
+        return;
+      }
+      touches.delete(event.pointerId);                            // dritter Finger: ignorieren
+    }
+
+    function onPointerMove(event) {
+      if (destroyed) return;
+      if (event.pointerType === 'touch') {
+        if (!touches.has(event.pointerId)) return;
+        var tp = screenPoint(event);
+        touches.set(event.pointerId, tp);
+        if (!gesture) return;
+        if (gesture.kind === 'pinch') { updatePinch(); return; }
+        if (gesture.pointerId !== event.pointerId) return;
+        updateGesture(event, tp);
+        return;
+      }
+      var sp = screenPoint(event);
+      hover = sp;
+      if (!gesture) {
+        if (tools.tool === 'eraser') { dirty.live = true; schedule(); }
+        return;
+      }
+      if (gesture.pointerId !== event.pointerId) return;
+      updateGesture(event, sp);
+    }
+
+    function updateGesture(event, sp) {
+      var g = gesture;
+      if (g.kind === 'draw') { addDrawPoints(event); return; }
+      if (g.kind === 'pan') { updatePan(sp); return; }
+      var wp = toWorld(sp);
+      if (g.kind === 'underline') updateUnderline(wp);
+      else if (g.kind === 'lasso') updateLasso(wp);
+      else if (g.kind === 'move') updateMove(wp);
+      else if (g.kind === 'erase') {
+        coalesced(event).forEach(function (e) { applyErase(toWorld(screenPoint(e))); });
+      }
+    }
+
+    function onPointerUp(event) {
+      if (destroyed) return;
+      if (event.pointerType === 'touch') {
+        if (!touches.has(event.pointerId)) return;
+        touches.delete(event.pointerId);
+        if (gesture && gesture.kind === 'pinch') {
+          if (touches.size < 2) {
+            endGesture(false);
+            // Ein Finger bleibt liegen: einfach weiter verschieben.
+            if (touches.size === 1) {
+              var rest = Array.from(touches.entries())[0];
+              startPan({ pointerId: rest[0], pointerType: 'touch' }, rest[1]);
+            }
+          }
+          return;
+        }
+        if (gesture && gesture.pointerId === event.pointerId) endGesture(event.type === 'pointercancel');
+        return;
+      }
+      if (gesture && gesture.pointerId === event.pointerId) {
+        if (gesture.kind === 'draw' && event.type !== 'pointercancel') addDrawPoints(event);
+        endGesture(event.type === 'pointercancel');
+      }
+    }
+
+    function onPointerLeave() {
+      hover = null;
+      if (tools.tool === 'eraser') { dirty.live = true; schedule(); }
+    }
+
+    function onWheel(event) {
+      if (destroyed) return;
+      event.preventDefault();
+      var factor = event.deltaMode === 1 ? 16 : (event.deltaMode === 2 ? size.h : 1);
+      var dx = event.deltaX * factor;
+      var dy = event.deltaY * factor;
+      if (event.ctrlKey || event.metaKey) {
+        zoomAt(screenPoint(event), Math.exp(-dy * 0.0022));
+        return;
+      }
+      if (event.shiftKey && !dx) { dx = dy; dy = 0; }
+      view.cx += dx / view.zoom;
+      view.cy += dy / view.zoom;
+      wheelBurst = true;
+      viewChanged();
+    }
+
+    function zoomAt(sp, factor) {
+      var wp = toWorld(sp);
+      view.zoom = util.clamp(view.zoom * factor, MIN_ZOOM, MAX_ZOOM);
+      view.cx = wp.x - (sp.x - size.w / 2) / view.zoom;
+      view.cy = wp.y - (sp.y - size.h / 2) / view.zoom;
+      wheelBurst = true;
+      viewChanged();
+    }
+
+    function zoomTo(zoom) {
+      view.zoom = util.clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+      viewChanged();
+    }
+
+    function fitContent() {
+      var box = ink.contentBox(strokesNow());
+      if (!box) { view.cx = 0; view.cy = 0; view.zoom = 1; viewChanged(); return; }
+      var fitted = ink.fitView(box, size.w, size.h, 48, { min: MIN_ZOOM, max: 2 });
+      view.cx = fitted.cx;
+      view.cy = fitted.cy;
+      view.zoom = fitted.zoom;
+      viewChanged();
+    }
+
+    /* --- Tastatur ------------------------------------------------------------- */
+
+    function keysActive(event) {
+      if (destroyed || modalOpen() || isTyping(event)) return false;
+      var route = BAO.app && BAO.app.currentRoute ? BAO.app.currentRoute() : null;
+      return !route || route.path === 'whiteboard';
+    }
+
+    function onKeyDown(event) {
+      if (event.key === ' ') {
+        if (!keysActive(event)) return;
+        if (!spaceDown) { spaceDown = true; container.dataset.space = 'true'; }
+        event.preventDefault();
+        return;
+      }
+      if (!keysActive(event) || event.ctrlKey || event.metaKey || event.altKey) return;
+      var key = event.key.toLowerCase();
+      var tool = TOOLS.filter(function (t) { return t.key === key; })[0];
+      if (tool) { setTool(tool.id); event.preventDefault(); return; }
+      switch (event.key) {
+        case 'Delete': case 'Backspace':
+          if (deleteSelection()) event.preventDefault();
+          break;
+        case 'Escape':
+          if (selection.ids.length) { clearSelection(); event.preventDefault(); }
+          break;
+        case '+': zoomAt({ x: size.w / 2, y: size.h / 2 }, 1.25); event.preventDefault(); break;
+        case '-': zoomAt({ x: size.w / 2, y: size.h / 2 }, 0.8); event.preventDefault(); break;
+        case '0': zoomTo(1); event.preventDefault(); break;
+        case 'f': case 'F': toggleFullscreen(); event.preventDefault(); break;
+        default: break;
+      }
+    }
+
+    function onKeyUp(event) {
+      if (event.key === ' ' && spaceDown) {
+        spaceDown = false;
+        delete container.dataset.space;
+      }
+    }
+
+    /* --- Vollbild ----------------------------------------------------------------- */
+
+    function isFullscreen() { return doc.fullscreenElement === container; }
+
+    function toggleFullscreen() {
+      try {
+        if (isFullscreen()) { if (doc.exitFullscreen) doc.exitFullscreen(); }
+        else if (container.requestFullscreen) {
+          var promise = container.requestFullscreen();
+          if (promise && promise.catch) promise.catch(function () { /* abgelehnt */ });
+        }
+      } catch (err) { /* Vollbild nicht verfügbar */ }
+    }
+
+    function onFullscreenChange() {
+      win.setTimeout(resize, 50);
+      emit('fullscreen');
+    }
+
+    /* --- Bestand beobachten --------------------------------------------------------- */
+
+    var unsubscribe = BAO.store.subscribe(function (state, meta) {
+      if (destroyed) return;
+      if (meta.reason === 'commit' && (meta.label === 'Werkzeug gewählt' || meta.label === 'Whiteboard-Ansicht')) return;
+      var b = currentBoard();
+      if (!b) return;
+      if (meta.reason !== 'commit') {
+        tools = readTools();
+        container.dataset.tool = tools.tool;
+        emit('tool');
+      }
+      if (selection.ids.length && !gesture) {
+        var alive = {};
+        b.strokes.forEach(function (s) { alive[s.id] = true; });
+        var kept = selection.ids.filter(function (id) { return alive[id]; });
+        if (kept.length !== selection.ids.length) setSelection(kept);
+        else selection.box = selectionBox(kept);
+      }
+      dirty.ink = true;
+      dirty.live = true;
+      schedule();
+      emit('strokes');
+    });
+
+    /* --- Aufbau und Abbau ------------------------------------------------------------- */
+
+    var cleanup = [];
+    function listen(target, type, fn, opts) {
+      target.addEventListener(type, fn, opts || false);
+      cleanup.push(function () { target.removeEventListener(type, fn, opts || false); });
+    }
+
+    listen(inkCanvas, 'pointerdown', onPointerDown);
+    listen(inkCanvas, 'pointermove', onPointerMove);
+    listen(inkCanvas, 'pointerup', onPointerUp);
+    listen(inkCanvas, 'pointercancel', onPointerUp);
+    listen(inkCanvas, 'lostpointercapture', function (event) {
+      if (gesture && gesture.pointerId === event.pointerId) endGesture(false);
+      touches.delete(event.pointerId);
+    });
+    listen(inkCanvas, 'pointerleave', onPointerLeave);
+    listen(inkCanvas, 'wheel', onWheel, { passive: false });
+    listen(inkCanvas, 'contextmenu', function (event) { event.preventDefault(); });
+    listen(container, 'gesturestart', function (event) { event.preventDefault(); });
+    listen(container, 'dragstart', function (event) { event.preventDefault(); });
+    listen(doc, 'keydown', onKeyDown);
+    listen(doc, 'keyup', onKeyUp);
+    listen(doc, 'fullscreenchange', onFullscreenChange);
+
+    var observer = null;
+    if (win.ResizeObserver) {
+      observer = new win.ResizeObserver(function () { resize(); });
+      observer.observe(container);
+    } else {
+      listen(win, 'resize', resize);
+    }
+
+    container.dataset.tool = tools.tool;
+    resize();
+    schedule();
+
+    var api = {
+      element: container,
+      whiteboardId: whiteboardId,
+      subscribe: function (fn) {
+        listeners.push(fn);
+        return function () {
+          var i = listeners.indexOf(fn);
+          if (i >= 0) listeners.splice(i, 1);
+        };
+      },
+      getTools: function () { return tools; },
+      setTool: setTool,
+      setToolOption: setToolOption,
+      setTouchDraws: setTouchDraws,
+      getView: function () { return { cx: view.cx, cy: view.cy, zoom: view.zoom }; },
+      zoomIn: function () { zoomAt({ x: size.w / 2, y: size.h / 2 }, 1.25); },
+      zoomOut: function () { zoomAt({ x: size.w / 2, y: size.h / 2 }, 0.8); },
+      zoomTo: zoomTo,
+      resetView: function () { view.cx = 0; view.cy = 0; view.zoom = 1; viewChanged(); },
+      fitContent: fitContent,
+      getSelection: function () { return selection.ids.slice(); },
+      hasSelection: function () { return selection.ids.length > 0; },
+      clearSelection: clearSelection,
+      deleteSelection: deleteSelection,
+      recolorSelection: recolorSelection,
+      strokeCount: function () { return strokesNow().length; },
+      isFullscreen: isFullscreen,
+      toggleFullscreen: toggleFullscreen,
+      repaint: function () { colors = resolveColors(doc); dirty.ink = true; dirty.live = true; schedule(); },
+      flushView: function () { persistView.cancel(); rememberView(); setView(whiteboardId, view); },
+      destroy: function () {
+        if (destroyed) return;
+        destroyed = true;
+        persistView.cancel();
+        rememberView();
+        if (currentBoard()) setView(whiteboardId, view);
+        if (frame) win.cancelAnimationFrame(frame);
+        if (settleTimer) clearTimeout(settleTimer);
+        if (observer) observer.disconnect();
+        cleanup.forEach(function (fn) { fn(); });
+        unsubscribe();
+        listeners.length = 0;
+      }
+    };
+    return api;
+  }
+
+  BAO.whiteboard = {
+    TOOLS: TOOLS,
+    INK_COLORS: INK_COLORS,
+    HIGHLIGHT_COLORS: HIGHLIGHT_COLORS,
+    COLOR_LABELS: COLOR_LABELS,
+    WIDTHS: WIDTHS,
+    WIDTH_LABELS: WIDTH_LABELS,
+    ERASER_SIZES: ERASER_SIZES,
+    STAMP_SIZES: STAMP_SIZES,
+    STAMPS: STAMPS,
+    STAMP_PATHS: STAMP_PATHS,
+    UNDERLINE_STYLES: UNDERLINE_STYLES,
+    MIN_ZOOM: MIN_ZOOM,
+    MAX_ZOOM: MAX_ZOOM,
+    toolDef: toolDef,
+    stampDef: stampDef,
+    isDrawingTool: isDrawingTool,
+    readTools: readTools,
+    saveTools: saveTools,
+    resolveColors: resolveColors,
+    colorOf: colorOf,
+    drawStrokes: drawStrokes,
+    drawStroke: drawStroke,
+    thumbnail: thumbnail,
+    addStroke: addStroke,
+    replaceStrokes: replaceStrokes,
+    setView: setView,
+    setBackground: setBackground,
+    clearStrokes: clearStrokes,
+    mount: mount
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
 <!-- Ansichten -->
   <script>
 /* js/views/dashboard.js */
@@ -9634,6 +11843,748 @@ body { position: relative; }
 
   </script>
   <script>
+/* js/views/whiteboards.js */
+/* ==========================================================================
+   Whiteboards der Lerngruppe
+   Eine unbegrenzte Fläche für Handschrift – mit dem Stift geschrieben, mit
+   dem Finger verschoben und gezoomt. Jedes Whiteboard gehört wie eine Tafel
+   einer Lerngruppe, damit es dort wieder auftaucht, wo es hingehört.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var h = util.h;
+  var ui = BAO.ui;
+  var schema = BAO.schema;
+  var select = BAO.select;
+
+  function backgroundLabel(id) {
+    var found = schema.WHITEBOARD_BACKGROUNDS.filter(function (b) { return b.id === id; })[0];
+    return found ? found.label : 'Blanko';
+  }
+
+  /**
+   * Neues Whiteboard. Fach und Lerngruppe werden ausdrücklich gewählt;
+   * vorgeschlagen wird der aktuelle Arbeitskontext.
+   */
+  function createWhiteboard(ctx, app, options) {
+    options = options || {};
+    var state = BAO.store.getState();
+
+    var fieldTitle = ui.textField({
+      label: 'Titel', value: options.title || '',
+      placeholder: 'z. B. Tafelbild zur Stunde am Montag'
+    });
+
+    var groupSelect = h('select', { 'aria-label': 'Lerngruppe wählen' });
+    var fieldGroup = h('div.field', {}, h('label', { text: 'Lerngruppe (Klasse)' }), groupSelect);
+
+    function fillGroups(subjectId, preferred) {
+      util.clear(groupSelect);
+      var groups = select.groupsOfSubject(state, subjectId);
+      if (!groups.length) {
+        groupSelect.appendChild(h('option', { value: '', text: 'keine Lerngruppe in diesem Fach' }));
+        return;
+      }
+      groups.forEach(function (group) {
+        groupSelect.appendChild(h('option', {
+          value: group.id,
+          text: group.name + ' · Jg. ' + group.grade + (group.favorite ? ' ★' : ''),
+          selected: group.id === preferred ? true : null
+        }));
+      });
+    }
+
+    var fieldSubject = ui.selectField({
+      label: 'Fach (Sprache)',
+      value: ctx.subject.id,
+      options: select.subjects(state).map(function (subject) {
+        return { value: subject.id, label: subject.name };
+      }),
+      onChange: function (value) { fillGroups(value, ''); }
+    });
+    fillGroups(ctx.subject.id, ctx.group ? ctx.group.id : '');
+
+    var fieldBackground = ui.selectField({
+      label: 'Hintergrund',
+      value: options.background || 'plain',
+      options: schema.WHITEBOARD_BACKGROUNDS.map(function (b) { return { value: b.id, label: b.label }; })
+    });
+
+    return BAO.modal.open({
+      title: 'Neues Whiteboard',
+      subtitle: 'Eine unbegrenzte Fläche für Handschrift. Der Stift schreibt, der Finger verschiebt und zoomt.',
+      width: '520px',
+      initialFocus: 'input',
+      body: h('div.stack', {}, fieldTitle,
+        h('div.grid2', {}, fieldSubject, fieldGroup),
+        fieldBackground,
+        h('div.note', { text: 'Alles bleibt in jeder Vergrößerung scharf, und die Fläche hat keinen Rand: '
+          + 'Wer nach rechts oder unten schiebt, bekommt einfach mehr Platz.' })
+      ),
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        {
+          label: 'Anlegen und öffnen', kind: 'primary',
+          onSelect: function () {
+            var title = fieldTitle.input.value.trim();
+            if (!title) { fieldTitle.input.focus(); return false; }
+            var subjectId = util.$('select', fieldSubject).value;
+            var groupId = groupSelect.value;
+            if (!groupId) {
+              BAO.toast.error('Dieses Fach hat noch keine Lerngruppe. Bitte zuerst unter „Lerngruppen“ eine anlegen.');
+              return false;
+            }
+            var newId = null;
+            BAO.store.commit('Whiteboard angelegt', function (draft) {
+              var board = schema.makeWhiteboard({
+                subjectId: subjectId,
+                groupId: groupId,
+                unitId: (select.currentUnit(draft, groupId) || {}).id || '',
+                title: title,
+                background: util.$('select', fieldBackground).value
+              });
+              draft.whiteboards.push(board);
+              newId = board.id;
+            });
+            BAO.toast.undoable('Whiteboard „' + title + '“ angelegt.');
+            app.setContext(subjectId, groupId);
+            if (newId) app.go('whiteboard/' + newId);
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
+  function duplicate(board, app) {
+    var newId = null;
+    BAO.store.commit('Whiteboard dupliziert', function (draft) {
+      var copy = util.clone(board);
+      copy.id = util.uid('wbd');
+      copy.title = board.title + ' (Kopie)';
+      copy.favorite = false;
+      copy.lastUsedAt = '';
+      copy.createdAt = util.nowISO();
+      copy.updatedAt = util.nowISO();
+      copy.strokes = (copy.strokes || []).map(function (stroke) {
+        stroke.id = util.uid('stk');
+        return stroke;
+      });
+      draft.whiteboards.push(copy);
+      newId = copy.id;
+    });
+    BAO.toast.undoable('Kopie angelegt.');
+    if (newId && app) app.go('whiteboard/' + newId);
+  }
+
+  function remove(board) {
+    var count = (board.strokes || []).length;
+    return BAO.modal.confirm({
+      title: 'Whiteboard löschen?',
+      text: '„' + board.title + '“ wird entfernt.',
+      detail: count ? count + ' ' + util.plural(count, 'Strich', 'Striche') + ' gehen damit verloren. Rückgängig ist möglich.' : '',
+      confirmLabel: 'Löschen', danger: true
+    }).then(function (confirmed) {
+      if (!confirmed) return;
+      BAO.store.commit('Whiteboard gelöscht', function (draft) {
+        draft.whiteboards = draft.whiteboards.filter(function (b) { return b.id !== board.id; });
+      });
+      BAO.toast.undoable('Whiteboard gelöscht.');
+    });
+  }
+
+  function thumbnail(board) {
+    var canvas = BAO.whiteboard.thumbnail(board, 340, 170);
+    canvas.className = 'wb-thumb';
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    return canvas;
+  }
+
+  function tile(state, board, app) {
+    var count = (board.strokes || []).length;
+    var subject = select.subject(state, board.subjectId);
+
+    return h('div.tile', {
+      style: ui.subjectVars(subject),
+      dataset: { whiteboardId: board.id },
+      onclick: function () { app.go('whiteboard/' + board.id); }
+    },
+      h('span.tile__accent'),
+      h('div.tile__top', {},
+        h('span.tile__title', { text: board.title }),
+        h('span.spacer'),
+        ui.favButton(board.favorite, function () {
+          BAO.store.commit('Favorit geändert', function (draft) {
+            var target = select.whiteboard(draft, board.id);
+            if (target) target.favorite = !target.favorite;
+          });
+        })
+      ),
+      thumbnail(board),
+      h('div.row', {},
+        h('span.chip', { text: count + ' ' + util.plural(count, 'Strich', 'Striche') }),
+        h('span.chip.chip--outline', { text: backgroundLabel(board.background) }),
+        board.lastUsedAt ? h('span.tile__meta', { text: 'zuletzt ' + util.relativeDate(board.lastUsedAt) }) : null
+      ),
+      board.note ? h('div.tile__meta', { text: board.note }) : null,
+      h('div.tile__foot', {},
+        h('button.btn.btn--primary.btn--sm', {
+          type: 'button',
+          onclick: function (event) { event.stopPropagation(); app.go('whiteboard/' + board.id); }
+        }, ui.icon('pen', 15), 'Öffnen'),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Duplizieren',
+          onclick: function (event) { event.stopPropagation(); duplicate(board, app); }
+        }, ui.icon('copy', 15)),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Löschen',
+          onclick: function (event) { event.stopPropagation(); remove(board); }
+        }, ui.icon('trash', 15))
+      )
+    );
+  }
+
+  function render(host, context) {
+    var state = context.state;
+    var ctx = context.ctx;
+    var app = context.app;
+    var view = h('div.view');
+
+    if (!ctx.group) {
+      view.appendChild(ui.emptyState({
+        title: 'Noch keine Lerngruppe',
+        text: 'Ein Whiteboard gehört zu einer Lerngruppe – so bleibt alles über die Jahre beieinander.',
+        actionLabel: 'Lerngruppe anlegen', onAction: function () { app.go('verwaltung'); }
+      }));
+      host.appendChild(view);
+      return;
+    }
+
+    var all = select.whiteboardsOfGroup(state, ctx.group.id);
+
+    view.appendChild(h('div.view__head', {},
+      h('div.view__title', {},
+        h('h1', { text: 'Whiteboards' }),
+        h('span.sub', {
+          text: ctx.subject.name + ' · ' + ctx.group.name + ' · '
+            + all.length + ' ' + util.plural(all.length, 'Whiteboard', 'Whiteboards')
+        })
+      ),
+      h('div.spacer'),
+      h('div.view__actions', {},
+        h('button.btn.btn--primary', {
+          type: 'button', onclick: function () { createWhiteboard(ctx, app); }
+        }, ui.icon('plus', 16), 'Neues Whiteboard')
+      )
+    ));
+
+    if (!all.length) {
+      view.appendChild(ui.emptyState({
+        title: 'Noch kein Whiteboard',
+        text: 'Ein Whiteboard ist eine unbegrenzte Fläche für Handschrift: Mit dem Stift schreiben, '
+          + 'mit einem Finger verschieben, mit zwei Fingern zoomen. Dazu Textmarker, Radierer, '
+          + 'Unterstreichungen und Korrekturzeichen wie Häkchen.',
+        actionLabel: 'Erstes Whiteboard anlegen',
+        onAction: function () { createWhiteboard(ctx, app); }
+      }));
+    } else {
+      var tiles = h('div.tiles.tiles--wide');
+      all.forEach(function (board) { tiles.appendChild(tile(state, board, app)); });
+      tiles.appendChild(h('button.tile.tile--add', {
+        type: 'button', onclick: function () { createWhiteboard(ctx, app); }
+      }, ui.icon('plus', 22), h('span', { text: 'Neues Whiteboard' })));
+      view.appendChild(tiles);
+    }
+
+    host.appendChild(view);
+  }
+
+  BAO.views = BAO.views || {};
+  BAO.views.whiteboards = {
+    render: render, createWhiteboard: createWhiteboard, duplicate: duplicate, remove: remove
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/views/whiteboard.js */
+/* ==========================================================================
+   Whiteboard – Fläche mit Werkzeugen
+   Die Leisten schweben über der Fläche, damit sie auch im Vollbild da sind:
+   links die Werkzeuge, daneben die Einstellungen des gewählten Werkzeugs,
+   unten rechts der Zoom. Die Fläche selbst steuert BAO.whiteboard.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var h = util.h;
+  var ui = BAO.ui;
+  var schema = BAO.schema;
+  var select = BAO.select;
+  var wb = BAO.whiteboard;
+
+  var TOOL_ICONS = {
+    pen: 'pen', marker: 'marker', highlighter: 'highlighter', underline: 'underline',
+    stamp: 'stamp', eraser: 'eraser', lasso: 'lasso', hand: 'hand'
+  };
+
+  /* Die laufende Fläche überlebt einen Neuaufbau der Ansicht: Wird dieselbe
+     Fläche noch einmal gezeichnet, zieht ihr Element einfach mit um. */
+  var active = null;      // { id, ctrl, refs }
+
+  function teardown() {
+    if (!active) return;
+    active.ctrl.destroy();
+    active = null;
+  }
+
+  /** Vom Anwendungsrahmen aufgerufen, wenn eine andere Ansicht folgt. */
+  function unmount() { teardown(); }
+
+  /* --- Kleine SVG-Helfer (util.h baut nur HTML) --------------------------------- */
+
+  function svg(viewBox, children) {
+    var node = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    node.setAttribute('viewBox', viewBox);
+    node.setAttribute('aria-hidden', 'true');
+    node.setAttribute('focusable', 'false');
+    children.forEach(function (child) { node.appendChild(child); });
+    return node;
+  }
+
+  function path(d, attrs) {
+    var node = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    node.setAttribute('d', d);
+    node.setAttribute('fill', 'none');
+    node.setAttribute('stroke', 'currentColor');
+    node.setAttribute('stroke-linecap', 'round');
+    node.setAttribute('stroke-linejoin', 'round');
+    Object.keys(attrs || {}).forEach(function (key) { node.setAttribute(key, attrs[key]); });
+    return node;
+  }
+
+  function stampGlyph(variant) {
+    var def = wb.STAMP_PATHS[variant];
+    var parts = [path(def.main, { 'stroke-width': def.width })];
+    if (def.accent) parts.push(path(def.accent, { 'stroke-width': def.width }));
+    return svg('0 0 100 100', parts);
+  }
+
+  function underlineGlyph(style) {
+    var attrs = { 'stroke-width': 2.2 };
+    var d = 'M2 7H28';
+    if (style === 'dashed') attrs['stroke-dasharray'] = '6 3.5';
+    else if (style === 'dotted') attrs['stroke-dasharray'] = '0.5 3.6';
+    else if (style === 'wavy') d = 'M2 7c2.2-3.5 4.3-3.5 6.5 0s4.3 3.5 6.5 0 4.3-3.5 6.5 0 4.3 3.5 6.5 0';
+    return svg('0 0 30 14', [path(d, attrs)]);
+  }
+
+  /* --- Bausteine der Optionsleiste ----------------------------------------------- */
+
+  function group(label, children) {
+    var node = h('div.wb-options__group', {});
+    if (label) node.appendChild(h('span.wb-options__label', { text: label }));
+    children.forEach(function (child) { if (child) node.appendChild(child); });
+    return node;
+  }
+
+  function sep() { return h('span.wb-options__sep'); }
+
+  function swatches(keys, selected, onPick, soft) {
+    return group(null, keys.map(function (key) {
+      return h('button.wb-swatch' + (soft ? '.wb-swatch--soft' : ''), {
+        type: 'button',
+        title: wb.COLOR_LABELS[key] || key, 'aria-label': 'Farbe ' + (wb.COLOR_LABELS[key] || key),
+        'aria-pressed': key === selected ? 'true' : 'false',
+        style: { '--sw': 'var(--wb-c-' + key + ')' },
+        onclick: function () { onPick(key); }
+      });
+    }));
+  }
+
+  function widths(toolId, tools, ctrl) {
+    var list = wb.WIDTHS[toolId];
+    var dots = [5, 8, 12];
+    return group('Breite', list.map(function (w, index) {
+      return h('button.wb-width', {
+        type: 'button', title: wb.WIDTH_LABELS[index] + ' (' + w + ' px)',
+        'aria-label': 'Breite ' + wb.WIDTH_LABELS[index],
+        'aria-pressed': tools[toolId].width === index ? 'true' : 'false',
+        onclick: function () { ctrl.setToolOption(toolId, 'width', index); }
+      }, h('i', { style: { width: dots[index] + 'px', height: dots[index] + 'px' } }));
+    }));
+  }
+
+  function segment(options, value, onPick) {
+    var node = h('div.wb-seg', { role: 'group' });
+    options.forEach(function (option) {
+      node.appendChild(h('button', {
+        type: 'button', text: option.label, title: option.title || option.label,
+        'aria-pressed': option.value === value ? 'true' : 'false',
+        onclick: function () { onPick(option.value); }
+      }));
+    });
+    return node;
+  }
+
+  function toggleButton(label, pressed, title, onToggle) {
+    return h('button.btn.btn--sm', {
+      type: 'button', text: label, title: title,
+      'aria-pressed': pressed ? 'true' : 'false',
+      style: pressed ? { 'border-color': 'var(--brand)', 'background': 'var(--brand-soft)', 'color': 'var(--brand-ink)' } : null,
+      onclick: onToggle
+    });
+  }
+
+  function optionsFor(ctrl) {
+    var tools = ctrl.getTools();
+    var id = tools.tool;
+    var parts = [];
+
+    function pick(toolId, key) {
+      return function (value) { ctrl.setToolOption(toolId, key, value); };
+    }
+
+    if (id === 'pen' || id === 'marker') {
+      parts.push(swatches(wb.INK_COLORS, tools[id].color, pick(id, 'color')), sep(), widths(id, tools, ctrl));
+      if (id === 'pen') parts.push(sep(), h('span.wb-options__label', { text: 'druckempfindlich' }));
+    } else if (id === 'highlighter') {
+      parts.push(swatches(wb.HIGHLIGHT_COLORS, tools.highlighter.color, pick('highlighter', 'color'), true),
+        sep(), widths('highlighter', tools, ctrl));
+    } else if (id === 'underline') {
+      var u = tools.underline;
+      parts.push(
+        swatches(wb.INK_COLORS, u.color, pick('underline', 'color')), sep(),
+        group('Linie', wb.UNDERLINE_STYLES.map(function (style) {
+          return h('button.wb-ustyle', {
+            type: 'button', title: style.label, 'aria-label': style.label,
+            'aria-pressed': u.style === style.id ? 'true' : 'false',
+            onclick: function () { ctrl.setToolOption('underline', 'style', style.id); }
+          }, underlineGlyph(style.id));
+        })), sep(),
+        widths('underline', tools, ctrl), sep(),
+        group(null, [
+          toggleButton('Doppelt', u.double, 'Zwei Linien übereinander', function () { ctrl.setToolOption('underline', 'double', !u.double); }),
+          toggleButton('Häkchen rechts', u.hook, 'Kleiner Haken am rechten Ende – wie in Capy-note', function () { ctrl.setToolOption('underline', 'hook', !u.hook); })
+        ]), sep(),
+        h('span.wb-options__label', { text: 'waagerecht ziehen' })
+      );
+    } else if (id === 'stamp') {
+      var st = tools.stamp;
+      parts.push(
+        group('Zeichen', wb.STAMPS.map(function (def) {
+          var button = h('button.wb-stamp', {
+            type: 'button', title: def.label, 'aria-label': def.label,
+            'aria-pressed': st.stamp === def.id ? 'true' : 'false',
+            style: { '--stamp': 'var(--wb-c-' + def.color + ')' },
+            onclick: function () { ctrl.setToolOption('stamp', 'stamp', def.id); }
+          });
+          if (def.variant === 'text') button.appendChild(h('span', { text: def.text }));
+          else button.appendChild(stampGlyph(def.variant));
+          return button;
+        })), sep(),
+        swatches(wb.INK_COLORS, st.color, pick('stamp', 'color')), sep(),
+        group('Größe', wb.STAMP_SIZES.map(function (size, index) {
+          return h('button.wb-width', {
+            type: 'button', title: wb.WIDTH_LABELS[index], 'aria-label': 'Größe ' + wb.WIDTH_LABELS[index],
+            'aria-pressed': st.size === index ? 'true' : 'false',
+            onclick: function () { ctrl.setToolOption('stamp', 'size', index); }
+          }, h('i', { style: { width: (5 + index * 3) + 'px', height: (5 + index * 3) + 'px' } }));
+        })), sep(),
+        h('span.wb-options__label', { text: 'antippen setzt das Zeichen' })
+      );
+    } else if (id === 'eraser') {
+      var er = tools.eraser;
+      parts.push(
+        segment([
+          { value: 'stroke', label: 'Ganzer Strich', title: 'Berührte Striche verschwinden vollständig' },
+          { value: 'partial', label: 'Fein', title: 'Nur die berührte Stelle wird entfernt' }
+        ], er.mode, pick('eraser', 'mode')), sep(),
+        group('Größe', wb.ERASER_SIZES.map(function (size, index) {
+          return h('button.wb-width', {
+            type: 'button', title: wb.WIDTH_LABELS[index], 'aria-label': 'Radierer ' + wb.WIDTH_LABELS[index],
+            'aria-pressed': er.size === index ? 'true' : 'false',
+            onclick: function () { ctrl.setToolOption('eraser', 'size', index); }
+          }, h('i', { style: { width: (5 + index * 4) + 'px', height: (5 + index * 4) + 'px' } }));
+        })), sep(),
+        h('span.wb-options__label', { text: 'Stift umdrehen radiert ebenfalls' })
+      );
+    } else if (id === 'lasso') {
+      var count = ctrl.getSelection().length;
+      if (count) {
+        parts.push(
+          h('strong', { text: count + ' ' + util.plural(count, 'Strich', 'Striche') + ' ausgewählt' }), sep(),
+          h('span.wb-options__label', { text: 'Umfärben' }),
+          swatches(wb.INK_COLORS, '', function (key) { ctrl.recolorSelection(key); }), sep(),
+          h('button.btn.btn--sm', {
+            type: 'button', title: 'Ausgewählte Striche löschen (Entf)',
+            onclick: function () { ctrl.deleteSelection(); }
+          }, ui.icon('trash', 14), 'Löschen'),
+          h('button.btn.btn--sm.btn--ghost', {
+            type: 'button', text: 'Auswahl aufheben', title: 'Esc',
+            onclick: function () { ctrl.clearSelection(); }
+          }),
+          sep(), h('span.wb-options__label', { text: 'Auswahl ziehen verschiebt sie' })
+        );
+      } else {
+        parts.push(h('span.wb-options__label', { text: 'Einkreisen, was verschoben, umgefärbt oder gelöscht werden soll.' }));
+      }
+    } else if (id === 'hand') {
+      parts.push(h('span.wb-options__label', { text: 'Ziehen verschiebt die Fläche · Mausrad rollt · Strg + Mausrad zoomt' }));
+    }
+    return parts;
+  }
+
+  /* --- Leisten --------------------------------------------------------------------- */
+
+  function buildChrome(ctrl, refs) {
+    var rail = h('div.wb-tools', { role: 'toolbar', 'aria-label': 'Werkzeuge' });
+    var options = h('div.wb-options', { role: 'toolbar', 'aria-label': 'Einstellungen des Werkzeugs' });
+    var zoom = h('div.wb-zoom', { role: 'toolbar', 'aria-label': 'Ansicht' });
+    var hint = h('div.wb-hint');
+
+    function renderRail() {
+      util.clear(rail);
+      var tools = ctrl.getTools();
+      wb.TOOLS.forEach(function (tool) {
+        if (tool.id === 'eraser') rail.appendChild(h('div.wb-tools__sep'));
+        rail.appendChild(h('button.wb-tool', {
+          type: 'button',
+          dataset: { tool: tool.id },
+          title: tool.label + ' (' + tool.key.toUpperCase() + ') – ' + tool.hint,
+          'aria-label': tool.label,
+          'aria-pressed': tools.tool === tool.id ? 'true' : 'false',
+          onclick: function () { ctrl.setTool(tool.id); }
+        }, ui.icon(TOOL_ICONS[tool.id] || 'pen', 20)));
+      });
+      rail.appendChild(h('div.wb-tools__sep'));
+      rail.appendChild(h('button.wb-tool', {
+        type: 'button', title: 'Rückgängig (Strg + Z)', 'aria-label': 'Rückgängig',
+        dataset: { action: 'undo' },
+        onclick: function () {
+          var label = BAO.store.undo();
+          BAO.toast.show(label ? 'Rückgängig: ' + label : 'Nichts zum Rückgängigmachen.', { timeout: 2200 });
+        }
+      }, ui.icon('undo', 20)));
+      rail.appendChild(h('button.wb-tool', {
+        type: 'button', title: 'Wiederherstellen (Strg + Y)', 'aria-label': 'Wiederherstellen',
+        dataset: { action: 'redo' },
+        onclick: function () {
+          var label = BAO.store.redo();
+          BAO.toast.show(label ? 'Wiederhergestellt: ' + label : 'Nichts zum Wiederherstellen.', { timeout: 2200 });
+        }
+      }, ui.icon('redo', 20)));
+    }
+
+    function renderOptions() {
+      util.clear(options);
+      optionsFor(ctrl).forEach(function (part) { options.appendChild(part); });
+    }
+
+    function renderZoom() {
+      util.clear(zoom);
+      var level = Math.round(ctrl.getView().zoom * 100);
+      zoom.appendChild(h('button', {
+        type: 'button', title: 'Verkleinern (−)', 'aria-label': 'Verkleinern',
+        onclick: function () { ctrl.zoomOut(); }
+      }, '−'));
+      zoom.appendChild(h('button.wb-zoom__level', {
+        type: 'button', text: level + ' %', title: 'Auf 100 % zurücksetzen (0)',
+        onclick: function () { ctrl.zoomTo(1); }
+      }));
+      zoom.appendChild(h('button', {
+        type: 'button', title: 'Vergrößern (+)', 'aria-label': 'Vergrößern',
+        onclick: function () { ctrl.zoomIn(); }
+      }, '+'));
+      zoom.appendChild(h('button.wb-zoom__fit', {
+        type: 'button', title: 'Alles Geschriebene ins Bild holen',
+        onclick: function () { ctrl.fitContent(); }
+      }, ui.icon('fit', 16), 'Einpassen'));
+      zoom.appendChild(h('button.wb-zoom__reset', {
+        type: 'button', title: 'Zurück zum Ausgangspunkt',
+        onclick: function () { ctrl.resetView(); }
+      }, 'Anfang'));
+      zoom.appendChild(h('button', {
+        type: 'button',
+        title: ctrl.isFullscreen() ? 'Vollbild beenden (F)' : 'Vollbild (F)',
+        'aria-label': ctrl.isFullscreen() ? 'Vollbild beenden' : 'Vollbild',
+        onclick: function () { ctrl.toggleFullscreen(); }
+      }, ui.icon('focus', 16)));
+    }
+
+    function renderHint() {
+      util.clear(hint);
+      var tools = ctrl.getTools();
+      var checkbox = h('input', {
+        type: 'checkbox', checked: tools.touchDraws ? true : null,
+        onchange: function (event) { ctrl.setTouchDraws(event.target.checked); }
+      });
+      hint.appendChild(h('span', { text: 'Stift schreibt · ein Finger verschiebt · zwei Finger zoomen' }));
+      hint.appendChild(h('label', { title: 'Für Geräte ohne Stift: Der Finger zeichnet, zwei Finger verschieben und zoomen weiterhin.' },
+        checkbox, 'Finger zeichnet'));
+    }
+
+    renderRail();
+    renderOptions();
+    renderZoom();
+    renderHint();
+
+    ctrl.subscribe(function (reason) {
+      if (reason === 'tool') { renderRail(); renderOptions(); renderHint(); }
+      else if (reason === 'selection') renderOptions();
+      else if (reason === 'view' || reason === 'fullscreen') renderZoom();
+      else if (reason === 'strokes') {
+        if (refs.count && refs.count.isConnected) refs.count.textContent = countLabel(ctrl.strokeCount());
+        if (ctrl.getTools().tool === 'lasso') renderOptions();
+      }
+    });
+
+    return [rail, options, zoom, hint];
+  }
+
+  function countLabel(n) { return n + ' ' + util.plural(n, 'Strich', 'Striche'); }
+
+  /* --- Ansicht ------------------------------------------------------------------------ */
+
+  function render(host, context) {
+    var state = context.state;
+    var ctx = context.ctx;
+    var app = context.app;
+    var boardId = context.params[0];
+    var board = boardId ? select.whiteboard(state, boardId) : null;
+    var view = h('div.view.view--whiteboard');
+
+    if (!board) {
+      teardown();
+      view.classList.remove('view--whiteboard');
+      view.appendChild(ui.emptyState({
+        title: 'Whiteboard nicht gefunden',
+        text: 'Dieses Whiteboard gibt es nicht mehr.',
+        actionLabel: 'Zur Übersicht', onAction: function () { app.go('whiteboards'); }
+      }));
+      host.appendChild(view);
+      return;
+    }
+
+    // Das Whiteboard bestimmt den Arbeitskontext, nicht umgekehrt – wie die Tafel.
+    var arriving = !active || active.id !== board.id;
+    if (!ctx.group || ctx.group.id !== board.groupId) {
+      if (!arriving) {
+        // Oben wurde die Lerngruppe gewechselt: Dieses Whiteboard gehört nicht dazu.
+        teardown();
+        app.go('whiteboards');
+        return;
+      }
+      app.setContext(board.subjectId, board.groupId);
+      state = BAO.store.getState();
+      board = select.whiteboard(state, boardId);
+    }
+
+    if (arriving) {
+      teardown();
+      BAO.store.commit('Whiteboard geöffnet', function (draft) {
+        var target = select.whiteboard(draft, board.id);
+        if (target) target.lastUsedAt = util.nowISO();
+      }, { undoable: false });
+    }
+
+    var subject = select.subject(state, board.subjectId);
+    var groupObj = select.group(state, board.groupId);
+    var refs = active ? active.refs : {};
+    refs.count = h('span', { text: countLabel((board.strokes || []).length) });
+
+    var backgroundSelect = ui.selectField({
+      ariaLabel: 'Hintergrund', value: board.background,
+      options: schema.WHITEBOARD_BACKGROUNDS.map(function (b) { return { value: b.id, label: b.label }; }),
+      onChange: function (value) { wb.setBackground(board.id, value); }
+    });
+    backgroundSelect.title = 'Hintergrund der Fläche';
+
+    view.appendChild(h('div.view__head', {},
+      h('div.view__title', {},
+        h('h1', { text: board.title }),
+        h('span.sub', {},
+          [subject ? subject.name : '', groupObj ? groupObj.name + ' · Jg. ' + groupObj.grade : '']
+            .filter(Boolean).join(' · ') + ' · ',
+          refs.count
+        )
+      ),
+      h('div.spacer'),
+      h('div.view__actions', {},
+        h('button.btn', { type: 'button', onclick: function () { app.go('whiteboards'); } }, 'Alle Whiteboards'),
+        backgroundSelect,
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Titel ändern',
+          onclick: function () {
+            BAO.modal.prompt({
+              title: 'Titel des Whiteboards', label: 'Titel', value: board.title
+            }).then(function (value) {
+              if (value === null) return;
+              var title = String(value).trim();
+              if (!title) return;
+              BAO.store.commit('Whiteboard umbenannt', function (draft) {
+                var target = select.whiteboard(draft, board.id);
+                if (target) { target.title = title; target.updatedAt = util.nowISO(); }
+              });
+            });
+          }
+        }, ui.icon('edit', 15)),
+        h('button.btn.btn--sm', {
+          type: 'button', title: 'Vollbild auf diesem Bildschirm (Taste F)',
+          onclick: function () { if (active) active.ctrl.toggleFullscreen(); }
+        }, ui.icon('focus', 15), 'Vollbild'),
+        h('button.btn.btn--sm', {
+          type: 'button', title: 'Alle Striche entfernen',
+          onclick: function () {
+            BAO.modal.confirm({
+              title: 'Whiteboard leeren?',
+              text: 'Alle Striche auf „' + board.title + '“ werden entfernt.',
+              detail: 'Rückgängig ist mit Strg + Z möglich.',
+              confirmLabel: 'Leeren', danger: true
+            }).then(function (confirmed) {
+              if (!confirmed) return;
+              if (wb.clearStrokes(board.id)) BAO.toast.undoable('Whiteboard geleert.');
+            });
+          }
+        }, ui.icon('trash', 15), 'Leeren')
+      )
+    ));
+
+    var stage;
+    if (active && active.id === board.id) {
+      // Dieselbe Fläche – ihr Element zieht in die neue Ansicht um.
+      stage = active.ctrl.element;
+      active.refs = refs;
+      view.appendChild(stage);
+      host.appendChild(view);
+      active.ctrl.repaint();
+      return;
+    }
+
+    stage = h('div.wb', { 'aria-label': 'Zeichenfläche: ' + board.title });
+    view.appendChild(stage);
+    host.appendChild(view);
+
+    var ctrl = wb.mount(stage, { whiteboardId: board.id });
+    active = { id: board.id, ctrl: ctrl, refs: refs };
+    buildChrome(ctrl, refs).forEach(function (node) { stage.appendChild(node); });
+  }
+
+  BAO.views = BAO.views || {};
+  BAO.views.whiteboard = {
+    render: render,
+    unmount: unmount,
+    /** Für Prüfungen: die laufende Steuerung der Fläche. */
+    controller: function () { return active ? active.ctrl : null; }
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
 /* js/views/present.js */
 /* ==========================================================================
    Steuerungsansicht der Projektion
@@ -11395,29 +14346,44 @@ body { position: relative; }
      Tafeln, Elemente, Lerngruppen, Daten. Erreichbar bleibt alles – die
      Adressen ändern sich nicht, nur die Navigationsleiste wird kürzer. */
   var ROUTES = [
-    { path: 'start',        view: 'dashboard',  label: 'Start',        icon: 'home',   key: '1' },
-    { path: 'tafeln',       view: 'boards',     label: 'Tafeln',       icon: 'beamer', key: '2', simple: true },
-    { path: 'wortschatz',   view: 'vocab',      label: 'Wortschatz',   icon: 'list',   key: '3',
+    { path: 'start',        view: 'dashboard',   label: 'Start',        icon: 'home',       key: '1' },
+    { path: 'tafeln',       view: 'boards',      label: 'Tafeln',       icon: 'beamer',     key: '2', simple: true },
+    { path: 'whiteboards',  view: 'whiteboards', label: 'Whiteboards',  icon: 'whiteboard', key: '3', simple: true },
+    { path: 'wortschatz',   view: 'vocab',       label: 'Wortschatz',   icon: 'list',       key: '4',
       simple: true, simpleLabel: 'Elemente' },
-    { path: 'satzanfaenge', view: 'starters',   label: 'Satzanfänge',  icon: 'quote',  key: '4' },
-    { path: 'wortbanken',   view: 'banks',      label: 'Wortbanken',   icon: 'grid',   key: '5' },
-    { path: 'projektion',   view: 'present',    label: 'Projektion',   icon: 'play',   key: '6' },
-    { path: 'tafel',        view: 'board',      label: 'Tafel',        icon: 'beamer', hidden: true },
-    { path: 'wortbank',     view: 'bankEditor', label: 'Wortbank',     icon: 'grid',   hidden: true },
-    { path: 'verwaltung',   view: 'manage',     label: 'Lerngruppen',  icon: 'school', key: '7', simple: true },
-    { path: 'daten',        view: 'data',       label: 'Daten',        icon: 'data',   key: '8', simple: true }
+    { path: 'satzanfaenge', view: 'starters',    label: 'Satzanfänge',  icon: 'quote',      key: '5' },
+    { path: 'wortbanken',   view: 'banks',       label: 'Wortbanken',   icon: 'grid',       key: '6' },
+    { path: 'projektion',   view: 'present',     label: 'Projektion',   icon: 'play',       key: '7' },
+    { path: 'tafel',        view: 'board',       label: 'Tafel',        icon: 'beamer',     hidden: true },
+    { path: 'whiteboard',   view: 'whiteboard',  label: 'Whiteboard',   icon: 'whiteboard', hidden: true },
+    { path: 'wortbank',     view: 'bankEditor',  label: 'Wortbank',     icon: 'grid',       hidden: true },
+    { path: 'verwaltung',   view: 'manage',      label: 'Lerngruppen',  icon: 'school',     key: '8', simple: true },
+    { path: 'daten',        view: 'data',        label: 'Daten',        icon: 'data',       key: '9', simple: true }
   ];
 
   /* Änderungen, die nur die Leinwand betreffen. Ein vollständiger Neuaufbau
-     der Lehreransicht wäre hier störend – beim Ziehen sogar sichtbar. */
+     der Lehreransicht wäre hier störend – beim Ziehen sogar sichtbar.
+     'always': Die Fläche zeichnet sich selbst, auch nach Rückgängig. */
   var QUIET_LABELS = {
     'Wortbank geöffnet': true, 'Tafel geöffnet': true,
-    'Element verschoben': true, 'Elementgröße geändert': true
+    'Element verschoben': true, 'Elementgröße geändert': true,
+    'Whiteboard geöffnet': 'always', 'Whiteboard-Ansicht': 'always', 'Werkzeug gewählt': 'always',
+    'Strich gezeichnet': 'always', 'Striche geändert': 'always', 'Radiert': 'always',
+    'Strich gelöscht': 'always', 'Striche gelöscht': 'always', 'Strichfarbe geändert': 'always',
+    'Striche verschoben': 'always', 'Whiteboard geleert': 'always'
   };
+
+  function isQuiet(meta) {
+    var quiet = QUIET_LABELS[meta.label];
+    if (!quiet) return false;
+    if (meta.reason === 'commit') return true;
+    return quiet === 'always' && (meta.reason === 'undo' || meta.reason === 'redo') && current.path === 'whiteboard';
+  }
 
   var current = { path: 'start', params: [] };
   var renderScheduled = false;
   var viewScrollTop = {};
+  var mountedView = null;     // die zuletzt gezeichnete Ansicht (für ihren Abbau)
 
   /* --- Routen --------------------------------------------------------------- */
 
@@ -11533,11 +14499,12 @@ body { position: relative; }
       vocab: ctx.group ? select.lexemesOfGroup(state, ctx.group.id).length : 0,
       starters: ctx.group ? select.startersOfGroup(state, ctx.group.id, ctx.subject ? ctx.subject.id : '').length : 0,
       banks: ctx.group ? select.banksOfGroup(state, ctx.group.id).length : 0,
-      boards: ctx.group ? select.boardsOfGroup(state, ctx.group.id).length : 0
+      boards: ctx.group ? select.boardsOfGroup(state, ctx.group.id).length : 0,
+      whiteboards: ctx.group ? select.whiteboardsOfGroup(state, ctx.group.id).length : 0
     };
 
     // Welche Ansicht ist im Untermenü einer anderen zu Hause?
-    var PARENT = { wortbank: 'wortbanken', tafel: 'tafeln' };
+    var PARENT = { wortbank: 'wortbanken', tafel: 'tafeln', whiteboard: 'whiteboards' };
     var simple = isSimple();
 
     ROUTES.filter(function (route) {
@@ -11548,7 +14515,8 @@ body { position: relative; }
       var count = route.view === 'vocab' ? counts.vocab
         : route.view === 'starters' ? counts.starters
         : route.view === 'banks' ? counts.banks
-        : route.view === 'boards' ? counts.boards : null;
+        : route.view === 'boards' ? counts.boards
+        : route.view === 'whiteboards' ? counts.whiteboards : null;
 
       var label = routeLabel(route);
       var item = h('button.rail__item', {
@@ -11593,6 +14561,12 @@ body { position: relative; }
     // Scrollposition je Ansicht merken – hilft beim Hin- und Herspringen.
     var main = document.querySelector('.main');
     if (main) viewScrollTop[current.lastPath || ''] = main.scrollTop;
+
+    // Eine Ansicht mit eigener Fläche (Whiteboard) räumt auf, wenn eine andere folgt.
+    if (mountedView && mountedView !== view && mountedView.unmount) {
+      try { mountedView.unmount(); } catch (err) { console.error('Fehler beim Abbau der Ansicht:', err); }
+    }
+    mountedView = view || null;
 
     util.clear(host);
     if (!view) {
@@ -11662,7 +14636,7 @@ body { position: relative; }
     var results = [];
     var activeIndex = 0;
 
-    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', board: 'Tafel',
+    var TYPE_LABEL = { group: 'Lerngruppe', bank: 'Wortbank', board: 'Tafel', whiteboard: 'Whiteboard',
       unit: 'Unterrichtsreihe', lexeme: 'Wortschatz', starter: 'Satzanfang' };
 
     function draw(query) {
@@ -11712,6 +14686,7 @@ body { position: relative; }
       if (result.subjectId) setContext(result.subjectId, result.groupId || undefined);
       if (result.type === 'bank') { go('wortbank/' + result.id); return; }
       if (result.type === 'board') { go('tafel/' + result.id); return; }
+      if (result.type === 'whiteboard') { go('whiteboard/' + result.id); return; }
       if (result.type === 'group') { go('wortschatz'); return; }
       if (result.type === 'unit') { go('verwaltung'); return; }
       if (result.type === 'lexeme') { go('wortschatz/' + result.id); return; }
@@ -11845,7 +14820,7 @@ body { position: relative; }
         if (BAO.output.isWindowOpen()) BAO.output.closeWindow(); else ensureOutput();
         return;
       }
-      if (event.altKey && !mod && /^[1-8]$/.test(event.key)) {
+      if (event.altKey && !mod && /^[1-9]$/.test(event.key)) {
         var route = ROUTES.filter(function (r) { return r.key === event.key; })[0];
         if (route) { event.preventDefault(); go(route.path); }
         return;
@@ -11874,9 +14849,9 @@ body { position: relative; }
       // In der Grundform gibt es manche Ansicht nicht mehr in der Leiste –
       // dann führt der Weg zurück auf die Tafeln.
       var route = ROUTES.filter(function (r) { return r.path === current.path; })[0];
-      if (next && route && !route.simple && route.path !== 'tafel') go('tafeln'); else renderView();
+      if (next && route && !route.simple && route.path !== 'tafel' && route.path !== 'whiteboard') go('tafeln'); else renderView();
       BAO.toast.show(next
-        ? 'Einfache Grundform: Tafeln, Elemente, Lerngruppen, Daten.'
+        ? 'Einfache Grundform: Tafeln, Whiteboards, Elemente, Lerngruppen, Daten.'
         : 'Vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion.', { timeout: 3200 });
     });
     util.on(document, 'click', '[data-action="toggle-theme"]', function () {
@@ -11928,7 +14903,7 @@ body { position: relative; }
           ? ctx.group.name + ' · ' + (ctx.subject ? ctx.subject.name : '') + ' · Jg. ' + ctx.group.grade
           : 'Wortschatz für den Unterricht';
       }
-      if (meta.reason === 'commit' && QUIET_LABELS[meta.label]) return;
+      if (isQuiet(meta)) return;
       scheduleRender();
     });
 

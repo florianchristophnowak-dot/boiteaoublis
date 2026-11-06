@@ -21,6 +21,7 @@
   function starter(state, id) { return byId(state.starters, id); }
   function bank(state, id) { return byId(state.banks, id); }
   function board(state, id) { return byId(state.boards || [], id); }
+  function whiteboard(state, id) { return byId(state.whiteboards || [], id); }
 
   function functions(state) { return util.sortBy(state.functions, function (f) { return f.order; }); }
   function functionLabel(state, id) {
@@ -76,6 +77,16 @@
 
   function boardsOfGroup(state, groupId) {
     return (state.boards || []).filter(function (b) { return b.groupId === groupId; })
+      .sort(function (a, b) {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+        var la = a.lastUsedAt || a.updatedAt || '';
+        var lb = b.lastUsedAt || b.updatedAt || '';
+        return lb.localeCompare(la);
+      });
+  }
+
+  function whiteboardsOfGroup(state, groupId) {
+    return (state.whiteboards || []).filter(function (w) { return w.groupId === groupId; })
       .sort(function (a, b) {
         if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
         var la = a.lastUsedAt || a.updatedAt || '';
@@ -231,18 +242,20 @@
       lexemes: state.lexemes.length,
       starters: state.starters.length,
       banks: state.banks.length,
-      boards: (state.boards || []).length
+      boards: (state.boards || []).length,
+      whiteboards: (state.whiteboards || []).length
     };
   }
 
   BAO.select = {
     byId: byId,
     subjects: subjects, subject: subject, group: group, unit: unit,
-    lexeme: lexeme, starter: starter, bank: bank, board: board,
+    lexeme: lexeme, starter: starter, bank: bank, board: board, whiteboard: whiteboard,
     functions: functions, functionLabel: functionLabel,
     groupsOfSubject: groupsOfSubject, unitsOfGroup: unitsOfGroup, currentUnit: currentUnit,
     lexemesOfGroup: lexemesOfGroup, startersOfGroup: startersOfGroup, banksOfGroup: banksOfGroup,
-    boardsOfGroup: boardsOfGroup, resolveBoardItem: resolveBoardItem, boardEntries: boardEntries,
+    boardsOfGroup: boardsOfGroup, whiteboardsOfGroup: whiteboardsOfGroup,
+    resolveBoardItem: resolveBoardItem, boardEntries: boardEntries,
     belongsToBoard: belongsToBoard, isBareEntry: isBareEntry,
     statusCounts: statusCounts, bankItemCount: bankItemCount, resolveItem: resolveItem, bankIsEmpty: bankIsEmpty,
     topicsOfGroup: topicsOfGroup, tagsOfGroup: tagsOfGroup, usageOfEntry: usageOfEntry,

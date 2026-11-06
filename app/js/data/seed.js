@@ -391,6 +391,27 @@
       })
     ];
 
+    /* --- Whiteboard: ein Beispiel mit Handschrift-Werkzeugen ---------------- */
+    var wave = [];
+    for (var i = 0; i <= 44; i++) {
+      wave.push(Math.round((40 + i * 4.2) * 10) / 10, Math.round((60 + Math.sin(i / 2.1) * 9) * 10) / 10,
+        Math.round((0.45 + 0.3 * Math.abs(Math.sin(i / 3))) * 100) / 100);
+    }
+    state.whiteboards = [
+      schema.makeWhiteboard({
+        id: 'wbd_fr_notes', subjectId: 'sub_fr', groupId: 'grp_fr9b', unitId: 'unt_fr_stage',
+        title: 'Tafelbild – Handschrift', background: 'lines', favorite: false,
+        note: 'Mit dem Stift schreiben, mit einem Finger verschieben, mit zwei Fingern zoomen.',
+        strokes: [
+          schema.makeStroke({ tool: 'pen', color: 'ink', width: 2.4, points: wave }),
+          schema.makeStroke({ tool: 'highlighter', color: 'yellow', width: 20, points: [60, 60, 0.5, 150, 60, 0.5] }),
+          schema.makeStroke({ tool: 'underline', color: 'red', width: 2.4, x: 40, y: 82, w: 190, style: 'wavy', double: false, hook: true }),
+          schema.makeStroke({ tool: 'stamp', variant: 'check', color: 'red', x: 262, y: 60, size: 30 }),
+          schema.makeStroke({ tool: 'stamp', variant: 'text', text: 'Gr', color: 'red', x: 306, y: 60, size: 30 })
+        ]
+      })
+    ];
+
     /* --- Ausgangslage der Oberfläche -------------------------------------- */
     // Ein frischer Bestand startet in der einfachen Grundform. Die
     // vollständige Ansicht ist einen Klick in der Kopfzeile entfernt.

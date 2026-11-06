@@ -67,6 +67,14 @@
         id: b.id, groupId: b.groupId, subjectId: b.subjectId });
     });
 
+    (state.whiteboards || []).forEach(function (w) {
+      var g = select.group(state, w.groupId);
+      var s = score(w.title + ' ' + (w.note || ''), needle);
+      if (s) results.push({ type: 'whiteboard', score: s + 16, title: w.title,
+        meta: 'Whiteboard · ' + (w.strokes || []).length + ' Striche' + (g ? ' · ' + g.name : ''),
+        id: w.id, groupId: w.groupId, subjectId: w.subjectId });
+    });
+
     state.units.forEach(function (u) {
       var g = select.group(state, u.groupId);
       var s = score(u.title + ' ' + (u.description || ''), needle);
