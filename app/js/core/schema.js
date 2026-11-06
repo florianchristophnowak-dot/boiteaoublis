@@ -11,14 +11,18 @@
    und Satz. Ein dort angelegtes Element ist ein gewöhnlicher Eintrag des
    Bestands und lässt sich jederzeit um Artikel, Übersetzung, Beispiel und
    alles Weitere ergänzen.
+
+   Das Whiteboard schließlich ist eine unbegrenzte Fläche für Handschrift:
+   Striche, Unterstreichungen und Korrekturzeichen werden als Vektoren in
+   Weltkoordinaten gespeichert und bleiben in jeder Vergrößerung scharf.
    ========================================================================== */
 (function (BAO) {
   'use strict';
 
   var util = BAO.util;
 
-  var APP_VERSION = '1.1.0';
-  var SCHEMA_VERSION = 2;
+  var APP_VERSION = '1.2.0';
+  var SCHEMA_VERSION = 3;
   var EXPORT_KIND = 'boite-a-oublis.backup';
 
   /* --- Status eines Wortschatzeintrags ------------------------------------ */
@@ -254,6 +258,65 @@
     }, data || {});
   }
 
+  /* --- Whiteboard: unbegrenzte Fläche für Handschrift ----------------------
+     Ein Whiteboard gehört wie eine Tafel einer Lerngruppe. Es enthält eine
+     geordnete Liste von Strichen in Weltkoordinaten (Pixel bei Zoomstufe 1);
+     die Fläche selbst hat keinen Rand. Ein Strich ist je nach Werkzeug:
+
+       pen | marker | highlighter
+         { id, tool, color, width, points: [x, y, p, x, y, p, …] }
+         p = Druck 0…1 (Stift) – bestimmt die Breite entlang des Strichs
+       underline   (Unterstreichung wie in Capy-note: waagerecht, mit Stil)
+         { id, tool, color, width, x, y, w, style, double, hook }
+         style = solid | dashed | dotted | wavy; hook = Häkchen am rechten Ende
+       stamp       (Korrekturzeichen: handschriftliches Häkchen u. a.)
+         { id, tool, color, variant, text, x, y, size }
+         variant = check | check_crossed | omission | text
+
+     Farben sind Schlüssel einer festen Palette (ink, blue, red, …), damit
+     dieselbe Tinte auf hellem und dunklem Grund lesbar bleibt. */
+
+  var WHITEBOARD_BACKGROUNDS = [
+    { id: 'plain', label: 'Blanko' },
+    { id: 'lines', label: 'Linien' },
+    { id: 'grid',  label: 'Kästchen' },
+    { id: 'dots',  label: 'Punkte' }
+  ];
+  var STROKE_TOOLS = ['pen', 'marker', 'highlighter', 'underline', 'stamp'];
+  var UNDERLINE_STYLES = ['solid', 'dashed', 'dotted', 'wavy'];
+  var STAMP_VARIANTS = ['check', 'check_crossed', 'omission', 'text'];
+
+  function makeWhiteboard(data) {
+    return Object.assign({
+      id: util.uid('wbd'),
+      subjectId: '',
+      groupId: '',
+      unitId: '',
+      title: 'Neues Whiteboard',
+      note: '',
+      favorite: false,
+      background: 'plain',    // plain | lines | grid | dots
+      strokes: [],
+      view: { cx: 0, cy: 0, zoom: 1 },   // zuletzt sichtbare Mitte und Zoomstufe
+      createdAt: util.nowISO(),
+      updatedAt: util.nowISO(),
+      lastUsedAt: ''
+    }, data || {});
+  }
+
+  function makeStroke(data) {
+    var tool = data && STROKE_TOOLS.indexOf(data.tool) >= 0 ? data.tool : 'pen';
+    var base = { id: util.uid('stk'), tool: tool, color: 'ink', width: 2.4 };
+    if (tool === 'underline') {
+      Object.assign(base, { x: 0, y: 0, w: 0, style: 'solid', double: false, hook: false });
+    } else if (tool === 'stamp') {
+      Object.assign(base, { variant: 'check', text: '', x: 0, y: 0, size: 30, color: 'red' });
+    } else {
+      base.points = [];
+    }
+    return Object.assign(base, data || {});
+  }
+
   /* --- Voreinstellungen ---------------------------------------------------- */
   function defaultSettings() {
     return {
@@ -269,6 +332,8 @@
       maxItemsPerSlide: 12,
       showProgressOnStage: true,
       railCollapsed: false,
+      // Zuletzt gewählte Werkzeuge des Whiteboards (siehe whiteboard/canvas.js)
+      whiteboard: {},
       scenes: SCENES.slice(),
       fieldLevels: FIELDS.reduce(function (acc, f) { acc[f.key] = f.level; return acc; }, {})
     };
@@ -291,11 +356,12 @@
       lexemes: [],
       starters: [],
       banks: [],
-      boards: []
+      boards: [],
+      whiteboards: []
     };
   }
 
-  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'functions'];
+  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
 
   /* --- Prüfung und Reparatur ----------------------------------------------- */
 
@@ -379,6 +445,51 @@
     });
     if (lostOnBoards) warnings.push(lostOnBoards + ' Tafel-Elemente verwiesen ins Leere und wurden entfernt.');
 
+    // Whiteboards: Striche ohne brauchbare Geometrie fallen weg, Zahlen werden
+    // auf endliche Werte zurückgeholt – ein einziger NaN ließe sonst die ganze
+    // Fläche leer erscheinen.
+    var brokenStrokes = 0;
+    state.whiteboards.forEach(function (wb) {
+      if (!Array.isArray(wb.strokes)) wb.strokes = [];
+      if (WHITEBOARD_BACKGROUNDS.map(function (b) { return b.id; }).indexOf(wb.background) < 0) wb.background = 'plain';
+      var view = wb.view && typeof wb.view === 'object' ? wb.view : {};
+      wb.view = {
+        cx: isFinite(view.cx) ? Number(view.cx) : 0,
+        cy: isFinite(view.cy) ? Number(view.cy) : 0,
+        zoom: isFinite(view.zoom) ? util.clamp(Number(view.zoom), 0.1, 8) : 1
+      };
+      var seenStrokes = Object.create(null);
+      wb.strokes = wb.strokes.filter(function (stroke) {
+        if (!stroke || typeof stroke !== 'object' || STROKE_TOOLS.indexOf(stroke.tool) < 0) { brokenStrokes += 1; return false; }
+        if (!stroke.id || seenStrokes[stroke.id]) stroke.id = util.uid('stk');
+        seenStrokes[stroke.id] = true;
+        if (typeof stroke.color !== 'string' || !stroke.color) stroke.color = stroke.tool === 'stamp' ? 'red' : 'ink';
+        stroke.width = isFinite(stroke.width) && stroke.width > 0 ? Number(stroke.width) : 2.4;
+        if (stroke.tool === 'underline') {
+          if (!isFinite(stroke.x) || !isFinite(stroke.y) || !isFinite(stroke.w) || stroke.w <= 0) { brokenStrokes += 1; return false; }
+          if (UNDERLINE_STYLES.indexOf(stroke.style) < 0) stroke.style = 'solid';
+          stroke.double = !!stroke.double;
+          stroke.hook = !!stroke.hook;
+          return true;
+        }
+        if (stroke.tool === 'stamp') {
+          if (!isFinite(stroke.x) || !isFinite(stroke.y)) { brokenStrokes += 1; return false; }
+          if (STAMP_VARIANTS.indexOf(stroke.variant) < 0) stroke.variant = 'check';
+          stroke.text = typeof stroke.text === 'string' ? stroke.text.slice(0, 12) : '';
+          stroke.size = isFinite(stroke.size) && stroke.size > 0 ? Number(stroke.size) : 30;
+          return true;
+        }
+        if (!Array.isArray(stroke.points) || stroke.points.length < 3
+          || !stroke.points.every(function (n) { return typeof n === 'number' && isFinite(n); })) {
+          brokenStrokes += 1;
+          return false;
+        }
+        if (stroke.points.length % 3) stroke.points = stroke.points.slice(0, stroke.points.length - stroke.points.length % 3);
+        return true;
+      });
+    });
+    if (brokenStrokes) warnings.push(brokenStrokes + ' Striche auf Whiteboards waren beschädigt und wurden entfernt.');
+
     if (typeof state.schemaVersion !== 'number') {
       state.schemaVersion = SCHEMA_VERSION;
       warnings.push('Die Versionsangabe fehlte und wurde ergänzt.');
@@ -417,6 +528,12 @@
     makeSection: makeSection,
     makeBankItem: makeBankItem,
     makeBoard: makeBoard,
-    makeBoardItem: makeBoardItem
+    makeBoardItem: makeBoardItem,
+    WHITEBOARD_BACKGROUNDS: WHITEBOARD_BACKGROUNDS,
+    STROKE_TOOLS: STROKE_TOOLS,
+    UNDERLINE_STYLES: UNDERLINE_STYLES,
+    STAMP_VARIANTS: STAMP_VARIANTS,
+    makeWhiteboard: makeWhiteboard,
+    makeStroke: makeStroke
   };
 })(window.BAO = window.BAO || {});

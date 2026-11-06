@@ -18,14 +18,15 @@
       lexemes: (state.lexemes || []).length,
       starters: (state.starters || []).length,
       banks: (state.banks || []).length,
-      boards: (state.boards || []).length
+      boards: (state.boards || []).length,
+      whiteboards: (state.whiteboards || []).length
     };
   }
 
   var COUNT_LABELS = {
     subjects: 'Fächer', groups: 'Lerngruppen', units: 'Unterrichtsreihen',
     lexemes: 'Wortschatzeinträge', starters: 'Satzanfänge', banks: 'Wortbanken',
-    boards: 'Tafeln'
+    boards: 'Tafeln', whiteboards: 'Whiteboards'
   };
 
   function buildExport(state) {
@@ -107,7 +108,7 @@
 
   /* --- Zusammenführen ------------------------------------------------------ */
 
-  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'functions'];
+  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
 
   function newerThan(a, b) {
     var ta = (a && (a.updatedAt || a.createdAt)) || '';

@@ -45,6 +45,16 @@
         if (typeof state.settings.simpleMode !== 'boolean') state.settings.simpleMode = false;
         return state;
       }
+    },
+    {
+      to: 3,
+      describe: 'Whiteboards für Handschrift ergänzt',
+      run: function (state) {
+        if (!Array.isArray(state.whiteboards)) state.whiteboards = [];
+        if (!state.settings) state.settings = {};
+        if (!state.settings.whiteboard || typeof state.settings.whiteboard !== 'object') state.settings.whiteboard = {};
+        return state;
+      }
     }
   ];
 

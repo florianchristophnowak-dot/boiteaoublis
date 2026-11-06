@@ -2,11 +2,13 @@
 
 **An der Tafel sammeln, Wortschatz aufbauen, sauber projizieren.**
 Eine eigenständige, vollständig lokale Browser-App für den Fremdsprachenunterricht.
-Version 1.1.0 · © Florian Nowak
+Version 1.2.0 · © Florian Nowak
 
 Boîte à Oublis ist keine Vokabelverwaltung, sondern ein Unterrichtswerkzeug. Sie verbindet
 
 * die **Tafel** – eine Fläche, auf der Wörter und Sätze gleichberechtigt stehen und sich frei verschieben lassen,
+* das **Whiteboard** – eine unbegrenzte Fläche für Handschrift: Der Stift schreibt, der Finger verschiebt und zoomt;
+  dazu Stifte, Textmarker, Radierer, Unterstreichungen und Korrekturzeichen,
 * einen **langfristig wachsenden Wortschatzbestand** je Lerngruppe,
 * **Wortverbindungen, Chunks und kommunikative Satzanfänge**,
 * daraus zusammengestellte, situationsbezogene **Wortbanken**,
@@ -63,6 +65,13 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 4. **Doppelklick** auf die Fläche – im Beamerfenster genügt das ebenfalls – und lostippen.
 5. Elemente mit der Maus dorthin ziehen, wo sie hingehören.
 
+### Mit einem Whiteboard (Handschrift)
+
+1. **Whiteboards → Neues Whiteboard**, Titel eingeben.
+2. Mit dem Stift schreiben. Ein Finger verschiebt die Fläche, zwei Finger zoomen.
+3. Links das Werkzeug wählen: Stift, Marker, Textmarker, Unterstreichen, Korrekturzeichen, Radierer, Auswahl.
+4. **Vollbild** (`F`) für den Beamer-Bildschirm.
+
 ### Mit einer Wortbank (vollständige Ansicht)
 
 1. Auf der Startseite eine Wortbank anklicken → **Projizieren**.
@@ -78,13 +87,20 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 | `Strg + L` | Live-Hilfe einblenden |
 | `Strg + B` | Beamerfenster öffnen / schließen |
 | `Strg + Z` / `Strg + Umschalt + Z` | Rückgängig / Wiederherstellen |
-| `Alt + 1 … 8` | Ansicht wechseln |
+| `Alt + 1 … 9` | Ansicht wechseln |
 
 | Auf einer Tafel (Vorschau **und** Beamerfenster) | |
 |---|---|
 | Doppelklick | Element anlegen oder ändern |
 | Ziehen | Element verschieben |
 | `← ↑ ↓ →` · `+` `−` · `Entf` | rücken · Größe · von der Tafel nehmen |
+
+| Auf einem Whiteboard | |
+|---|---|
+| `T` `M` `X` `U` `K` `R` `L` `H` | Werkzeug: Stift · Marker · Textmarker · Unterstreichen · Korrekturzeichen · Radierer · Auswahl · Verschieben |
+| `+` `−` `0` · `F` | Zoom · Vollbild |
+| `Strg + Mausrad` · `Leertaste` + Ziehen | zoomen · Fläche verschieben |
+| `Entf` / `Esc` | Auswahl löschen / aufheben |
 
 | In der Wortbank-Projektion (Steuerfenster **und** Beamerfenster) | |
 |---|---|
@@ -177,7 +193,56 @@ Aktualisieren die vollständige Ansicht.
 
 ---
 
-## 4. Wie die Inhalte organisiert sind
+## 4. Das Whiteboard – Handschrift auf unbegrenzter Fläche
+
+Ein Whiteboard ist die zweite Fläche der App: nicht Elemente aus dem Bestand, sondern **freie Handschrift**.
+Es gibt keinen Rand – wer nach rechts oder unten schiebt, bekommt mehr Platz – und keine feste Auflösung:
+Striche werden als Vektoren gespeichert und bleiben in jeder Vergrößerung scharf.
+
+### Stift und Finger
+
+Die Fläche unterscheidet, womit sie berührt wird:
+
+| Eingabe | Wirkung |
+|---|---|
+| Stift | schreibt mit dem gewählten Werkzeug – druckempfindlich |
+| ein Finger | verschiebt die Fläche |
+| zwei Finger | zoomen (Pinch) und verschieben zugleich; der Punkt zwischen den Fingern bleibt unter den Fingern |
+| Handballen neben dem Stift | wird ignoriert |
+| Stift umgedreht oder Seitentaste | radiert |
+| Maus | zeichnet; Mausrad rollt, `Strg + Mausrad` zoomt, mittlere Taste oder `Leertaste` + Ziehen verschiebt |
+
+Für Geräte ohne Stift gibt es unten links den Schalter **„Finger zeichnet“**; zwei Finger verschieben und
+zoomen dann weiterhin.
+
+### Werkzeuge
+
+| Werkzeug | Taste | |
+|---|---|---|
+| Stift | `T` | feine Handschrift, die Breite folgt dem Druck |
+| Marker | `M` | breiter Filzstift |
+| Textmarker | `X` | halbtransparent; liegt immer hinter der Tinte, auch wenn er später gezogen wird |
+| Unterstreichen | `U` | waagerecht ziehen – durchgezogen, gestrichelt, gepunktet oder wellig; einfach oder doppelt; mit Häkchen rechts |
+| Korrekturzeichen | `K` | Häkchen, halbes Häkchen (durchgestrichen), Auslassungszeichen sowie die Kürzel Gr, O, V, Conj, Acc, G – ein Tipp setzt das Zeichen |
+| Radierer | `R` | „Ganzer Strich“ entfernt berührte Striche, „Fein“ nur die berührte Stelle |
+| Auswahl | `L` | einkreisen, dann verschieben, umfärben oder mit `Entf` löschen |
+| Verschieben | `H` | Fläche mit Stift oder Maus verschieben |
+
+Unterstreichungen und Korrekturzeichen folgen dem Korrekturwerkzeug *Capy-note*: dieselben Formen, dieselben
+Kürzel, dieselbe Bedienung (waagerecht ziehen, Haken am rechten Ende). Farbe, Breite und Stil jedes Werkzeugs
+bleiben gemerkt. Acht Tintenfarben – Blau, Rot und Grün sind die Genusfarben der App – und fünf
+Textmarkerfarben passen sich hellem und dunklem Papier an.
+
+### Fläche und Daten
+
+Der Hintergrund ist Blanko, Linien, Kästchen oder Punkte. `F` schaltet das Vollbild ein, `+` `−` `0` steuern
+den Zoom, **Einpassen** holt alles Geschriebene ins Bild. Ein Whiteboard gehört wie eine Tafel einer
+Lerngruppe; die Übersicht zeigt eine Vorschau jedes Whiteboards. Die Striche liegen im gewöhnlichen Bestand:
+automatisch lokal gespeichert, in Export und Import enthalten und mit `Strg + Z` rückgängig – Strich für Strich.
+
+---
+
+## 5. Wie die Inhalte organisiert sind
 
 ```
 Fach (Französisch, Englisch, …)
@@ -258,7 +323,7 @@ Es entstehen **keine Kopien**. Der Schritt lässt sich mit `Strg + Z` zurückneh
 
 ---
 
-## 5. Abgestufte Hilfen
+## 6. Abgestufte Hilfen
 
 Drei Stufen, die im Unterricht mit einem Tastendruck wechseln:
 
@@ -276,7 +341,7 @@ Der **Fokusmodus** zeigt nur einen Abschnitt (zum Beispiel nur die Satzanfänge)
 
 ---
 
-## 6. Projektion
+## 7. Projektion
 
 Die Projektionsansicht ist bewusst reduziert: keine Bedienelemente, kein Menü, keine Dekoration.
 
@@ -317,7 +382,7 @@ Bewegung (`prefers-reduced-motion`) schaltet alle Übergänge ab.
 
 ---
 
-## 7. Datensicherung
+## 8. Datensicherung
 
 Alles liegt im lokalen Speicher des Browsers (`localStorage`, Schlüssel `bao.state.v1`) und wird nach jeder
 Änderung automatisch gesichert. Die Fußzeile zeigt den Speicherstand; kann der Browser nicht speichern,
@@ -362,7 +427,7 @@ Programmversion werden erkannt und höflich abgelehnt, statt Daten zu beschädig
 
 ---
 
-## 8. Projektstruktur
+## 9. Projektstruktur
 
 ```
 boite-a-oublis/
@@ -377,6 +442,7 @@ boite-a-oublis/
 │   │   ├── base.css              Reset und wiederkehrende Bedienelemente
 │   │   ├── shell.css             Kopfzeile, Navigation, Inhalt, Fußzeile
 │   │   ├── views.css             die einzelnen Ansichten
+│   │   ├── whiteboard.css        Whiteboard: Fläche, Werkzeugleisten, Tintenfarben
 │   │   └── projection.css        Rahmen der Projektion in der Lehreransicht
 │   └── js/
 │       ├── core/                 util, storage, schema, migrations, store,
@@ -385,8 +451,11 @@ boite-a-oublis/
 │       ├── ui/                   toast, modal, components, ipa (Lautschrift-Tastatur)
 │       ├── projection/           stage-style, deck, render, output, session,
 │       │                         board (freie Fläche)
+│       ├── whiteboard/           ink (Geometrie: Treffer, Radieren, Lasso),
+│       │                         canvas (Zeichnen, Stift/Finger/Maus, Werkzeuge)
 │       ├── views/                dashboard, vocab, starters, banks, bank-editor,
-│       │                         boards, board, present, manage, data
+│       │                         boards, board, whiteboards, whiteboard, present,
+│       │                         manage, data
 │       ├── app.js                Navigation, Kontext, Schnellsuche, Tastenkürzel
 │       └── main.js               Start
 ├── tools/
@@ -411,7 +480,15 @@ für den Testlauf gebraucht (`npm install -D playwright` oder global installiert
 
 ---
 
-## 9. Zentrale Architekturentscheidungen
+## 10. Zentrale Architekturentscheidungen
+
+**Handschrift liegt im selben Bestand wie alles andere.**
+Die Striche eines Whiteboards sind Vektoren (Punkte mit Druck) im gewöhnlichen Zustand – nicht in einer
+zweiten Speicherschicht. So gelten Export, Import, Zusammenführen, Migration und Rückgängig ohne Sonderfall
+auch für Handschrift. Damit das beim Schreiben nicht bremst, wird je Strich genau einmal gespeichert, die
+Punkte liegen kompakt (Zehntelpixel, Druck in Hundertsteln) und ausgedünnt vor, und die Fläche zeichnet sich
+selbst nach, statt die ganze Ansicht neu aufzubauen. Gezeichnet wird in Weltkoordinaten auf zwei
+übereinanderliegende Leinwände: unten die fertige Tinte, oben nur das, was sich gerade bewegt.
 
 **Kein Framework, kein Bundler zur Laufzeit.**
 Die App besteht aus klassischen Skripten unter einem gemeinsamen Namensraum `BAO`, die `index.html` in
@@ -472,18 +549,20 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ---
 
-## 10. Prüfen
+## 11. Prüfen
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 163 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 227 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
 prüft unter anderem: Beispieldaten und getrennte Fächer, Anlegen von Lerngruppen, Reihen, Einträgen und
 Satzanfängen, die IPA-Tastatur, die Tafel (Anlegen per Doppelklick, Verschieben per Ziehen – beides auch
 im Beamerfenster –, die Bindung einer Tafel an ihre Lerngruppe und das spätere Ergänzen eines Elements),
-Wortbanken samt Ziehen und Ablegen, die drei
+das Whiteboard (Stift mit Druck, Finger und Pinch-Zoom, Handballen, alle Werkzeuge einschließlich der
+Capy-note-Zeichen, beide Radierer, Auswahl, Rückgängig ohne Neuaufbau der Fläche, Speicherung, Export,
+Migration), Wortbanken samt Ziehen und Ablegen, die drei
 Unterstützungsstufen, Fokus- und
 Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion bei fünf Auflösungen
 (dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Genuserkennung und Artikelfarben in hell und
@@ -494,7 +573,7 @@ nicht hatte. Bildschirmfotos landen in `tests/output/`.
 
 ---
 
-## 11. Bewusst nicht enthalten
+## 12. Bewusst nicht enthalten
 
 Benutzerkonten, Cloud-Synchronisierung, Schülergeräte, künstliche Intelligenz, automatische Übersetzung,
 Lernstandsanalysen einzelner Schülerinnen und Schüler, Gamification.

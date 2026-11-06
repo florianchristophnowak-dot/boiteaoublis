@@ -8,8 +8,8 @@ Quelle der Wahrheit ist `app/js/core/schema.js`.
 ```json
 {
   "kind": "boite-a-oublis.backup",
-  "appVersion": "1.1.0",
-  "schemaVersion": 2,
+  "appVersion": "1.2.0",
+  "schemaVersion": 3,
   "exportedAt": "2026-09-07T18:12:00.000Z",
   "counts": { "subjects": 2, "groups": 2, "…": 0 },
   "data": { /* der vollständige Zustand, siehe unten */ }
@@ -22,13 +22,14 @@ Ein Import akzeptiert auch den bloßen Zustand (ohne Hülle), sofern er `schemaV
 
 ```js
 {
-  schemaVersion: 2,
+  schemaVersion: 3,
   meta:     { appVersion, createdAt, updatedAt, seededAt },
   settings: { … },                 // siehe unten
   ui:       { subjectId, groupId, recentBanks[], recentGroups[] },
   functions: [ { id, label, order } ],   // kommunikative Funktionen
   subjects:  [ … ], groups: [ … ], units: [ … ],
-  lexemes:   [ … ], starters: [ … ], banks: [ … ], boards: [ … ]
+  lexemes:   [ … ], starters: [ … ], banks: [ … ], boards: [ … ],
+  whiteboards: [ … ]
 }
 ```
 
@@ -150,12 +151,44 @@ Rand ragen würde, rückt in die Fläche – der gespeicherte Wert bleibt davon 
 `BAO.select.isBareEntry(ref)` beantwortet, ob ein Eintrag außer dem Text schon weitere Angaben trägt. Die
 Tafelansicht kennzeichnet solche Elemente mit „nur Text“.
 
+### `whiteboards` – Whiteboard (Handschrift)
+
+```js
+{
+  id, subjectId, groupId, unitId, title, note, favorite,
+  background: "plain" | "lines" | "grid" | "dots",
+  view: { cx, cy, zoom },          // zuletzt gesehener Ausschnitt: Mitte in Weltkoordinaten, Zoom 0,1…8
+  createdAt, updatedAt, lastUsedAt,
+  strokes: [ … ]
+}
+```
+
+Ein Strich hat immer `id`, `tool`, `color` und `width`. Die Farbe ist ein Schlüssel (`ink`, `blue`, `red`,
+`green`, `orange`, `amber`, `purple`, `grey`; Textmarker: `yellow`, `mint`, `sky`, `pink`, `peach`), den die
+Oberfläche je Helligkeit auflöst – so bleibt dieselbe Tinte auf hellem wie dunklem Papier lesbar. Je nach
+Werkzeug kommt hinzu:
+
+| `tool` | Felder | Bedeutung |
+|---|---|---|
+| `pen`, `marker`, `highlighter` | `points: [x, y, p, x, y, p, …]` | flache Liste aus Weltkoordinaten (Zehntelpixel) und Druck 0…1; der Textmarker wird halbtransparent hinter der Tinte gezeichnet |
+| `underline` | `x, y, w, style, double, hook` | waagerechte Linie ab `x` mit Länge `w`; `style` ist `solid`, `dashed`, `dotted` oder `wavy`; `double` zeichnet zwei Linien, `hook` einen Haken am rechten Ende |
+| `stamp` | `variant, text, x, y, size` | Korrekturzeichen: `check`, `check_crossed`, `omission` (Vektorformen aus Capy-note) oder `text` mit Kürzel (`Gr`, `O`, `V`, `Conj`, `Acc`, `G`) |
+
+Weltkoordinaten sind Bildschirmpixel bei Zoom 1; der Ursprung liegt dort, wo ein neues Whiteboard beginnt.
+Die Fläche ist unbegrenzt – es gibt weder Breite noch Höhe. `schema.validateState` entfernt beim Laden
+Striche mit unbrauchbarer Geometrie (etwa Punktlisten, deren Länge kein Vielfaches von drei ist) und holt
+`view` in den gültigen Bereich zurück.
+
+Die Schreibwerkzeuge merken sich Werkzeug, Farbe, Breite und Stil in `settings.whiteboard`; wie alle
+Einstellungen bleiben diese Vorlieben beim Zusammenführen lokal.
+
 ### `settings`
 
 | Feld | Bedeutung |
 |---|---|
 | `theme` | `auto` \| `light` \| `dark` (Lehreransicht) |
-| `simpleMode` | einfache Grundform: nur Tafeln, Elemente, Lerngruppen, Daten |
+| `simpleMode` | einfache Grundform: nur Tafeln, Whiteboards, Elemente, Lerngruppen, Daten |
+| `whiteboard{}` | zuletzt gewählte Werkzeuge des Whiteboards (Werkzeug, Farbe, Breite, Stil, „Finger zeichnet“) |
 | `stageTheme`, `stageScale` | Projektion: hell/dunkel, Schriftfaktor |
 | `autoAdvanceSeconds`, `autoAdvanceLoop` | Automatik |
 | `maxItemsPerSlide` | didaktische Obergrenze je Projektionsseite |
@@ -181,7 +214,8 @@ in der Steuerung einzelne Felder übersteuern; ein Stufenwechsel setzt die Über
 
 `app/js/core/migrations.js` enthält eine geordnete Liste von Schritten, die den Bestand jeweils um genau
 eine Version anheben. Version 2 hat `boards` und `settings.simpleMode` ergänzt; ein vorhandener Bestand
-behält dabei die vollständige Ansicht, ein frisch angelegter startet in der Grundform. Eine neue Version bedeutet:
+behält dabei die vollständige Ansicht, ein frisch angelegter startet in der Grundform. Version 3 hat
+`whiteboards` und `settings.whiteboard` ergänzt. Eine neue Version bedeutet:
 
 1. `SCHEMA_VERSION` in `schema.js` erhöhen,
 2. einen Schritt `{ to: n, describe, run(state) }` an `STEPS` anhängen,
