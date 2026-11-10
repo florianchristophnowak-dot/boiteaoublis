@@ -231,6 +231,7 @@
           type: 'button', title: 'Duplizieren',
           onclick: function (event) { event.stopPropagation(); duplicate(board, app); }
         }, ui.icon('copy', 15)),
+        BAO.handover.copyButton('board', board, state, app),
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Löschen',
           onclick: function (event) { event.stopPropagation(); remove(board); }
@@ -256,6 +257,7 @@
     }
 
     var all = select.boardsOfGroup(state, ctx.group.id);
+    var sampleNote = BAO.handover.sampleNote(state, app);
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -276,6 +278,8 @@
         }, ui.icon('plus', 16), 'Neue Tafel')
       )
     ));
+
+    if (sampleNote) view.appendChild(sampleNote);
 
     if (!all.length) {
       view.appendChild(ui.emptyState({

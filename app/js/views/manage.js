@@ -83,30 +83,18 @@
 
   function removeSubject(subject) {
     var state = BAO.store.getState();
-    var groups = select.groupsOfSubject(state, subject.id, true);
-    var lexemes = state.lexemes.filter(function (l) { return l.subjectId === subject.id; }).length;
+    var content = BAO.stock.contentOfSubject(state, subject.id);
+    var what = BAO.stock.describeContent(content);
     BAO.modal.confirm({
       title: 'Fach „' + subject.name + '“ löschen?',
       text: 'Damit verschwinden auch alle zugehörigen Inhalte.',
-      detail: groups.length + ' ' + util.plural(groups.length, 'Lerngruppe', 'Lerngruppen') + ', '
-        + lexemes + ' Wortschatzeinträge und alle zugehörigen Wortbanken werden entfernt. '
+      detail: 'Betroffen: ' + content.groups + ' ' + util.plural(content.groups, 'Lerngruppe', 'Lerngruppen')
+        + (what ? ' sowie ' + what : '') + '. '
         + 'Rückgängig machen ist möglich, ein Export vorher schadet trotzdem nicht.',
       confirmLabel: 'Fach löschen', danger: true
     }).then(function (confirmed) {
       if (!confirmed) return;
-      var groupIds = groups.map(function (g) { return g.id; });
-      BAO.store.commit('Fach gelöscht', function (draft) {
-        draft.subjects = draft.subjects.filter(function (s) { return s.id !== subject.id; });
-        draft.groups = draft.groups.filter(function (g) { return g.subjectId !== subject.id; });
-        draft.units = draft.units.filter(function (u) { return groupIds.indexOf(u.groupId) < 0; });
-        draft.lexemes = draft.lexemes.filter(function (l) { return l.subjectId !== subject.id; });
-        draft.starters = draft.starters.filter(function (s) { return s.subjectId !== subject.id; });
-        draft.banks = draft.banks.filter(function (b) { return b.subjectId !== subject.id; });
-        if (draft.ui.subjectId === subject.id) {
-          draft.ui.subjectId = draft.subjects[0] ? draft.subjects[0].id : '';
-          draft.ui.groupId = '';
-        }
-      });
+      BAO.store.commit('Fach gelöscht', function (draft) { BAO.stock.removeSubject(draft, subject.id); });
       BAO.toast.undoable('Fach gelöscht.');
     });
   }
@@ -264,24 +252,16 @@
 
   function removeGroup(group) {
     var state = BAO.store.getState();
-    var lexemes = select.lexemesOfGroup(state, group.id).length;
-    var banks = select.banksOfGroup(state, group.id).length;
+    var what = BAO.stock.describeContent(BAO.stock.contentOfGroups(state, [group.id]));
     BAO.modal.confirm({
       title: 'Lerngruppe „' + group.name + '“ löschen?',
-      text: 'Der gesamte Bestand dieser Lerngruppe wird entfernt.',
-      detail: lexemes + ' Wortschatzeinträge und ' + banks + ' Wortbanken sind betroffen. '
+      text: 'Alles, was dieser Lerngruppe gehört, wird entfernt.',
+      detail: (what ? 'Betroffen: ' + what + '. ' : 'Die Lerngruppe ist noch leer. ')
         + 'Alternative: die Lerngruppe archivieren – dann bleibt alles erhalten.',
       confirmLabel: 'Endgültig löschen', danger: true
     }).then(function (confirmed) {
       if (!confirmed) return;
-      BAO.store.commit('Lerngruppe gelöscht', function (draft) {
-        draft.groups = draft.groups.filter(function (g) { return g.id !== group.id; });
-        draft.units = draft.units.filter(function (u) { return u.groupId !== group.id; });
-        draft.lexemes = draft.lexemes.filter(function (l) { return l.groupId !== group.id; });
-        draft.starters = draft.starters.filter(function (s) { return s.groupId !== group.id; });
-        draft.banks = draft.banks.filter(function (b) { return b.groupId !== group.id; });
-        if (draft.ui.groupId === group.id) draft.ui.groupId = '';
-      });
+      BAO.store.commit('Lerngruppe gelöscht', function (draft) { BAO.stock.removeGroups(draft, [group.id]); });
       BAO.toast.undoable('Lerngruppe gelöscht.');
     });
   }
@@ -358,8 +338,8 @@
       if (!confirmed) return;
       BAO.store.commit('Unterrichtsreihe gelöscht', function (draft) {
         draft.units = draft.units.filter(function (u) { return u.id !== unit.id; });
-        draft.lexemes.forEach(function (l) { if (l.introducedUnitId === unit.id) l.introducedUnitId = ''; });
-        draft.banks.forEach(function (b) { if (b.unitId === unit.id) b.unitId = ''; });
+        // Wortschatz, Wortbanken, Tafeln und Whiteboards bleiben – nur ohne Reihe.
+        BAO.stock.detachUnit(draft, unit.id);
       });
       BAO.toast.undoable('Unterrichtsreihe gelöscht.');
     });
@@ -373,6 +353,15 @@
     var units = select.unitsOfGroup(state, group.id);
     var counts = select.statusCounts(state, group.id);
     var banks = select.banksOfGroup(state, group.id).length;
+    var boards = select.boardsOfGroup(state, group.id).length;
+    var whiteboards = select.whiteboardsOfGroup(state, group.id).length;
+    // Was die Lerngruppe besitzt – in der Reihenfolge der Navigationsleiste.
+    var summary = [
+      boards + ' ' + util.plural(boards, 'Tafel', 'Tafeln'),
+      whiteboards + ' ' + util.plural(whiteboards, 'Whiteboard', 'Whiteboards'),
+      counts.total + ' ' + util.plural(counts.total, 'Wort', 'Wörter'),
+      banks + ' ' + util.plural(banks, 'Wortbank', 'Wortbanken')
+    ].join(' · ');
 
     var unitList = h('div.grp__units');
     if (!units.length) {
@@ -419,9 +408,7 @@
         h('span.chip', { text: 'Jahrgang ' + group.grade }),
         h('span.chip.chip--outline', { text: group.schoolYear }),
         group.archived ? h('span.chip.chip--st-archived', {}, h('i.dot'), 'archiviert') : null,
-        h('span.hint', {
-          text: counts.total + ' Wörter · ' + banks + ' ' + util.plural(banks, 'Wortbank', 'Wortbanken')
-        }),
+        h('span.hint', { text: summary }),
         h('span.spacer'),
         h('button.btn.btn--sm', {
           type: 'button', text: 'Öffnen',

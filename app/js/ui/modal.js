@@ -1,7 +1,9 @@
 /* ==========================================================================
    Dialoge
    Ein einziger, schlichter Dialogtyp für Formulare, Rückfragen und
-   Entscheidungen. Tastaturbedienung inklusive (Esc, Tabulatorfalle, Enter).
+   Entscheidungen. Tastaturbedienung inklusive: Esc schließt, Enter in einem
+   einzeiligen Feld bestätigt, Strg + Enter bestätigt von überall, der
+   Tabulator bleibt im Dialog.
    ========================================================================== */
 (function (BAO) {
   'use strict';
@@ -9,6 +11,9 @@
   var util = BAO.util;
   var h = util.h;
   var openStack = [];
+
+  /* Feldarten, in denen Enter den Dialog bestätigt. */
+  var ENTER_TYPES = ['text', 'search', 'number', 'email', 'url', 'tel', 'password'];
 
   /* Untergeordnete Einblendungen (z. B. die IPA-Tastatur) dürfen die
      Esc-Taste zuerst bekommen – sonst schließt Esc gleich den ganzen Dialog
@@ -145,6 +150,25 @@
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
         }
       }
+
+      // Enter in einem einzeiligen Feld bestätigt den Dialog – wie in jedem
+      // Formular. Bewusst erst in der Aufstiegsphase: Ein Feld, das Enter
+      // selbst braucht (Schlagwörter), hat das Ereignis dann schon verbraucht.
+      // Mehrzeilige Felder, Auswahllisten und Knöpfe bleiben außen vor.
+      dialog.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing) return;
+        if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+        if (openStack[openStack.length - 1] !== api) return;
+        var target = event.target;
+        if (!target || target.tagName !== 'INPUT') return;
+        var type = (target.getAttribute('type') || 'text').toLowerCase();
+        if (ENTER_TYPES.indexOf(type) < 0) return;
+        if (target.getAttribute('list')) return;      // Vorschlagsliste: Enter wählt dort aus
+        var primary = actions.filter(function (a) { return a.kind === 'primary'; })[0];
+        if (!primary) return;
+        event.preventDefault();
+        choose(primary);
+      });
 
       backdrop.addEventListener('mousedown', function (event) {
         if (event.target === backdrop && config.dismissable !== false) finish(null);

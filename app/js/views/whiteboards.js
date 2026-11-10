@@ -189,10 +189,15 @@
           type: 'button',
           onclick: function (event) { event.stopPropagation(); app.go('whiteboard/' + board.id); }
         }, ui.icon('pen', 15), 'Öffnen'),
+        count ? h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Als Bild speichern (PNG)', 'aria-label': 'Als Bild speichern',
+          onclick: function (event) { event.stopPropagation(); BAO.whiteboardImage.savePng(board); }
+        }, ui.icon('download', 15)) : null,
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Duplizieren',
           onclick: function (event) { event.stopPropagation(); duplicate(board, app); }
         }, ui.icon('copy', 15)),
+        BAO.handover.copyButton('whiteboard', board, state, app),
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Löschen',
           onclick: function (event) { event.stopPropagation(); remove(board); }

@@ -15,24 +15,42 @@
   var pick = { query: '' };
   var listenerBound = false;
   var refs = {};
+  // Was im Feld „Element hinzufügen“ steht, überdauert einen Neuaufbau der
+  // Ansicht – etwa wenn gleichzeitig am Beamer ein Element verschoben wird.
+  var draft = { boardId: '', text: '' };
+
+  /** Rückmeldung nach dem Anlegen – mit dem Hinweis, was schon im Bestand stand. */
+  function announceAdded(created) {
+    if (!created) return;
+    var known = created.reused || 0;
+    var message = created.length > 1 ? created.length + ' Elemente auf der Tafel.' : 'Element auf der Tafel.';
+    if (known) {
+      message += created.length === 1
+        ? ' Der Eintrag stand schon im Bestand und wurde von dort geholt.'
+        : ' ' + known + ' davon ' + util.plural(known, 'stand', 'standen') + ' schon im Bestand.';
+    }
+    BAO.toast.undoable(message);
+  }
 
   /* --- Panel: Elemente hinzufügen -------------------------------------------- */
 
-  function addCard() {
+  function addCard(board) {
+    if (draft.boardId !== board.id) draft = { boardId: board.id, text: '' };
     var input = h('textarea', {
       rows: 2, placeholder: 'Wort oder Satz … (mehrere Zeilen sind möglich)',
-      'aria-label': 'Neues Element'
+      'aria-label': 'Neues Element',
+      oninput: function () { draft.text = input.value; }
     });
+    input.value = draft.text;
 
     function submit() {
       var text = input.value;
       if (!text.trim()) { input.focus(); return; }
       var created = BAO.board.add(text);
       input.value = '';
+      draft.text = '';
       input.focus();
-      if (created) BAO.toast.undoable(created.length > 1
-        ? created.length + ' Elemente auf der Tafel.'
-        : 'Element auf der Tafel.');
+      announceAdded(created);
     }
 
     input.addEventListener('keydown', function (event) {
@@ -113,14 +131,23 @@
 
   /* --- Panel: vorhandene Einträge holen -------------------------------------- */
 
-  function pickCard(state, board, app) {
+  function pickCard(state, board) {
     var group = select.group(state, board.groupId);
     var used = {};
     (board.items || []).forEach(function (item) { used[item.kind + ':' + item.refId] = true; });
 
-    var needle = util.fold(pick.query);
-    var candidates = [];
-    if (needle) {
+    // Die Trefferliste zeichnet sich selbst neu. Das Suchfeld bleibt dabei
+    // stehen – sonst verlöre es nach jedem Buchstaben den Fokus.
+    var results = h('div.picker__list');
+
+    function drawResults() {
+      util.clear(results);
+      var needle = util.fold(pick.query);
+      if (!needle) {
+        results.appendChild(h('div.note', { text: 'Suchbegriff eingeben – gefunden wird alles, was diese Lerngruppe schon kennt.' }));
+        return;
+      }
+      var candidates = [];
       select.lexemesOfGroup(state, board.groupId).forEach(function (lex) {
         if (used['lex:' + lex.id]) return;
         if (util.fold(ui.termLabel(lex) + ' ' + (lex.translation || '')).indexOf(needle) < 0) return;
@@ -131,14 +158,10 @@
         if (util.fold(starter.text + ' ' + (starter.translation || '')).indexOf(needle) < 0) return;
         candidates.push({ kind: 'starter', id: starter.id, text: starter.text, meta: starter.translation || '' });
       });
-    }
-
-    var results = h('div.picker__list');
-    if (!needle) {
-      results.appendChild(h('div.note', { text: 'Suchbegriff eingeben – gefunden wird alles, was diese Lerngruppe schon kennt.' }));
-    } else if (!candidates.length) {
-      results.appendChild(h('div.note', { text: 'Kein Treffer. Neue Elemente entstehen oben oder direkt auf der Fläche.' }));
-    } else {
+      if (!candidates.length) {
+        results.appendChild(h('div.note', { text: 'Kein Treffer. Neue Elemente entstehen oben oder direkt auf der Fläche.' }));
+        return;
+      }
       candidates.slice(0, 12).forEach(function (candidate) {
         results.appendChild(h('button.picker__item', {
           type: 'button',
@@ -152,7 +175,11 @@
             candidate.meta ? h('small', { text: ' · ' + candidate.meta }) : null)
         ));
       });
+      if (candidates.length > 12) {
+        results.appendChild(h('span.hint', { text: '… und ' + (candidates.length - 12) + ' weitere. Genauer suchen grenzt ein.' }));
+      }
     }
+    drawResults();
 
     return h('div.ctrl-card', {},
       h('h3', {}, 'Aus dem Bestand holen',
@@ -162,7 +189,7 @@
       h('input', {
         type: 'search', value: pick.query, placeholder: 'Suchen …',
         'aria-label': 'Im Bestand suchen',
-        oninput: function (event) { pick.query = event.target.value; app.scheduleRender(); }
+        oninput: function (event) { pick.query = event.target.value; drawResults(); }
       }),
       results
     );
@@ -306,9 +333,9 @@
     );
 
     var panel = h('div.ctrl-panel', {},
-      addCard(),
+      addCard(board),
       elementsCard(entries, board),
-      pickCard(state, board, app),
+      pickCard(state, board),
       appearanceCard(board, session, app),
       h('div.ctrl-card', {},
         h('h3', {}, 'Auf der Fläche'),
@@ -336,6 +363,18 @@
       h('div.spacer'),
       h('div.view__actions', {},
         h('button.btn', { type: 'button', onclick: function () { app.go('tafeln'); } }, 'Alle Tafeln'),
+        entries.length ? h('button.btn.btn--sm', {
+          type: 'button', title: 'Die Elemente der Tafel als Wortliste oder Vokabeltest drucken',
+          onclick: function () {
+            var now = BAO.store.getState();
+            var latest = select.board(now, board.id) || board;
+            BAO.print.openWordList({
+              title: latest.title,
+              subtitle: [subject ? subject.name : '', group ? group.name : ''].filter(Boolean).join(' · '),
+              sections: [{ title: '', rows: BAO.stock.rowsOfBoard(now, latest) }]
+            });
+          }
+        }, ui.icon('print', 15), h('span.btn__label', { text: 'Drucken' })) : null,
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Titel ändern',
           onclick: function () {

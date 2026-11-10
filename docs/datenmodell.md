@@ -23,9 +23,11 @@ Ein Import akzeptiert auch den bloßen Zustand (ohne Hülle), sofern er `schemaV
 ```js
 {
   schemaVersion: 3,
-  meta:     { appVersion, createdAt, updatedAt, seededAt },
+  meta:     { appVersion, createdAt, updatedAt, seededAt,
+              lastBackupAt, unsavedSince, changedAt },   // Stand der Sicherung, siehe unten
   settings: { … },                 // siehe unten
-  ui:       { subjectId, groupId, recentBanks[], recentGroups[] },
+  ui:       { subjectId, groupId, recentBanks[], recentGroups[],
+              backupHintOn, sampleNoteHidden },
   functions: [ { id, label, order } ],   // kommunikative Funktionen
   subjects:  [ … ], groups: [ … ], units: [ … ],
   lexemes:   [ … ], starters: [ … ], banks: [ … ], boards: [ … ],
@@ -34,6 +36,35 @@ Ein Import akzeptiert auch den bloßen Zustand (ohne Hülle), sofern er `schemaV
 ```
 
 Alle Verweise laufen über Kennungen (`id`). Es gibt keine verschachtelten Kopien.
+
+### Stand der Sicherung (`meta`, `ui`)
+
+Der Bestand merkt sich selbst, wie es um seine Sicherungsdatei steht – ohne Änderung der Datenversion,
+denn unbekannte Felder in `meta` und `ui` bleiben beim Laden erhalten.
+
+| Feld | Bedeutung |
+|---|---|
+| `meta.lastBackupAt` | Zeitpunkt der letzten Sicherungsdatei (Export). Steht auch in der Datei selbst – ein wiederhergestellter Bestand gilt damit als gesichert. |
+| `meta.unsavedSince` | Zeitpunkt der ersten inhaltlichen Änderung seit dieser Datei; leer = nichts Ungesichertes. Gesetzt wird es von jeder Änderung, die sich rückgängig machen lässt – Einstellungen und Ansichtswechsel zählen nicht. |
+| `meta.changedAt` | Zeitpunkt der letzten inhaltlichen Änderung. Fehlt das Feld, stammt der Bestand aus einer älteren Programmversion und gilt ab dem ersten Start als ungesichert. |
+| `ui.backupHintOn` | Tag (`JJJJ-MM-TT`), an dem zuletzt an die Sicherung erinnert wurde – höchstens einmal täglich. |
+| `ui.sampleNoteHidden` | `true`, sobald der Hinweis auf die Beispieldaten ausgeblendet wurde. |
+
+`BAO.backup.status(state)` wertet das aus: `{ last, never, dirty, ageDays, unsavedDays, due }`. Fällig
+(`due`) ist eine Sicherung, wenn seit mindestens sieben Tagen Änderungen ohne Datei aufgelaufen sind.
+
+### Bestandspflege (`BAO.stock`)
+
+`app/js/core/stock.js` bündelt, was mehrere Ansichten über den Bestand wissen müssen: Einträge am Text
+wiedererkennen (`findEntry` – damit beim Tippen auf einer Tafel keine Dubletten entstehen), Lerngruppen
+und Fächer vollständig entfernen (`removeGroups`, `removeSubject` – einschließlich Tafeln und
+Whiteboards), Tafeln, Whiteboards und Wortbanken für eine andere Lerngruppe desselben Fachs kopieren
+(`copyBoardTo`, `copyWhiteboardTo`, `copyBankTo`), Einträge auf eine Tafel legen (`placeOnBoard`) und
+Wortlisten für Druck und Zwischenablage zusammenstellen (`rowsOfLexemes`, `rowsOfBoard`, `sectionsOfBank`).
+
+Beim Kopieren für eine andere Lerngruppe bleiben Verweise Verweise: Zu jedem Eintrag wird in der
+Ziel-Lerngruppe das Gegenstück gesucht (gleiche Schreibweise) oder mit dem Status `new` angelegt.
+Fachweite Satzanfänge (ohne `groupId`) gelten ohnehin für alle Lerngruppen und werden nicht kopiert.
 
 ### `subjects` – Fach / Fremdsprache
 

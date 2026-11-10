@@ -49,8 +49,62 @@
 
   function exportToFile(state) {
     var payload = buildExport(state);
+    // Die Datei trägt ihren Zeitpunkt in sich: Wer sie später
+    // wiederherstellt, sieht einen Bestand, der genau so gesichert ist.
+    payload.data.meta = Object.assign({}, payload.data.meta, {
+      lastBackupAt: payload.exportedAt, unsavedSince: ''
+    });
     util.downloadText(suggestFilename(state), JSON.stringify(payload, null, 2), 'application/json');
+    if (BAO.store && BAO.store.getState() === state) markBackedUp(payload.exportedAt);
     return payload;
+  }
+
+  /* --- Stand der Sicherung ---------------------------------------------------
+     Alles liegt nur im Browser dieses Rechners. Eine Sicherungsdatei ist der
+     einzige Schutz vor einem geleerten Browserspeicher – und der Weg auf einen
+     anderen Rechner. Deshalb merkt sich der Bestand, wann zuletzt exportiert
+     wurde und seit wann es ungesicherte Änderungen gibt. */
+
+  var DAY = 24 * 60 * 60 * 1000;
+  var REMIND_AFTER_DAYS = 7;
+
+  function markBackedUp(at) {
+    BAO.store.commit('Sicherung erstellt', function (draft) {
+      draft.meta.lastBackupAt = at || util.nowISO();
+      draft.meta.unsavedSince = '';
+    }, { undoable: false });
+  }
+
+  /**
+   * @returns {{last: string, never: boolean, dirty: boolean, ageDays: number|null,
+   *            unsavedDays: number, due: boolean}}
+   * due = es gibt seit mindestens einer Woche Änderungen ohne Sicherungsdatei.
+   */
+  function status(state, now) {
+    var meta = (state && state.meta) || {};
+    var nowMs = now ? new Date(now).getTime() : Date.now();
+    var last = meta.lastBackupAt || '';
+    var since = meta.unsavedSince || '';
+    function daysSince(iso) {
+      var t = new Date(iso).getTime();
+      return isNaN(t) ? 0 : Math.max(0, Math.floor((nowMs - t) / DAY));
+    }
+    var unsavedDays = since ? daysSince(since) : 0;
+    return {
+      last: last,
+      never: !last,
+      dirty: !!since,
+      ageDays: last ? daysSince(last) : null,
+      unsavedDays: unsavedDays,
+      due: !!since && unsavedDays >= REMIND_AFTER_DAYS
+    };
+  }
+
+  /** Kurze Auskunft für Fußzeile und Datenansicht. */
+  function statusLabel(info) {
+    if (info.never) return info.dirty ? 'Noch keine Sicherungsdatei' : 'Noch nichts zu sichern';
+    var when = util.relativeDate(info.last);
+    return info.dirty ? 'Letzte Sicherungsdatei: ' + when : 'Sicherungsdatei: ' + when;
   }
 
   /**
@@ -173,6 +227,10 @@
   BAO.backup = {
     buildExport: buildExport,
     exportToFile: exportToFile,
+    markBackedUp: markBackedUp,
+    status: status,
+    statusLabel: statusLabel,
+    REMIND_AFTER_DAYS: REMIND_AFTER_DAYS,
     suggestFilename: suggestFilename,
     analyse: analyse,
     merge: merge,

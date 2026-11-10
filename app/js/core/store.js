@@ -25,6 +25,9 @@
     if (!state) return;
     state.meta.updatedAt = util.nowISO();
     var result = storage.saveState(state);
+    // Speicher voll? Dann weicht zuerst die Sicherheitskopie eines früheren
+    // Imports – der laufende Bestand ist wichtiger als sie.
+    if (!result.ok && result.quota && storage.dropSafetyCopy()) result = storage.saveState(state);
     if (result.ok) {
       storageState = 'ok';
       storageMessage = '';
@@ -51,6 +54,24 @@
     listeners.forEach(function (fn) {
       try { fn(state, meta || {}); } catch (err) { console.error('Fehler in einem Zustandsbeobachter:', err); }
     });
+  }
+
+  /**
+   * Der Bestand merkt sich, seit wann es Änderungen ohne Sicherungsdatei gibt
+   * (meta.unsavedSince) und wann zuletzt exportiert wurde (meta.lastBackupAt).
+   * Ein Bestand aus einer älteren Programmversion kennt beides noch nicht: Er
+   * gilt ab jetzt als ungesichert – niemand weiß, ob es eine Datei gibt.
+   * Ein frisch angelegter Bestand hat dagegen noch nichts zu sichern.
+   */
+  function trackBackupFields(target, fresh) {
+    var meta = target.meta;
+    if (meta.changedAt === undefined) {
+      var legacy = !fresh && !meta.lastBackupAt;
+      meta.changedAt = legacy ? (meta.updatedAt || util.nowISO()) : '';
+      if (meta.unsavedSince === undefined) meta.unsavedSince = legacy ? util.nowISO() : '';
+    }
+    if (meta.unsavedSince === undefined) meta.unsavedSince = '';
+    if (meta.lastBackupAt === undefined) meta.lastBackupAt = '';
   }
 
   /* --- Initialisierung ---------------------------------------------------- */
@@ -86,6 +107,7 @@
     }
 
     state.meta.appVersion = schema.APP_VERSION;
+    trackBackupFields(state, startedFresh);
     if (!storage.isAvailable()) {
       storageState = 'session';
       storageMessage = 'Der Browser erlaubt keine lokale Speicherung. Die Daten bleiben nur für diese Sitzung erhalten – bitte exportieren.';
@@ -125,6 +147,12 @@
     var result = mutator(draft);
     if (result === false) return null;           // Mutator hat abgebrochen
     draft.meta.updatedAt = util.nowISO();
+    // Inhaltliche Änderungen merken: Daran hängt der Hinweis, dass eine neue
+    // Sicherungsdatei fällig ist (siehe BAO.backup.status).
+    if (undoable) {
+      draft.meta.changedAt = draft.meta.updatedAt;
+      if (!draft.meta.unsavedSince) draft.meta.unsavedSince = draft.meta.updatedAt;
+    }
     state = draft;
 
     if (undoable) {
@@ -143,6 +171,9 @@
     var before = JSON.stringify(state);
     storage.saveSafetyCopy(JSON.parse(before));
     state = nextState;
+    // Ein eingelesener oder neu angelegter Bestand bringt seinen eigenen
+    // Sicherungsstand mit; fehlt er, gilt: nichts Ungesichertes.
+    trackBackupFields(state, true);
     undoStack.push({ label: label || 'Bestand ersetzt', snapshot: before, at: util.nowISO() });
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
     redoStack.length = 0;
@@ -155,11 +186,24 @@
   function canRedo() { return redoStack.length > 0; }
   function lastUndoLabel() { return undoStack.length ? undoStack[undoStack.length - 1].label : ''; }
 
+  /* Rückgängig und Wiederholen stellen einen früheren Bestand her – mitsamt
+     seinen Vermerken zur Sicherung. Wurde inzwischen eine Sicherungsdatei
+     erstellt, bleibt sie die jüngste, und der Bestand weicht nun von ihr ab. */
+  function keepBackupTrack(previous) {
+    var meta = state.meta;
+    if (!previous || !previous.lastBackupAt) return;
+    if (String(meta.lastBackupAt || '') >= previous.lastBackupAt) return;
+    meta.lastBackupAt = previous.lastBackupAt;
+    if (!meta.unsavedSince) meta.unsavedSince = util.nowISO();
+  }
+
   function undo() {
     if (!undoStack.length) return null;
     var entry = undoStack.pop();
+    var previousMeta = state.meta;
     redoStack.push({ label: entry.label, snapshot: JSON.stringify(state), at: util.nowISO() });
     state = JSON.parse(entry.snapshot);
+    keepBackupTrack(previousMeta);
     persist.cancel();
     persistNow();
     notify({ reason: 'undo', label: entry.label });
@@ -169,8 +213,10 @@
   function redo() {
     if (!redoStack.length) return null;
     var entry = redoStack.pop();
+    var previousMeta = state.meta;
     undoStack.push({ label: entry.label, snapshot: JSON.stringify(state), at: util.nowISO() });
     state = JSON.parse(entry.snapshot);
+    keepBackupTrack(previousMeta);
     persist.cancel();
     persistNow();
     notify({ reason: 'redo', label: entry.label });
@@ -183,6 +229,7 @@
       message: storageMessage,
       savedAt: lastSavedAt,
       bytes: storage.approximateSize(),
+      usage: storage.usage(),
       available: storage.isAvailable()
     };
   }

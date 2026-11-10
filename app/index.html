@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles/views.css">
   <link rel="stylesheet" href="styles/whiteboard.css">
   <link rel="stylesheet" href="styles/projection.css">
+  <link rel="stylesheet" href="styles/print.css">
 </head>
 <body>
   <a class="skip-link" href="#view">Zum Inhalt springen</a>
@@ -61,13 +62,19 @@
 
     <footer class="appfoot">
       <span class="appfoot__left">Boîte à Oublis <span data-bind="version">–</span> · © Florian Nowak</span>
-      <span class="appfoot__right" data-bind="storage-state">Lokale Speicherung aktiv</span>
+      <span class="appfoot__side">
+        <button class="appfoot__backup" type="button" data-action="backup-now" data-bind="backup-state"
+          title="Sicherungsdatei jetzt erstellen (Strg + S)">Sicherungsdatei</button>
+        <span class="appfoot__right" data-bind="storage-state">Lokale Speicherung aktiv</span>
+      </span>
     </footer>
   </div>
 
   <div id="overlay-root" class="overlay-root"></div>
   <div id="modal-root" class="modal-root" aria-live="polite"></div>
   <div id="toast-root" class="toast-root" aria-live="polite" role="status"></div>
+  <!-- Nimmt auf, was gedruckt wird (Wortlisten, Vokabeltests) – sonst leer. -->
+  <div id="print-root" class="print-root"></div>
 
   <!-- Kern -->
   <script src="js/core/util.js"></script>
@@ -80,12 +87,15 @@
   <script src="js/core/search.js"></script>
   <script src="js/core/csv.js"></script>
   <script src="js/core/backup.js"></script>
+  <script src="js/core/stock.js"></script>
 
   <!-- Oberflächenbausteine -->
   <script src="js/ui/toast.js"></script>
   <script src="js/ui/modal.js"></script>
   <script src="js/ui/components.js"></script>
   <script src="js/ui/ipa.js"></script>
+  <script src="js/ui/print.js"></script>
+  <script src="js/ui/handover.js"></script>
 
   <!-- Projektion -->
   <script src="js/projection/stage-style.js"></script>
@@ -98,6 +108,7 @@
   <!-- Whiteboard: Handschrift auf unbegrenzter Fläche -->
   <script src="js/whiteboard/ink.js"></script>
   <script src="js/whiteboard/canvas.js"></script>
+  <script src="js/whiteboard/export.js"></script>
 
   <!-- Ansichten -->
   <script src="js/views/dashboard.js"></script>
