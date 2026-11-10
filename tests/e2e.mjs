@@ -1355,38 +1355,60 @@ async function run() {
   const prefs = await page.evaluate(() => BAO.store.getState().settings.whiteboard.marker);
   check('Farbe und Breite werden in den Einstellungen gemerkt', prefs.color === 'red' && prefs.width === 2, JSON.stringify(prefs));
 
-  // Unterstreichen wie in Capy-note: Stil, doppelt, Häkchen rechts
-  await page.keyboard.press('u');
+  // Korrekturzeichen wie in Capy-note: ein Werkzeug für Zeichen und Unterstreichungen
+  const railTools = await page.evaluate(() =>
+    BAO.util.$$('.wb-tools .wb-tool[data-tool]').map((n) => n.dataset.tool));
+  check('Unterstreichen hat kein eigenes Werkzeug mehr',
+    railTools.join(',') === 'pen,marker,highlighter,stamp,eraser,lasso,hand', railTools.join(','));
+  await page.keyboard.press('k');
+  check('Taste K wählt die Korrekturzeichen', (await toolNow()) === 'stamp');
+  const markBar = await page.evaluate(() => ({
+    stamps: document.querySelectorAll('.wb-options .wb-stamp').length,
+    lines: document.querySelectorAll('.wb-options .wb-ustyle').length,
+    text: document.querySelector('.wb-options').textContent
+  }));
+  check('ihre Leiste zeigt Zeichen und Unterstreichungen zusammen',
+    markBar.stamps === 9 && markBar.lines === 4 && markBar.text.includes('Unterstreichung'), JSON.stringify(markBar));
+
+  // Ziehen unterstreicht: Stil, doppelt, Haken rechts
   await page.click('.wb-options .wb-ustyle[aria-label="wellig"]');
   await page.click('.wb-options button:has-text("Doppelt")');
-  await page.click('.wb-options button:has-text("Häkchen rechts")');
+  await page.click('.wb-options button:has-text("Haken rechts")');
   await drag([[cx - 150, cy - 60], [cx - 100, cy - 58], [cx + 50, cy - 55]]);
   stroke = await lastStroke();
   check('Unterstreichung entsteht durch waagerechtes Ziehen',
     stroke.tool === 'underline' && Math.abs(stroke.w - 200) < 3, JSON.stringify(stroke));
-  check('… wellig, doppelt, mit Häkchen rechts',
+  check('… wellig, doppelt, mit Haken rechts',
     stroke.style === 'wavy' && stroke.double === true && stroke.hook === true,
     JSON.stringify([stroke.style, stroke.double, stroke.hook]));
+  check('… in der Farbe und Stärke des gewählten Zeichens',
+    stroke.color === 'red' && stroke.width === 2.4, JSON.stringify([stroke.color, stroke.width]));
   const ulGeometry = await page.evaluate((s) => ({
     lines: BAO.ink.underlineLines(s).length, hook: BAO.ink.underlineHook(s)
   }), stroke);
-  check('doppelt = zwei Linien, das Häkchen zeigt nach rechts unten',
+  check('doppelt = zwei Linien, der Haken zeigt nach rechts unten',
     ulGeometry.lines === 2 && !!ulGeometry.hook && ulGeometry.hook[2] < ulGeometry.hook[0] && ulGeometry.hook[3] > ulGeometry.hook[1],
     JSON.stringify(ulGeometry));
   let count = await countOf();
-  await drag([[cx - 150, cy - 30], [cx - 149, cy - 30]]);
-  check('zu kurzes Ziehen ergibt keine Unterstreichung', (await countOf()) === count);
+  await drag([[cx - 150, cy - 30], [cx - 90, cy - 30], [cx - 150, cy - 30]]);
+  check('zum Anfang zurückgezogen: weder Unterstreichung noch Zeichen', (await countOf()) === count);
 
-  // Korrekturzeichen wie in Capy-note
-  await page.keyboard.press('k');
+  // Tippen setzt das Zeichen
   await page.mouse.click(cx + 120, cy - 100);
   await page.waitForTimeout(100);
   stroke = await lastStroke();
   check('Häkchen wird mit einem Tipp gesetzt',
-    stroke.tool === 'stamp' && stroke.variant === 'check' && stroke.color === 'red' && stroke.size === 30,
+    (await countOf()) === count + 1
+    && stroke.tool === 'stamp' && stroke.variant === 'check' && stroke.color === 'red' && stroke.size === 30,
     JSON.stringify(stroke));
+  const firstStamp = stroke;
   await page.click('.wb-options .wb-stamp[aria-label="halbes Häkchen (durchgestrichen)"]');
-  await page.mouse.click(cx + 160, cy - 100);
+  await drag([[cx + 160, cy - 100], [cx + 165, cy - 96]]);
+  stroke = await lastStroke();
+  check('ein Tipp, der ein wenig verrutscht, bleibt ein Zeichen – dort, wo er aufgesetzt hat',
+    stroke.tool === 'stamp' && stroke.variant === 'check_crossed'
+    && Math.abs(stroke.x - firstStamp.x - 40) < 0.5 && Math.abs(stroke.y - firstStamp.y) < 0.5,
+    JSON.stringify(stroke));
   await page.click('.wb-options .wb-stamp[aria-label="Auslassungszeichen"]');
   await page.mouse.click(cx + 200, cy - 100);
   await page.click('.wb-options .wb-stamp[aria-label="Grammatik"]');
@@ -1405,6 +1427,38 @@ async function run() {
     && stampDefs.paths.check_crossed.accent === 'M 48 45 Q 60 44 74 45'
     && stampDefs.paths.omission.main === 'M 23 16 Q 31 40 45 86 Q 61 40 81 16');
   check('Kürzel wie in Capy-note: Gr, O, V, Conj, Acc, G', stampDefs.badges === 'Gr,O,V,Conj,Acc,G', stampDefs.badges);
+
+  // Das gewählte Zeichen bringt Farbe und Größe mit – auch für die Unterstreichung
+  await page.click('.wb-options .wb-stamp[aria-label="Orthographie"]');
+  await page.click('.wb-options .wb-width[aria-label="Größe breit"]');
+  await page.click('.wb-options .wb-ustyle[aria-label="gestrichelt"]');
+  await drag([[cx - 150, cy - 30], [cx - 100, cy - 30], [cx - 50, cy - 30]]);
+  stroke = await lastStroke();
+  check('die Unterstreichung übernimmt Farbe und Größe des Zeichens (O: orange, breit)',
+    stroke.tool === 'underline' && stroke.style === 'dashed' && stroke.color === 'orange' && stroke.width === 3.6
+    && Math.abs(stroke.w - 100) < 3, JSON.stringify(stroke));
+  const markPrefs = await page.evaluate(() => {
+    const saved = BAO.store.getState().settings.whiteboard;
+    return { stamp: saved.stamp, underline: saved.underline };
+  });
+  check('Zeichen, Farbe, Größe und Linienstil werden gemeinsam gemerkt',
+    markPrefs.stamp.stamp === 'o' && markPrefs.stamp.color === 'orange' && markPrefs.stamp.size === 2
+    && markPrefs.underline.style === 'dashed' && markPrefs.underline.double === true && markPrefs.underline.hook === true,
+    JSON.stringify(markPrefs));
+
+  // Wer Unterstreichen noch als eigenes Werkzeug kennt, landet bei den Korrekturzeichen
+  await page.keyboard.press('t');
+  await page.keyboard.press('u');
+  check('Taste U führt zu den Korrekturzeichen', (await toolNow()) === 'stamp');
+  const legacyTool = await page.evaluate(() => {
+    const saved = BAO.util.clone(BAO.store.getState().settings.whiteboard);
+    BAO.store.commit('Werkzeug gewählt', (d) => { d.settings.whiteboard.tool = 'underline'; }, { undoable: false });
+    const tool = BAO.whiteboard.readTools().tool;
+    BAO.store.commit('Werkzeug gewählt', (d) => { d.settings.whiteboard = saved; }, { undoable: false });
+    return tool;
+  });
+  check('ein gemerktes Werkzeug „Unterstreichen“ aus einem älteren Stand öffnet die Korrekturzeichen',
+    legacyTool === 'stamp', legacyTool);
   await page.screenshot({ path: join(shotDir, 'whiteboard-werkzeuge.png') });
 
   // Radierer: ganzer Strich
@@ -1494,6 +1548,39 @@ async function run() {
   await pointer('touch', 41, [[cx - 50, cy + 300], [cx, cy + 310], [cx + 50, cy + 300]]);
   await page.waitForTimeout(120);
   check('„Finger zeichnet“: ein Finger schreibt, wenn gewünscht', (await countOf()) === count + 1);
+
+  // … und setzt Korrekturzeichen. Zwei Finger zoomen dabei weiterhin, ohne ein Zeichen zu hinterlassen.
+  await page.keyboard.press('k');
+  count = await countOf();
+  await pointer('touch', 42, [[cx + 200, cy + 300], [cx + 203, cy + 302]]);
+  await page.waitForTimeout(120);
+  stroke = await lastStroke();
+  check('„Finger zeichnet“: ein Fingertipp setzt das Zeichen',
+    (await countOf()) === count + 1 && stroke.tool === 'stamp', JSON.stringify(stroke));
+  await pointer('touch', 43, [[cx + 100, cy + 340], [cx + 160, cy + 341], [cx + 220, cy + 342]]);
+  await page.waitForTimeout(120);
+  stroke = await lastStroke();
+  check('„Finger zeichnet“: ein gezogener Finger unterstreicht',
+    (await countOf()) === count + 2 && stroke.tool === 'underline' && Math.abs(stroke.w - 120) < 3, JSON.stringify(stroke));
+  const zoomBefore = (await viewOf()).zoom;
+  await page.evaluate(({ x, y }) => {
+    const canvas = document.querySelector('.wb-ink');
+    const fire = (kind, px, py, id) => canvas.dispatchEvent(new PointerEvent(kind, {
+      pointerType: 'touch', pointerId: id, isPrimary: id === 51, bubbles: true, cancelable: true,
+      clientX: px, clientY: py, pressure: 0.5, buttons: 1
+    }));
+    fire('pointerdown', x - 40, y, 51);
+    fire('pointerdown', x + 40, y, 52);
+    for (let i = 1; i <= 8; i++) { fire('pointermove', x - 40 - i * 10, y, 51); fire('pointermove', x + 40 + i * 10, y, 52); }
+    fire('pointerup', x - 120, y, 51);
+    fire('pointerup', x + 120, y, 52);
+  }, { x: cx, y: cy });
+  await page.waitForTimeout(120);
+  check('zwei Finger zoomen auch bei den Korrekturzeichen – ohne ein Zeichen zu hinterlassen',
+    (await viewOf()).zoom > zoomBefore * 2.5 && (await countOf()) === count + 2,
+    zoomBefore + ' -> ' + (await viewOf()).zoom + ', Striche: ' + (await countOf()));
+  await page.evaluate(() => BAO.views.whiteboard.controller().resetView());
+  await page.waitForTimeout(150);
   await page.uncheck('.wb-hint input[type="checkbox"]');
   await page.screenshot({ path: join(shotDir, 'whiteboard.png') });
 
