@@ -28,7 +28,7 @@
   /* --- Werkzeuge --------------------------------------------------------------- */
 
   var TOOLS = [
-    { id: 'pen',         label: 'Stift',            key: 't', hint: 'Handschrift – druckempfindlich' },
+    { id: 'pen',         label: 'Stift',            key: 't', hint: 'schreibt wie ein Füller – die Breite folgt dem Druck' },
     { id: 'marker',      label: 'Marker',           key: 'm', hint: 'breiter Filzstift' },
     { id: 'highlighter', label: 'Textmarker',       key: 'x', hint: 'halbtransparent, liegt hinter der Tinte' },
     { id: 'stamp',       label: 'Korrekturzeichen', key: 'k', altKey: 'u', hint: 'Häkchen, Kürzel und Unterstreichungen: Tippen setzt das Zeichen, Ziehen unterstreicht' },
@@ -59,6 +59,15 @@
     underline: [1.6, 2.4, 3.6]
   };
   var WIDTH_LABELS = ['fein', 'mittel', 'breit'];
+
+  /* Der Stift schreibt wie ein Füller: Druck macht die Linie breiter. Diese
+     Stufen legen fest, wie stark – die Härte der Feder. Ohne Drucksensor
+     (Maus, Finger, einfache Stifte) zählt stattdessen das Schreibtempo. */
+  var PEN_PRESSURES = [
+    { id: 'off',    label: 'aus',    hint: 'Gleichmäßige Linie – Druck und Tempo ändern die Breite nicht' },
+    { id: 'normal', label: 'normal', hint: 'Wie ein Füller: leicht aufgesetzt fein, fest aufgedrückt breit' },
+    { id: 'strong', label: 'stark',  hint: 'Wie ein Füller mit weicher Feder: Haarlinien und kräftige Abstriche' }
+  ];
   var ERASER_SIZES = [8, 16, 32];     // Radius in Bildschirmpixeln
   var STAMP_SIZES = [22, 30, 44];
   var MARK_DRAG = 8;                  // ab so vielen Bildschirmpixeln zur Seite wird aus dem Tipp eine Unterstreichung
@@ -93,7 +102,7 @@
 
   var DEFAULT_TOOLS = {
     tool: 'pen',
-    pen:         { color: 'ink', width: 1 },
+    pen:         { color: 'ink', width: 1, pressure: 'normal' },
     marker:      { color: 'blue', width: 1 },
     highlighter: { color: 'yellow', width: 1 },
     underline:   { style: 'solid', double: false, hook: false },   // Farbe und Stärke kommen vom Korrekturzeichen
@@ -116,6 +125,11 @@
 
   function isDrawingTool(id) { return id === 'pen' || id === 'marker' || id === 'highlighter'; }
 
+  function penPressureDef(id) {
+    for (var i = 0; i < PEN_PRESSURES.length; i++) if (PEN_PRESSURES[i].id === id) return PEN_PRESSURES[i];
+    return null;
+  }
+
   /** Zuletzt gewählte Werkzeuge aus den Einstellungen, mit Rückfallwerten. */
   function readTools() {
     var saved = (BAO.store.getState().settings || {}).whiteboard || {};
@@ -134,6 +148,7 @@
     tools.stamp.size = util.clamp(parseInt(tools.stamp.size, 10) || 0, 0, 2);
     tools.eraser.size = util.clamp(parseInt(tools.eraser.size, 10) || 0, 0, 2);
     if (tools.eraser.mode !== 'partial') tools.eraser.mode = 'stroke';
+    if (!penPressureDef(tools.pen.pressure)) tools.pen.pressure = 'normal';
     return tools;
   }
 
@@ -264,11 +279,6 @@
      vom Mittelpunkt vor dem Stützpunkt i zum Mittelpunkt dahinter, mit dem
      Stützpunkt als Kontrollpunkt. Das glättet die Handschrift, ohne dass
      Punkte verloren gehen. */
-  function pieceStart(pts, i) {
-    if (i === 0) return [pts[0], pts[1]];
-    return [(pts[3 * i - 3] + pts[3 * i]) / 2, (pts[3 * i - 2] + pts[3 * i + 1]) / 2];
-  }
-
   function tracePiece(ctx, pts, n, i) {
     var x = pts[3 * i];
     var y = pts[3 * i + 1];
@@ -287,30 +297,314 @@
     for (var i = 0; i < n; i++) tracePiece(ctx, pts, n, i);
   }
 
-  /** Druckempfindlicher Strich: Stücke ähnlicher Breite werden gebündelt. */
-  function drawPressureStroke(ctx, stroke, minWidth) {
+  /* --- Tinte mit wechselnder Breite ---------------------------------------------
+     Stift und Marker werden nicht als Linie gezogen, sondern als Fläche
+     gefüllt: die Spur einer runden Feder, deren Breite sich stufenlos
+     ändert. Die Mittellinie ist dieselbe geglättete Kurve wie oben; an jedem
+     Stützpunkt gilt die Breite aus dem Druck, dazwischen geht sie so weich
+     über wie die Kurve selbst. So läuft der Strich spitz aus, wo der Druck
+     nachlässt, und hat nirgends einen Absatz.
+
+     Die Fläche ist EIN geschlossener Umriss: die rechte Seite des Strichs
+     entlang, um das runde Ende herum und die linke Seite zurück. Zwei
+     Stützstellen verbindet ein Trapez; am Knick dazwischen bekommt die
+     Außenseite einen Bogen und die Innenseite den Eckpunkt, in dem sich die
+     beiden Kanten schneiden. Wo es diesen Eckpunkt nicht gibt (enge Kringel,
+     Spitzkehren), läuft die Innenseite über die Mittellinie. So bleibt jedes
+     Teilstück für sich richtig herum, und mit der Füllregel „nonzero“
+     entsteht auch dort kein Loch, wo der Strich sich selbst überdeckt.
+
+     Ein Umriss ohne innere Kanten ist schneller gefüllt als viele kleine
+     Teilflächen – und sauberer: Überlappende Flächen in einem Pfad lassen je
+     nach Rasterverfahren feine helle Nähte im Strich zurück. Eigene Kreise
+     und Hüllen bekommt nur, was ein Trapez nicht trifft: Stellen, an denen
+     die Breite sprunghaft wechselt. */
+
+  var TAU = Math.PI * 2;
+  var INK_FLATNESS = 0.05;            // erlaubte Abweichung von der Kurve in Gerätepixeln
+  var INK_HULL = 2;                   // erlaubte Abweichung vom Trapez zur genauen Hülle, in Vielfachen davon
+
+  var inkX = [], inkY = [], inkR = [];  // Stützstellen der Mittellinie mit Radius
+  var inkA = [], inkB = [];             // rechte und linke Seite des Umrisses
+  var inkSteepAt = [];                  // Teilstücke, deren Breite sprunghaft wechselt
+
+  /** Nimmt eine Stützstelle auf; fällt sie auf die vorige, zählt der größere Kreis. */
+  function inkSample(x, y, r) {
+    var m = inkX.length;
+    if (m) {
+      var dx = x - inkX[m - 1];
+      var dy = y - inkY[m - 1];
+      if (dx * dx + dy * dy < 1e-8) {
+        if (r > inkR[m - 1]) inkR[m - 1] = r;
+        return;
+      }
+    }
+    inkX.push(x);
+    inkY.push(y);
+    inkR.push(r);
+  }
+
+  /** Zahl der Sehnen, die einen Bogen mit diesem Öffnungswinkel genau genug nachzeichnen. */
+  function inkArcSteps(r, sweep, tol) {
+    if (r <= tol) return 1;
+    var steps = Math.ceil(sweep / (2 * Math.acos(1 - tol / r)));
+    return steps < 1 ? 1 : steps;
+  }
+
+  /** Kreis als Vieleck – im selben Drehsinn wie der Umriss. */
+  function inkDisc(path, x, y, r, tol) {
+    var steps = inkArcSteps(r, TAU, tol);
+    if (steps < 6) steps = 6;
+    path.moveTo(x + r, y);
+    for (var i = 1; i < steps; i++) {
+      var a = i / steps * TAU;
+      path.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+    }
+    path.closePath();
+    return steps;
+  }
+
+  /** Fläche zwischen zwei Kreisen entlang ihrer äußeren Tangenten (d = Abstand der Mitten). */
+  function inkHull(path, ax, ay, ar, bx, by, br, d) {
+    var ux = (bx - ax) / d;
+    var uy = (by - ay) / d;
+    var k = (ar - br) / d;
+    var s = Math.sqrt(1 - k * k);
+    var px = k * ux - s * uy, py = k * uy + s * ux;
+    var qx = k * ux + s * uy, qy = k * uy - s * ux;
+    path.moveTo(ax + ar * px, ay + ar * py);
+    path.lineTo(ax + ar * qx, ay + ar * qy);
+    path.lineTo(bx + br * qx, by + br * qy);
+    path.lineTo(bx + br * px, by + br * py);
+    path.closePath();
+  }
+
+  /** Weicht das Trapez zwischen zwei Kreisen sichtbar von ihrer genauen Hülle ab? */
+  function inkSteep(ra, rb, d, tol) {
+    var dr = rb > ra ? rb - ra : ra - rb;
+    if (dr >= d) return true;                      // ein Kreis liegt ganz im anderen
+    var k = dr / d;
+    return (ra > rb ? ra : rb) * (1 - Math.sqrt(1 - k * k)) > INK_HULL * tol;
+  }
+
+  /**
+   * Legt die Fläche eines Strichs in einen Pfad (Leinwand oder Path2D) und
+   * liefert die Zahl seiner Eckpunkte. scale sind Gerätepixel je Weltpixel:
+   * So fein wird die Kurve unterteilt.
+   */
+  function traceInk(path, stroke, minWidth, scale) {
     var pts = stroke.points;
     var n = pts.length / 3;
-    var runWidth = Math.max(ink.widthAt(stroke, pts[2]), minWidth);
-    var runLength = 0;
-    ctx.beginPath();
-    ctx.moveTo(pts[0], pts[1]);
-    for (var i = 0; i < n; i++) {
-      var w = Math.max(ink.widthAt(stroke, pts[3 * i + 2]), minWidth);
-      if (runLength && Math.abs(w - runWidth) > Math.max(0.25, runWidth * 0.14)) {
-        ctx.lineWidth = runWidth;
-        ctx.stroke();
-        var start = pieceStart(pts, i);
-        ctx.beginPath();
-        ctx.moveTo(start[0], start[1]);
-        runWidth = w;
-        runLength = 0;
+    var tol = INK_FLATNESS / scale;
+    var X = inkX, Y = inkY, R = inkR, A = inkA, B = inkB, steepAt = inkSteepAt;
+    X.length = Y.length = R.length = A.length = B.length = steepAt.length = 0;
+
+    // 1. Die geglättete Mittellinie abtasten: Ort und halbe Breite je Stützstelle.
+    var rp;                           // Radius am vorigen, am aktuellen und am nächsten Stützpunkt
+    var ri = Math.max(ink.widthAt(stroke, pts[2]), minWidth) / 2;
+    var rn = ri;
+    inkSample(pts[0], pts[1], ri);
+    if (n > 1) {
+      rn = Math.max(ink.widthAt(stroke, pts[5]), minWidth) / 2;
+      inkSample((pts[0] + pts[3]) / 2, (pts[1] + pts[4]) / 2, (ri + rn) / 2);
+      for (var i = 1; i < n - 1; i++) {
+        rp = ri;
+        ri = rn;
+        rn = Math.max(ink.widthAt(stroke, pts[3 * i + 5]), minWidth) / 2;
+        var cx = pts[3 * i], cy = pts[3 * i + 1];
+        var sx = (pts[3 * i - 3] + cx) / 2, sy = (pts[3 * i - 2] + cy) / 2, sr = (rp + ri) / 2;
+        var ex = (cx + pts[3 * i + 3]) / 2, ey = (cy + pts[3 * i + 4]) / 2, er = (ri + rn) / 2;
+        // So viele Teilstücke, dass weder die Kurve noch der Verlauf der Breite sichtbar eckig wird.
+        var hx = sx - 2 * cx + ex, hy = sy - 2 * cy + ey;
+        var bend = Math.sqrt(hx * hx + hy * hy) / 4;
+        var swell = Math.abs(sr - 2 * ri + er) / 4;
+        var steps = Math.ceil(Math.sqrt(Math.max(bend, swell * 1.6) / tol));
+        if (steps < 1) steps = 1; else if (steps > 24) steps = 24;
+        for (var j = 1; j <= steps; j++) {
+          var t = j / steps;
+          var u = 1 - t;
+          inkSample(u * u * sx + 2 * u * t * cx + t * t * ex, u * u * sy + 2 * u * t * cy + t * t * ey,
+            u * u * sr + 2 * u * t * ri + t * t * er);
+        }
       }
-      tracePiece(ctx, pts, n, i);
-      runLength += 1;
+      inkSample(pts[3 * n - 3], pts[3 * n - 2], rn);
     }
-    ctx.lineWidth = runWidth;
-    ctx.stroke();
+    var m = X.length;
+    if (m === 1) return inkDisc(path, X[0], Y[0], R[0], tol);
+
+    // 2. Beide Seiten des Umrisses sammeln. n ist die Normale des laufenden
+    //    Teilstücks; A liegt in Laufrichtung rechts (−n), B links (+n).
+    var x = X[0], y = Y[0], r = R[0];
+    var dx = X[1] - x, dy = Y[1] - y;
+    var d = Math.sqrt(dx * dx + dy * dy);
+    var nx = -dy / d, ny = dx / d;
+    var qx, qy, dp, g, k, a, c, s, st;
+    A.push(x - r * nx, y - r * ny);
+    B.push(x + r * nx, y + r * ny);
+    if (inkSteep(r, R[1], d, tol)) steepAt.push(0);
+    for (g = 1; g < m - 1; g++) {
+      x = X[g]; y = Y[g]; r = R[g];
+      qx = nx; qy = ny; dp = d;                    // voriges Teilstück
+      dx = X[g + 1] - x; dy = Y[g + 1] - y;
+      d = Math.sqrt(dx * dx + dy * dy);
+      nx = -dy / d; ny = dx / d;
+      if (inkSteep(r, R[g + 1], d, tol)) steepAt.push(g);
+      var cross = qx * ny - qy * nx;
+      var dot = qx * nx + qy * ny;
+      var outer, inner, so;
+      if (cross > 1e-9 || (dot < 0 && cross > -1e-9)) {
+        // Linkskurve (oder genaue Kehrtwende): rechts außen, links innen
+        outer = A; inner = B; so = -1;
+        a = cross > 1e-9 ? Math.atan2(cross, dot) : Math.PI;
+      } else if (cross < -1e-9) {
+        outer = B; inner = A; so = 1;
+        a = Math.atan2(cross, dot);
+      } else {
+        A.push(x - r * nx, y - r * ny);            // geradeaus: ein Punkt je Seite
+        B.push(x + r * nx, y + r * ny);
+        continue;
+      }
+      // Außen: Ende des vorigen Teilstücks, Bogen um die Stützstelle, Anfang des nächsten.
+      outer.push(x + so * r * qx, y + so * r * qy);
+      st = inkArcSteps(r, a < 0 ? -a : a, tol);
+      for (k = 1; k < st; k++) {
+        c = Math.cos(a * k / st);
+        s = Math.sin(a * k / st);
+        outer.push(x + so * r * (qx * c - qy * s), y + so * r * (qx * s + qy * c));
+      }
+      outer.push(x + so * r * nx, y + so * r * ny);
+      // Innen: der Schnittpunkt der beiden Kanten – aber nur, wenn jedes der
+      // beiden Trapeze die Ecke des anderen enthält. Dann ist das Stück, das
+      // der Umriss damit ausspart, von beiden gedeckt, und es fehlt nichts.
+      var si = -so;
+      var corner = false;
+      var ac = cross < 0 ? -cross : cross;
+      var ad = dot < 0 ? -dot : dot;
+      var rq = R[g - 1], rz = R[g + 1];
+      if (r * ac < dp && r * ac < d && ad * dp <= dp + (rq - r) * ac && ad * d <= d + (rz - r) * ac) {
+        var spx = X[g - 1] + si * rq * qx, spy = Y[g - 1] + si * rq * qy;
+        var ax = x + si * r * qx - spx, ay = y + si * r * qy - spy;
+        var snx = x + si * r * nx, sny = y + si * r * ny;
+        var bx = X[g + 1] + si * rz * nx - snx, by = Y[g + 1] + si * rz * ny - sny;
+        var den = ax * by - ay * bx;
+        if (den > 1e-12 || den < -1e-12) {
+          var wx = snx - spx, wy = sny - spy;
+          var ta = (wx * by - wy * bx) / den;
+          var tb = (wx * ay - wy * ax) / den;
+          if (ta >= 0 && ta <= 1 && tb >= 0 && tb <= 1) {
+            inner.push(spx + ta * ax, spy + ta * ay);
+            corner = true;
+          }
+        }
+      }
+      if (!corner) inner.push(x + si * r * qx, y + si * r * qy, x, y, x + si * r * nx, y + si * r * ny);
+    }
+    x = X[m - 1]; y = Y[m - 1]; r = R[m - 1];
+    A.push(x - r * nx, y - r * ny);
+    B.push(x + r * nx, y + r * ny);
+
+    // 3. Der Umriss: rechte Seite vor, rundes Ende, linke Seite zurück, runder Anfang.
+    var count = (A.length + B.length) / 2;
+    path.moveTo(A[0], A[1]);
+    for (k = 2; k < A.length; k += 2) path.lineTo(A[k], A[k + 1]);
+    st = inkArcSteps(r, Math.PI, tol);
+    count += st - 1;
+    for (k = 1; k < st; k++) {
+      c = Math.cos(Math.PI * k / st);
+      s = Math.sin(Math.PI * k / st);
+      path.lineTo(x - r * (nx * c - ny * s), y - r * (nx * s + ny * c));
+    }
+    for (k = B.length - 2; k >= 0; k -= 2) path.lineTo(B[k], B[k + 1]);
+    x = X[0]; y = Y[0]; r = R[0];
+    dx = X[1] - x; dy = Y[1] - y;
+    d = Math.sqrt(dx * dx + dy * dy);
+    nx = -dy / d; ny = dx / d;                     // Normale des ersten Teilstücks
+    st = inkArcSteps(r, Math.PI, tol);
+    count += st - 1;
+    for (k = 1; k < st; k++) {
+      c = Math.cos(Math.PI * k / st);
+      s = Math.sin(Math.PI * k / st);
+      path.lineTo(x + r * (nx * c - ny * s), y + r * (nx * s + ny * c));
+    }
+    path.closePath();
+
+    // 4. Wo die Breite sprunghaft wechselt (ein Tupfer, ein jäher Druckstoß),
+    //    reicht das Trapez nicht: Dort kommen die genaue Hülle und ihre runden Enden dazu.
+    var last = -1;
+    for (k = 0; k < steepAt.length; k++) {
+      g = steepAt[k];
+      dx = X[g + 1] - X[g]; dy = Y[g + 1] - Y[g];
+      d = Math.sqrt(dx * dx + dy * dy);
+      if (last !== g) count += inkDisc(path, X[g], Y[g], R[g], tol);
+      if (d > Math.abs(R[g + 1] - R[g])) {
+        inkHull(path, X[g], Y[g], R[g], X[g + 1], Y[g + 1], R[g + 1], d);
+        count += 4;
+      }
+      count += inkDisc(path, X[g + 1], Y[g + 1], R[g + 1], tol);
+      last = g + 1;
+    }
+    return count;
+  }
+
+  /* Die Fläche eines fertigen Strichs wird einmal berechnet und als Pfad
+     aufbewahrt – wie beim Rahmen gilt die Kennung mit einer kleinen Signatur
+     als Schlüssel. Neu berechnet wird erst, wenn eine deutlich stärkere
+     Vergrößerung eine feinere Unterteilung verlangt. */
+  var inkPaths = new Map();
+  var inkPathLoad = 0;                // Eckpunkte aller aufbewahrten Pfade
+  var INK_PATH_LIMIT = 1500000;
+
+  function inkQuality(scale) {
+    var quality = 1;
+    while (quality < scale && quality < 32) quality *= 2;
+    return quality;
+  }
+
+  function inkSignature(stroke) {
+    var pts = stroke.points;
+    var n = pts.length;
+    return n + ':' + pts[0] + ',' + pts[1] + ',' + pts[2] + ':' + pts[n - 3] + ',' + pts[n - 2] + ',' + pts[n - 1]
+      + ':' + stroke.width + ':' + stroke.tool + ':' + (stroke.nib || '');
+  }
+
+  function inkPath(stroke, quality) {
+    var sig = inkSignature(stroke);
+    var entry = inkPaths.get(stroke.id);
+    if (entry && entry.sig === sig && entry.quality === quality) return entry.path;
+    if (entry) inkPathLoad -= entry.load;
+    var path = new Path2D();
+    var load = traceInk(path, stroke, 0, quality);
+    if (inkPathLoad + load > INK_PATH_LIMIT) { inkPaths.clear(); inkPathLoad = 0; }
+    inkPaths.set(stroke.id, { sig: sig, quality: quality, path: path, load: load });
+    inkPathLoad += load;
+    return path;
+  }
+
+  function forgetInkPaths() {
+    inkPaths.clear();
+    inkPathLoad = 0;
+  }
+
+  /** Gerätepixel je Weltpixel der Leinwand, so wie sie gerade eingestellt ist. */
+  function scaleOf(ctx) {
+    try {
+      var m = ctx.getTransform();
+      return Math.sqrt(m.a * m.a + m.b * m.b) || 1;
+    } catch (err) {
+      return 1;
+    }
+  }
+
+  /** Füllt Stift- oder Markertinte. cached: Der Strich ist fertig, sein Pfad darf aufbewahrt werden. */
+  function fillInk(ctx, stroke, minWidth, scale, cached) {
+    var quality = inkQuality(scale);
+    if (cached && !minWidth) {
+      ctx.fill(inkPath(stroke, quality));
+      return;
+    }
+    ctx.beginPath();
+    traceInk(ctx, stroke, minWidth, quality);
+    ctx.fill();
   }
 
   var pathCache = {};
@@ -381,7 +675,12 @@
     ctx.restore();
   }
 
-  function drawStroke(ctx, stroke, colors, minWidth) {
+  /**
+   * Zeichnet einen Strich. scale (Gerätepixel je Weltpixel) wird sonst von
+   * der Leinwand erfragt; cached erlaubt, die Fläche fertiger Tinte
+   * aufzubewahren – für den gerade entstehenden Strich bleibt es weg.
+   */
+  function drawStroke(ctx, stroke, colors, minWidth, scale, cached) {
     var color = colorOf(colors, stroke.color);
     minWidth = minWidth || 0;
     if (stroke.tool === 'stamp') { drawStamp(ctx, stroke, color); return; }
@@ -408,14 +707,13 @@
       ctx.globalAlpha = 1;
       return;
     }
-    ctx.lineCap = 'round';
     if (n === 1) {
       ctx.beginPath();
-      ctx.arc(pts[0], pts[1], Math.max(ink.widthAt(stroke, pts[2]), minWidth) / 2, 0, Math.PI * 2);
+      ctx.arc(pts[0], pts[1], Math.max(ink.dotWidth(stroke), minWidth) / 2, 0, TAU);
       ctx.fill();
       return;
     }
-    drawPressureStroke(ctx, stroke, minWidth);
+    fillInk(ctx, stroke, minWidth, scale || scaleOf(ctx), cached);
   }
 
   /* Rahmen werden je Strich zwischengespeichert; der Bestand tauscht die
@@ -447,14 +745,15 @@
     var colors = options.colors || resolveColors();
     var cull = options.cull || null;
     var exclude = options.exclude || null;
+    var scale = scaleOf(ctx);
     var later = [];
     strokes.forEach(function (stroke) {
       if (exclude && exclude[stroke.id]) return;
       if (cull && !ink.boxesIntersect(boxOf(stroke), cull)) return;
-      if (stroke.tool === 'highlighter') drawStroke(ctx, stroke, colors, options.minWidth);
+      if (stroke.tool === 'highlighter') drawStroke(ctx, stroke, colors, options.minWidth, scale, true);
       else later.push(stroke);
     });
-    later.forEach(function (stroke) { drawStroke(ctx, stroke, colors, options.minWidth); });
+    later.forEach(function (stroke) { drawStroke(ctx, stroke, colors, options.minWidth, scale, true); });
   }
 
   /** Kleines Vorschaubild für die Kacheln der Übersicht. */
@@ -532,6 +831,7 @@
     var lastPaint = { view: null, ms: 0 };
     var settleTimer = null;
     var wheelBurst = false;
+    var appending = false;              // der gerade gespeicherte Strich wird auf die Tinte gesetzt
     var destroyed = false;
 
     function currentBoard() { return select.whiteboard(BAO.store.getState(), whiteboardId); }
@@ -843,10 +1143,93 @@
       return list && list.length ? list : [event];
     }
 
-    function pressureOf(event) {
-      if (event.pointerType !== 'pen') return 0.5;
+    function eventTime(event) {
+      var t = event.timeStamp;
+      return typeof t === 'number' && t > 0 ? t : (win.performance ? win.performance.now() : Date.now());
+    }
+
+    function round2(v) { return Math.round(v * 100) / 100; }
+
+    /* --- Eingabe: Druck und Tempo ------------------------------------------------
+       Der Stift schreibt wie ein Füller. Meldet er Druck, bestimmt der Druck
+       die Breite; sonst (Maus, Finger, einfache Stifte) das Schreibtempo. */
+
+    var pen = { first: null, real: false };   // liefert der Stift erkennbar echten Druck?
+
+    /**
+     * Gemessener Druck des Stifts – oder null, solange keiner erkennbar ist.
+     * Geräte ohne Drucksensor melden durchgehend denselben Wert (laut Norm
+     * 0,5); echter Druck verrät sich dadurch, dass er sich ändert.
+     */
+    function measuredPressure(event) {
+      if (event.pointerType !== 'pen') return null;
       var p = event.pressure;
-      return typeof p === 'number' && p > 0 ? Math.min(p, 1) : 0.5;
+      if (typeof p !== 'number' || !(p > 0)) return null;
+      if (!pen.real) {
+        if (pen.first === null) pen.first = p;
+        else if (Math.abs(p - pen.first) > 0.004) pen.real = true;
+        if (!pen.real) return null;
+      }
+      return Math.min(p, 1);
+    }
+
+    /**
+     * Ersatzdruck aus dem Schreibtempo. Der Strich setzt fein an und findet
+     * dann seine Breite: langsam breiter, im Schwung feiner. Gemessen wird
+     * über mindestens zwei Millisekunden, damit gebündelt gemeldete
+     * Ereignisse kein falsches Tempo vortäuschen.
+     */
+    function pacedPressure(g, sp, time) {
+      var pace = g.pace;
+      if (!pace) {
+        g.pace = { x: sp.x, y: sp.y, t: time, way: 0, speed: null, p: 0.3 };
+        return 0.3;
+      }
+      pace.way += Math.hypot(sp.x - pace.x, sp.y - pace.y);
+      pace.x = sp.x;
+      pace.y = sp.y;
+      var dt = time - pace.t;
+      if (dt >= 2) {
+        var speed = pace.way / dt;                  // Bildschirmpixel je Millisekunde
+        pace.speed = pace.speed === null ? speed : pace.speed + (speed - pace.speed) * (1 - Math.exp(-dt / 25));
+        pace.p += (ink.speedPressure(pace.speed) - pace.p) * (1 - Math.exp(-dt / 30));
+        pace.t = time;
+        pace.way = 0;
+      }
+      return pace.p;
+    }
+
+    /** Wirksamer Druck für die nächste Stelle des entstehenden Strichs. */
+    function inkPressure(g, event, sp) {
+      if (g.flex === 'off') return 0.5;
+      var time = eventTime(event);
+      var measured = measuredPressure(event);
+      if (measured === null) {
+        if (g.smooth !== null) return g.p;                        // Aussetzer mitten im Strich: Wert halten
+        if (event.pointerType === 'pen' && event.pressure > 0) g.unproven = true;   // Druck gemeldet, noch nicht als echt erkannt
+        if (g.flex === 'marker') return 0.5;                      // der Filzstift kennt kein Tempo
+        return ink.flexPressure(pacedPressure(g, sp, time), g.flex);
+      }
+      if (g.smooth === null) {
+        // Der Stift erweist sich erst in diesem Strich als druckempfindlich (es
+        // ist sein erster auf dieser Fläche): Der Ansatz war bis hierher
+        // geschätzt und bekommt nun den Druck, mit dem der Stift aufgesetzt hat.
+        var pts = g.stroke.points;
+        if (g.unproven && pts.length <= 9) {
+          var onset = round2(ink.flexPressure(ink.pressureCurve(pen.first), g.flex));
+          for (var k = 2; k < pts.length; k += 3) pts[k] = onset;
+        }
+        g.smooth = measured;
+      } else {
+        // Leichte Glättung gegen das Zittern des Sensors – nach Zeit, nicht nach Zahl der Meldungen.
+        g.smooth += (measured - g.smooth) * Math.max(0.35, 1 - Math.exp(-(time - g.time) / 10));
+      }
+      g.time = time;
+      g.measured = measured;
+      g.samples += 1;
+      if (measured < g.low) g.low = measured;
+      if (measured > g.high) g.high = measured;
+      return ink.flexPressure(ink.pressureCurve(g.smooth), g.flex);
     }
 
     /* --- Eingabe: Gesten ----------------------------------------------------- */
@@ -855,45 +1238,103 @@
       clearSelection();
       var id = tools.tool;
       var pref = tools[id];
-      var stroke = schema.makeStroke({
-        tool: id, color: pref.color, width: WIDTHS[id][pref.width], points: []
-      });
+      var data = { tool: id, color: pref.color, width: WIDTHS[id][pref.width], points: [] };
+      if (id === 'pen') data.nib = 'fountain';
       gesture = {
         kind: 'draw', pointerId: event.pointerId, type: event.pointerType,
-        stroke: stroke, minDist: 0.9 / view.zoom, smooth: null, pending: null
+        stroke: schema.makeStroke(data), minDist: 0.9 / view.zoom, pending: null,
+        // Feder: Der Stift folgt Druck und Tempo (so stark wie eingestellt), der
+        // Marker nur echtem Druck, der Textmarker bleibt gleichmäßig.
+        flex: id === 'pen' ? pref.pressure : (id === 'marker' ? 'marker' : 'off'),
+        p: 0.5, smooth: null, time: 0, measured: null, samples: 0, low: 1, high: 0,
+        pace: null, resting: false, unproven: false
       };
       addDrawPoints(event);
     }
 
-    function addDrawPoints(event) {
+    /** lifted: das Ereignis des Abhebens – es bringt nur noch einen Ort mit, keinen Druck. */
+    function addDrawPoints(event, lifted) {
       var g = gesture;
       var pts = g.stroke.points;
       coalesced(event).forEach(function (e) {
-        var wp = toWorld(screenPoint(e));
-        var p = pressureOf(e);
-        g.smooth = g.smooth === null ? p : g.smooth + (p - g.smooth) * 0.4;
+        var sp = screenPoint(e);
+        var wp = toWorld(sp);
+        if (!lifted) g.p = inkPressure(g, e, sp);
         var n = pts.length;
         if (n && Math.hypot(wp.x - pts[n - 3], wp.y - pts[n - 2]) < g.minDist) {
-          g.pending = [wp.x, wp.y, g.smooth];
+          g.pending = [wp.x, wp.y, g.p];
+          if (!lifted) {
+            // Der Stift ruht: An dieser Stelle wird die Tinte nur mehr, nie weniger.
+            if (g.p > pts[n - 1]) pts[n - 1] = round2(g.p);
+            g.resting = true;
+          }
           return;
         }
         if (n >= 3 * 6000) return;        // Schutz vor endlosen Strichen
-        pts.push(ink.round1(wp.x), ink.round1(wp.y), Math.round(g.smooth * 100) / 100);
+        pts.push(ink.round1(wp.x), ink.round1(wp.y), round2(g.p));
         g.pending = null;
+        g.resting = false;
       });
       dirty.live = true;
       schedule();
     }
 
+    /* Ein fertiger Strich aus Stift oder Marker liegt immer zuoberst. Er wird
+       deshalb auf die fertige Tinte gesetzt, statt nach jedem Strich die ganze
+       Fläche neu aufzubauen – das hält das Schreiben auch auf einer vollen
+       Fläche flüssig. Wo das nicht stimmt (Textmarker liegen hinter der Tinte,
+       die Ansicht ist in Bewegung, die Fläche war leer und zeigt noch ihren
+       Hinweis), folgt der vollständige Neuaufbau. */
+    function canAppend(stroke) {
+      var seen = lastPaint.view;
+      return stroke.tool !== 'highlighter' && !dirty.ink && !settleTimer && !inkCanvas.style.transform
+        && !!seen && seen.cx === view.cx && seen.cy === view.cy && seen.zoom === view.zoom
+        && strokesNow().length > 0;
+    }
+
+    /** Speichert den Strich. Steht er danach schon auf der Tinte, merkt sich die Geste das (appended). */
     function finishDraw(g) {
-      var pts = g.stroke.points;
-      if (g.pending && pts.length >= 3) {
-        var n = pts.length;
-        if (Math.hypot(g.pending[0] - pts[n - 3], g.pending[1] - pts[n - 2]) > 0.05) {
-          pts.push(ink.round1(g.pending[0]), ink.round1(g.pending[1]), Math.round(g.pending[2] * 100) / 100);
-        }
+      var stroke = g.stroke;
+      var pts = stroke.points;
+      var n = pts.length;
+      if (!n) return;
+      if (g.pending && Math.hypot(g.pending[0] - pts[n - 3], g.pending[1] - pts[n - 2]) > 0.05) {
+        pts.push(ink.round1(g.pending[0]), ink.round1(g.pending[1]), round2(g.pending[2]));
+        n += 3;
       }
-      if (pts.length >= 3) addStroke(whiteboardId, g.stroke);
+      if (g.measured !== null) {
+        // Im Schwung abgehoben: Die Spitze folgt dem zuletzt gemessenen Druck,
+        // nicht dem geglätteten – so läuft der Strich fein aus.
+        if (!g.resting && n >= 6) {
+          var tip = round2(ink.flexPressure(ink.pressureCurve(g.measured), g.flex));
+          if (tip < pts[n - 1]) pts[n - 1] = tip;
+        }
+        // Ein ganzer Strich ohne jede Änderung: Dieser Stift misst doch keinen Druck.
+        if (g.samples > 8 && g.high - g.low < 0.004) { pen.real = false; pen.first = g.high; }
+      }
+      if (stroke.tool !== 'highlighter' && n > 3) {
+        // Ein Tupfer ist ein Punkt: Wer den Stift nur aufsetzt, verwackelt ihn
+        // um Bruchteile eines Pixels – daraus wird kein Strichlein, sondern
+        // ein Punkt mit dem stärksten Druck dieser Berührung.
+        var reach = Math.max(stroke.width * 0.5, 1.2 / view.zoom);
+        var far = 0, sumX = 0, sumY = 0, top = 0;
+        for (var i = 0; i < n; i += 3) {
+          far = Math.max(far, Math.hypot(pts[i] - pts[0], pts[i + 1] - pts[1]));
+          sumX += pts[i];
+          sumY += pts[i + 1];
+          if (pts[i + 2] > top) top = pts[i + 2];
+        }
+        if (far <= reach) stroke.points = [ink.round1(sumX * 3 / n), ink.round1(sumY * 3 / n), top];
+      }
+      var quick = canAppend(stroke);
+      appending = quick;
+      var saved = addStroke(whiteboardId, stroke);
+      appending = false;
+      if (!quick || !saved) return;
+      applyView(ictx, view, size);
+      drawStroke(ictx, stroke, colors, 0, size.dpr * view.zoom, true);
+      ictx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
+      g.appended = !dirty.ink;          // nichts sonst verlangt einen Neuaufbau (siehe endGesture)
     }
 
     /* Korrekturzeichen: Ein Tipp setzt das gewählte Zeichen, waagerechtes
@@ -1072,6 +1513,7 @@
       if (g.kind === 'pan' || g.kind === 'pinch') persistView();
       dirty.ink = dirty.ink || g.kind === 'draw' || g.kind === 'mark' || g.kind === 'erase';
       dirty.live = true;
+      if (g.appended) dirty.ink = false;  // der Strich steht schon auf der Tinte (siehe finishDraw)
       schedule();
     }
 
@@ -1203,7 +1645,7 @@
         return;
       }
       if (gesture && gesture.pointerId === event.pointerId) {
-        if (gesture.kind === 'draw' && event.type !== 'pointercancel') addDrawPoints(event);
+        if (gesture.kind === 'draw' && event.type !== 'pointercancel') addDrawPoints(event, true);
         endGesture(event.type === 'pointercancel');
       }
     }
@@ -1321,6 +1763,10 @@
       if (meta.reason === 'commit' && (meta.label === 'Werkzeug gewählt' || meta.label === 'Whiteboard-Ansicht')) return;
       var b = currentBoard();
       if (!b) return;
+      if (appending) {                  // siehe finishDraw: Der neue Strich kommt einfach obenauf.
+        emit('strokes');
+        return;
+      }
       if (meta.reason !== 'commit') {
         tools = readTools();
         container.dataset.tool = tools.tool;
@@ -1418,6 +1864,7 @@
         cleanup.forEach(function (fn) { fn(); });
         unsubscribe();
         listeners.length = 0;
+        forgetInkPaths();
       }
     };
     return api;
@@ -1430,6 +1877,7 @@
     COLOR_LABELS: COLOR_LABELS,
     WIDTHS: WIDTHS,
     WIDTH_LABELS: WIDTH_LABELS,
+    PEN_PRESSURES: PEN_PRESSURES,
     ERASER_SIZES: ERASER_SIZES,
     STAMP_SIZES: STAMP_SIZES,
     STAMPS: STAMPS,

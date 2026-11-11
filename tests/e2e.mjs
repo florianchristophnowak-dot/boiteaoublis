@@ -1651,6 +1651,277 @@ async function run() {
   await page.waitForTimeout(200);
   check('Alt + 3 öffnet die Whiteboards', await page.evaluate(() => BAO.app.currentRoute().path === 'whiteboards'));
 
+  /* --- 12e. Whiteboard: Der Stift schreibt wie ein Füller ----------------- */
+  section('12e. Whiteboard: der Stift schreibt wie ein Füller');
+  await page.evaluate((id) => BAO.app.go('whiteboard/' + id), wbId);
+  await page.waitForTimeout(400);
+  await page.keyboard.press('t');
+  const penBox = await page.locator('.wb-ink').boundingBox();
+  const fx = penBox.x + penBox.width / 2;
+  const fy = penBox.y + penBox.height / 2;
+
+  // Zeigerereignisse mit Zeitstempel – je Stelle [x, y, Druck, Millisekunden seit dem Aufsetzen].
+  // probe: eine Stelle, deren Farbe auf der Tinte gleich nach dem Abheben gelesen wird.
+  const write = (type, samples, probe) => page.evaluate(({ type, samples, probe }) => {
+    const canvas = document.querySelector('.wb-ink');
+    const t0 = performance.now();
+    const fire = (kind, s, more) => {
+      const event = new PointerEvent(kind, Object.assign({
+        pointerType: type, pointerId: 61, isPrimary: true, bubbles: true, cancelable: true,
+        clientX: s[0], clientY: s[1], pressure: s[2], buttons: 1, button: 0
+      }, more || {}));
+      Object.defineProperty(event, 'timeStamp', { value: t0 + s[3] });
+      canvas.dispatchEvent(event);
+    };
+    samples.forEach((s, i) => fire(i === 0 ? 'pointerdown' : 'pointermove', s));
+    const last = samples[samples.length - 1];
+    fire('pointerup', [last[0], last[1], 0, last[3] + 8], { buttons: 0 });
+    if (!probe) return null;
+    const rect = canvas.getBoundingClientRect();
+    const scale = canvas.width / rect.width;
+    return Array.from(canvas.getContext('2d').getImageData(
+      Math.round((probe[0] - rect.left) * scale), Math.round((probe[1] - rect.top) * scale), 1, 1).data);
+  }, { type, samples, probe: probe || null });
+  const row = (x0, y, n, step, dt, pressureAt) =>
+    Array.from({ length: n + 1 }, (_, i) => [x0 + i * step, y, pressureAt(i, n), i * dt]);
+  const pressuresOf = (s) => s.points.filter((v, i) => i % 3 === 2);
+  const median = (list) => list.slice().sort((a, b) => a - b)[Math.floor(list.length / 2)];
+  const inkWidth = (s, p) => page.evaluate(({ s, p }) => BAO.ink.widthAt(s, p), { s, p });
+  const setPressure = async (label) => {
+    await page.click(`.wb-seg[aria-label="Druck"] button:text-is("${label}")`);
+    await page.waitForTimeout(80);
+  };
+  // Dicke eines Strichs, wie die Leinwand ihn zeichnet: Deckung quer durch seine Mitte, in Pixeln.
+  const drawnThickness = (s) => page.evaluate((s) => {
+    const xs = s.points.filter((v, i) => i % 3 === 0);
+    const ys = s.points.filter((v, i) => i % 3 === 1);
+    const midX = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const midY = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = 40;
+    canvas.height = 80;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.translate(20 - midX, 40 - midY);
+    BAO.whiteboard.drawStrokes(ctx, [s], { colors: BAO.whiteboard.resolveColors() });
+    const data = ctx.getImageData(20, 0, 1, 80).data;
+    let sum = 0;
+    for (let i = 3; i < data.length; i += 4) sum += data[i] / 255;
+    return sum;
+  }, s);
+
+  // Leicht, fest und mit gewöhnlichem Schreibdruck
+  await write('pen', row(fx - 200, fy - 60, 30, 5, 8, (i) => 0.05 + (i % 3) * 0.01));
+  await page.waitForTimeout(150);
+  const light = await lastStroke();
+  const inked = await write('pen', row(fx - 200, fy - 30, 30, 5, 8, (i) => 0.9 - (i % 3) * 0.01), [fx - 125, fy - 30]);
+  await page.waitForTimeout(150);
+  const firm = await lastStroke();
+  await write('pen', row(fx - 200, fy, 30, 5, 8, (i) => 0.3 + (i % 3) * 0.004));
+  await page.waitForTimeout(150);
+  const usual = await lastStroke();
+  check('neue Stiftstriche schreiben mit der Füllerfeder',
+    light.tool === 'pen' && light.nib === 'fountain' && firm.nib === 'fountain', JSON.stringify([light.tool, light.nib]));
+  // Der Drucksensor verrät sich erst mit der zweiten Meldung – der Ansatz darf trotzdem kein Tupfer werden.
+  const onset = pressuresOf(light);
+  check('schon der erste Strich auf der Fläche setzt so fein an, wie aufgedrückt wurde',
+    onset[0] <= onset[1] + 0.02 && onset[0] < 0.25, onset.slice(0, 4).join(' / '));
+  const wLight = await inkWidth(light, median(pressuresOf(light)));
+  const wFirm = await inkWidth(firm, median(pressuresOf(firm)));
+  const wUsual = await inkWidth(usual, median(pressuresOf(usual)));
+  check('fest aufgedrückt wird der Strich mehr als dreimal so breit wie leicht aufgesetzt',
+    wFirm > 3 * wLight && wLight < 0.6 * light.width && wFirm > 1.7 * firm.width,
+    [wLight, wFirm, light.width].map((v) => v.toFixed(2)).join(' / '));
+  check('gewöhnlicher Schreibdruck ergibt die gewählte Breite',
+    Math.abs(wUsual - usual.width) < 0.1 * usual.width, wUsual.toFixed(2) + ' bei ' + usual.width);
+  check('der fertige Strich steht sofort auf der Tinte',
+    !!inked && inked[3] > 250 && inked[0] < 110, JSON.stringify(inked));
+  const tLight = await drawnThickness(light);
+  const tFirm = await drawnThickness(firm);
+  const tUsual = await drawnThickness(usual);
+  check('die Leinwand zeichnet, was der Druck vorgibt',
+    tFirm > 3 * tLight && Math.abs(tUsual - usual.width) < 0.2 * usual.width && Math.abs(tFirm - wFirm) < 0.2 * wFirm,
+    [tLight, tUsual, tFirm].map((v) => v.toFixed(2)).join(' / '));
+
+  // An- und Abschwellen: fein ansetzen, kräftig werden, spitz auslaufen
+  await write('pen', row(fx - 200, fy + 30, 40, 4, 8, (i, n) => 0.03 + 0.8 * Math.sin(Math.PI * i / n)));
+  await page.waitForTimeout(150);
+  const swell = pressuresOf(await lastStroke());
+  check('ein Strich setzt fein an, schwillt an und läuft spitz aus',
+    swell[0] < 0.3 && swell[swell.length - 1] < 0.3 && Math.max(...swell) > 0.8,
+    [swell[0], Math.max(...swell), swell[swell.length - 1]].join(' / '));
+  const steps = swell.slice(1).map((p, i) => Math.abs(p - swell[i]));
+  check('… und das ohne Sprünge in der Breite', Math.max(...steps) < 0.2, Math.max(...steps).toFixed(2));
+
+  // Ein Tupfer: kurz aufgesetzt und um einen Pixel verwackelt
+  await write('pen', [[fx + 150, fy - 60, 0.45, 0], [fx + 151, fy - 60, 0.6, 8], [fx + 150.4, fy - 59.6, 0.7, 16],
+    [fx + 150, fy - 60, 0.5, 24]]);
+  await page.waitForTimeout(150);
+  const dot = await lastStroke();
+  const dotWidth = await page.evaluate((s) => BAO.ink.dotWidth(s), dot);
+  check('ein Tupfer wird ein Punkt in voller Strichbreite',
+    dot.points.length === 3 && dot.points[2] >= 0.6 && dotWidth >= dot.width,
+    JSON.stringify(dot.points) + ' → ' + dotWidth.toFixed(2));
+
+  // Einstellung „Druck“: aus, normal, stark
+  const ramp = (y) => row(fx - 200, y, 30, 5, 8, (i, n) => 0.1 + 0.8 * i / n);
+  await setPressure('aus');
+  await write('pen', ramp(fy + 60));
+  await page.waitForTimeout(150);
+  const even = pressuresOf(await lastStroke());
+  check('Druck „aus“: Die Linie bleibt gleichmäßig', even.every((p) => p === 0.5), even.slice(0, 6).join(','));
+  await setPressure('stark');
+  check('die Einstellung wird gemerkt', await page.evaluate(() =>
+    BAO.store.getState().settings.whiteboard.pen.pressure === 'strong'
+    && document.querySelector('.wb-seg[aria-label="Druck"] button[aria-pressed="true"]').textContent === 'stark'));
+  await write('pen', ramp(fy + 90));
+  await page.waitForTimeout(150);
+  const strong = pressuresOf(await lastStroke());
+  await setPressure('normal');
+  await write('pen', ramp(fy + 120));
+  await page.waitForTimeout(150);
+  const normal = pressuresOf(await lastStroke());
+  const span = (list) => Math.max(...list) - Math.min(...list);
+  check('Druck „stark“ betont Haar- und Schattenstrich', span(strong) > 1.2 * span(normal) && span(normal) > 0.5,
+    span(normal).toFixed(2) + ' → ' + span(strong).toFixed(2));
+
+  // Ohne Drucksensor zählt das Schreibtempo
+  await write('mouse', row(fx - 200, fy + 150, 40, 2, 12, () => 0.5));
+  await page.waitForTimeout(150);
+  const slow = pressuresOf(await lastStroke());
+  await write('mouse', row(fx - 200, fy + 180, 16, 24, 12, () => 0.5));
+  await page.waitForTimeout(150);
+  const fast = pressuresOf(await lastStroke());
+  check('ohne Drucksensor bestimmt das Schreibtempo die Breite: langsam breiter, schnell feiner',
+    median(slow) > median(fast) + 0.15, median(slow) + ' / ' + median(fast));
+  // Ein Stift, der immer denselben Druck meldet, hat keinen Sensor: Nach einem Strich ist das erkannt.
+  await write('pen', row(fx - 200, fy + 210, 20, 5, 8, () => 0.5));
+  await page.waitForTimeout(150);
+  const paced = [];
+  for (let i = 0; i <= 30; i++) paced.push([fx - 200 + i * 2, fy + 240, 0.5, i * 12]);
+  for (let i = 1; i <= 12; i++) paced.push([fx - 140 + i * 24, fy + 240, 0.5, 360 + i * 12]);
+  await write('pen', paced);
+  await page.waitForTimeout(150);
+  const flat = pressuresOf(await lastStroke());
+  check('ein Stift ohne Drucksensor schreibt nach Tempo statt mit starrer Breite',
+    median(flat.slice(5, 25)) > median(flat.slice(-6)) + 0.1,
+    median(flat.slice(5, 25)) + ' / ' + median(flat.slice(-6)));
+
+  // Die Fläche eines Strichs: ein einziger Umriss, lückenlos gefüllt
+  const outline = await page.evaluate(() => {
+    const proto = Path2D.prototype;
+    const moveTo = proto.moveTo;
+    let moves = 0;
+    proto.moveTo = function () { moves += 1; return moveTo.apply(this, arguments); };
+    const points = [];
+    for (let i = 0; i <= 60; i++) {
+      points.push(20 + i * 3, Math.round((40 + Math.sin(i / 6) * 14) * 10) / 10, Math.round((0.3 + 0.25 * Math.sin(i / 9)) * 100) / 100);
+    }
+    try {
+      const ctx = document.createElement('canvas').getContext('2d');
+      BAO.whiteboard.drawStrokes(ctx, [{ id: 'probe_umriss', tool: 'pen', nib: 'fountain', color: 'ink', width: 3.5, points }],
+        { colors: BAO.whiteboard.resolveColors() });
+    } finally {
+      proto.moveTo = moveTo;
+    }
+    return moves;
+  });
+  check('ein Füllerstrich wird als ein einziger geschlossener Umriss gefüllt', outline === 1, String(outline));
+  // Maßstab ist die Feder selbst: Kreise dicht an dicht entlang der geglätteten Linie. Was klar
+  // innerhalb liegt, muss voll gedeckt sein, was klar außerhalb liegt, leer – auch bei engen
+  // Kringeln, Kehren, Gekritzel und jäh wechselndem Druck.
+  const solid = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 230;
+    canvas.height = 150;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const r1 = (v) => Math.round(v * 10) / 10;
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const curls = [];                 // enger gekrümmt, als der Strich breit ist
+    for (let i = 0; i <= 120; i++) curls.push(r1(30 + i * 0.6 + Math.cos(i / 4) * 2.5), r1(30 + Math.sin(i / 4) * 2.5), r2(0.6 + 0.3 * Math.sin(i / 7)));
+    let seed = 7;
+    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const scribble = [];              // kurze Stücke, harte Wendungen, springender Druck
+    let x = 150, y = 40, dir = 0;
+    for (let i = 0; i < 90; i++) {
+      dir += (rand() - 0.5) * 3.2;
+      x = Math.max(125, Math.min(205, x + Math.cos(dir) * (0.4 + rand() * 1.8)));
+      y = Math.max(22, Math.min(58, y + Math.sin(dir) * (0.4 + rand() * 1.8)));
+      scribble.push(r1(x), r1(y), r2(0.05 + rand() * 0.95));
+    }
+    const strokes = [
+      { id: 'probe_kringel', width: 6, points: curls },
+      { id: 'probe_kritzel', width: 6, points: scribble },
+      // genau hin und zurück: Die geglättete Linie wendet bei x = 82,5
+      { id: 'probe_kehre', width: 6, points: [150, 90, 0.7, 60, 90, 0.7, 150, 90, 0.7] },
+      // spitz an, jäh breit, spitz aus – und ein Tupfer mit einem Druckstoß
+      { id: 'probe_keil', width: 6, points: [30, 125, 0.02, 34, 125, 0.1, 37, 125.5, 1, 40, 125, 1, 60, 124, 0.3, 90, 126, 0.02] },
+      { id: 'probe_stoss', width: 3.5, points: [170, 120, 0.05, 171, 120, 1, 172, 120.5, 0.05, 190, 128, 0.9, 191, 128, 0.1] }
+    ].map((s) => Object.assign({ tool: 'pen', nib: 'fountain', color: 'ink' }, s));
+    BAO.whiteboard.drawStrokes(ctx, strokes, { colors: BAO.whiteboard.resolveColors() });
+
+    const discs = [];
+    strokes.forEach((s) => {
+      const pts = s.points;
+      const n = pts.length / 3;
+      const rad = (i) => BAO.ink.widthAt(s, pts[3 * i + 2]) / 2;
+      const mid = (i) => [(pts[3 * i] + pts[3 * i + 3]) / 2, (pts[3 * i + 1] + pts[3 * i + 4]) / 2, (rad(i) + rad(i + 1)) / 2];
+      const line = (a, b) => {
+        const count = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.05));
+        for (let k = 0; k <= count; k++) discs.push([a[0] + (b[0] - a[0]) * k / count, a[1] + (b[1] - a[1]) * k / count, a[2] + (b[2] - a[2]) * k / count]);
+      };
+      line([pts[0], pts[1], rad(0)], mid(0));
+      for (let i = 1; i < n - 1; i++) {
+        const a = mid(i - 1), c = [pts[3 * i], pts[3 * i + 1], rad(i)], b = mid(i);
+        const count = Math.max(8, Math.ceil((Math.hypot(c[0] - a[0], c[1] - a[1]) + Math.hypot(b[0] - c[0], b[1] - c[1])) / 0.05));
+        for (let k = 0; k <= count; k++) {
+          const t = k / count, u = 1 - t;
+          discs.push([0, 1, 2].map((j) => u * u * a[j] + 2 * u * t * c[j] + t * t * b[j]));
+        }
+      }
+      line(mid(n - 2), [pts[3 * n - 3], pts[3 * n - 2], rad(n - 1)]);
+    });
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let holes = 0, spill = 0, inside = 0;
+    for (let py = 0; py < canvas.height; py++) {
+      for (let px = 0; px < canvas.width; px++) {
+        let edge = Infinity;          // Abstand zum Rand der Spur: negativ = innen
+        for (let i = 0; i < discs.length; i++) {
+          const d = Math.hypot(px + 0.5 - discs[i][0], py + 0.5 - discs[i][1]) - discs[i][2];
+          if (d < edge) edge = d;
+        }
+        const alpha = data[4 * (py * canvas.width + px) + 3];
+        if (edge <= -0.8) { inside += 1; if (alpha < 250) holes += 1; }
+        if (edge >= 0.8 && alpha > 5) spill += 1;
+      }
+    }
+    const alphaAt = (ax, ay) => data[4 * (Math.round(ay) * canvas.width + Math.round(ax)) + 3];
+    return { inside, holes, spill, cap: alphaAt(79.5, 90), beyond: alphaAt(73, 90), body: alphaAt(110, 90) };
+  });
+  check('die gefüllte Fläche ist genau die Spur der Feder – auch in Kringeln, Kehren und Gekritzel',
+    solid.inside > 1500 && solid.holes === 0 && solid.spill === 0, JSON.stringify(solid));
+  check('eine Kehrtwende endet rund', solid.cap > 200 && solid.beyond === 0 && solid.body === 255, JSON.stringify(solid));
+
+  // Bestand: Ältere Striche bleiben, wie sie waren; die Feder geht beim Prüfen der Daten nicht verloren
+  const nibData = await page.evaluate((id) => {
+    const old = { tool: 'pen', width: 2 };
+    const nib = { tool: 'pen', width: 2, nib: 'fountain' };
+    const checked = BAO.schema.validateState(BAO.util.clone(BAO.store.getState()));
+    const pens = checked.state.whiteboards.find((b) => b.id === id).strokes.filter((s) => s.tool === 'pen');
+    return {
+      old: [BAO.ink.widthAt(old, 0.1), BAO.ink.widthAt(old, 0.5), BAO.ink.widthAt(old, 1)],
+      nib: [BAO.ink.widthAt(nib, 0.1), BAO.ink.widthAt(nib, 0.5), BAO.ink.widthAt(nib, 1)],
+      kept: pens.length > 0 && pens.every((s) => s.nib === 'fountain'), warnings: checked.warnings.length
+    };
+  }, wbId);
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+  check('ältere Striche ohne Feder behalten ihre Breite', near(nibData.old, [1.28, 2, 2.9]), nibData.old.join(' / '));
+  check('die Feder reicht von einem Viertel bis zum Doppelten der gewählten Breite',
+    near(nibData.nib, [0.76, 2, 4]), nibData.nib.join(' / '));
+  check('die Prüfung der Daten lässt die Feder unangetastet', nibData.kept && nibData.warnings === 0, JSON.stringify(nibData));
+  await page.screenshot({ path: join(shotDir, 'whiteboard-fueller.png') });
+  await page.evaluate(() => BAO.app.go('whiteboards'));
+  await page.waitForTimeout(300);
+
   /* --- 13. Alle Ansichten zeichnen sich fehlerfrei ------------------------ */
   section('13. Alle Ansichten');
   for (const route of ['start', 'tafeln', 'whiteboards', 'wortschatz', 'satzanfaenge', 'wortbanken', 'projektion', 'verwaltung', 'daten']) {

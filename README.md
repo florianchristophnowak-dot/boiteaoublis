@@ -225,11 +225,31 @@ Die Fläche unterscheidet, womit sie berührt wird:
 Für Geräte ohne Stift gibt es unten links den Schalter **„Finger zeichnet“**; zwei Finger verschieben und
 zoomen dann weiterhin.
 
+### Der Stift schreibt wie ein Füller
+
+Die Strichbreite folgt dem Druck stufenlos, so wie eine Feder nachgibt: Leicht aufgesetzt entsteht ein
+Haarstrich, fest aufgedrückt wird die Linie bis zu doppelt so breit wie eingestellt, und beim Abheben läuft
+sie spitz aus. Gewöhnlicher Schreibdruck ergibt genau die gewählte Breite – niemand muss fest aufdrücken, um
+lesbar zu schreiben. Ein Tupfer wird ein runder Punkt in voller Breite, damit i-Punkte, Akzente und
+Satzzeichen nicht verschwinden.
+
+Wie stark die Feder nachgibt, legt der Schalter **Druck** in den Optionen des Stifts fest:
+
+| Druck | Wirkung |
+|---|---|
+| aus | gleichmäßige Linie in der gewählten Breite |
+| normal | wie ein Füller (Voreinstellung) |
+| stark | weiche Feder: Haar- und Schattenstriche unterscheiden sich deutlicher |
+
+Maus, Finger und Stifte ohne Drucksensor schreiben nach dem Tempo: langsam gezogen wird die Linie breiter, im
+Schwung feiner. Der Marker gibt dem Druck nur wenig nach, der Textmarker gar nicht. Striche, die vor dieser
+Feder geschrieben wurden, behalten ihre Breite.
+
 ### Werkzeuge
 
 | Werkzeug | Taste | |
 |---|---|---|
-| Stift | `T` | feine Handschrift, die Breite folgt dem Druck |
+| Stift | `T` | Handschrift wie mit dem Füller: leicht aufgesetzt fein, fest aufgedrückt breit, die Enden laufen spitz aus |
 | Marker | `M` | breiter Filzstift |
 | Textmarker | `X` | halbtransparent; liegt immer hinter der Tinte, auch wenn er später gezogen wird |
 | Korrekturzeichen | `K` (auch `U`) | **Tippen** setzt das gewählte Zeichen: Häkchen, halbes Häkchen (durchgestrichen), Auslassungszeichen oder ein Kürzel (Gr, O, V, Conj, Acc, G). **Waagerecht ziehen** unterstreicht – durchgezogen, gestrichelt, gepunktet oder wellig; einfach oder doppelt; mit Haken rechts |
@@ -541,6 +561,16 @@ Punkte liegen kompakt (Zehntelpixel, Druck in Hundertsteln) und ausgedünnt vor,
 selbst nach, statt die ganze Ansicht neu aufzubauen. Gezeichnet wird in Weltkoordinaten auf zwei
 übereinanderliegende Leinwände: unten die fertige Tinte, oben nur das, was sich gerade bewegt.
 
+**Tinte ist eine Fläche, keine Linie.**
+Eine Linie hat auf der Leinwand genau eine Breite; wer die Breite unterwegs wechselt, muss den Strich in
+Stücke teilen – und sieht die Stufen. Stift und Marker werden deshalb als Fläche gefüllt: je Strich ein
+einziger geschlossener Umriss, dessen Abstand zur geglätteten Mittellinie dem Druck folgt, mit runden Enden.
+Ein einziger Umriss statt vieler überlappender Teilflächen hält auch die Kantenglättung sauber, und weil er
+je Strich nur einmal berechnet und dann aufbewahrt wird, zeichnet sich eine volle Fläche nicht langsamer als
+zuvor. Im Strich steht nicht der gemessene, sondern der *wirksame* Druck: Kennlinie des Stifts, Glättung und
+die Einstellung „Druck“ sind beim Schreiben schon eingerechnet. Derselbe Strich sieht dadurch auf jedem
+Gerät, im Export und nach dem Zusammenführen gleich aus.
+
 **Kein Framework, kein Bundler zur Laufzeit.**
 Die App besteht aus klassischen Skripten unter einem gemeinsamen Namensraum `BAO`, die `index.html` in
 fester Reihenfolge lädt. Das hat einen konkreten Grund: Klassische Skripte funktionieren auch beim Öffnen
@@ -604,7 +634,7 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 299 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 319 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
