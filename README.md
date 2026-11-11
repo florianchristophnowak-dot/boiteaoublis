@@ -69,7 +69,7 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 
 1. **Whiteboards → Neues Whiteboard**, Titel eingeben.
 2. Mit dem Stift schreiben. Ein Finger verschiebt die Fläche, zwei Finger zoomen.
-3. Links das Werkzeug wählen: Stift, Marker, Textmarker, Unterstreichen, Korrekturzeichen, Radierer, Auswahl.
+3. Links das Werkzeug wählen: Stift, Marker, Textmarker, Korrekturzeichen (samt Unterstreichungen), Radierer, Auswahl.
 4. **Vollbild** (`F`) für den Beamer-Bildschirm.
 
 ### Mit einer Wortbank (vollständige Ansicht)
@@ -97,7 +97,7 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 
 | Auf einem Whiteboard | |
 |---|---|
-| `T` `M` `X` `U` `K` `R` `L` `H` | Werkzeug: Stift · Marker · Textmarker · Unterstreichen · Korrekturzeichen · Radierer · Auswahl · Verschieben |
+| `T` `M` `X` `K` `R` `L` `H` | Werkzeug: Stift · Marker · Textmarker · Korrekturzeichen · Radierer · Auswahl · Verschieben |
 | `+` `−` `0` · `F` | Zoom · Vollbild |
 | `Strg + Mausrad` · `Leertaste` + Ziehen | zoomen · Fläche verschieben |
 | `Entf` / `Esc` | Auswahl löschen / aufheben |
@@ -242,14 +242,16 @@ Feder geschrieben wurden, behalten ihre Breite.
 | Stift | `T` | Handschrift wie mit dem Füller: leicht aufgesetzt fein, fest aufgedrückt breit, die Enden laufen spitz aus |
 | Marker | `M` | breiter Filzstift |
 | Textmarker | `X` | halbtransparent; liegt immer hinter der Tinte, auch wenn er später gezogen wird |
-| Unterstreichen | `U` | waagerecht ziehen – durchgezogen, gestrichelt, gepunktet oder wellig; einfach oder doppelt; mit Häkchen rechts |
-| Korrekturzeichen | `K` | Häkchen, halbes Häkchen (durchgestrichen), Auslassungszeichen sowie die Kürzel Gr, O, V, Conj, Acc, G – ein Tipp setzt das Zeichen |
+| Korrekturzeichen | `K` (auch `U`) | **Tippen** setzt das gewählte Zeichen: Häkchen, halbes Häkchen (durchgestrichen), Auslassungszeichen oder ein Kürzel (Gr, O, V, Conj, Acc, G). **Waagerecht ziehen** unterstreicht – durchgezogen, gestrichelt, gepunktet oder wellig; einfach oder doppelt; mit Haken rechts |
 | Radierer | `R` | „Ganzer Strich“ entfernt berührte Striche, „Fein“ nur die berührte Stelle |
 | Auswahl | `L` | einkreisen, dann verschieben, umfärben oder mit `Entf` löschen |
 | Verschieben | `H` | Fläche mit Stift oder Maus verschieben |
 
 Unterstreichungen und Korrekturzeichen folgen dem Korrekturwerkzeug *Capy-note*: dieselben Formen, dieselben
-Kürzel, dieselbe Bedienung (waagerecht ziehen, Haken am rechten Ende). Farbe, Breite und Stil jedes Werkzeugs
+Kürzel, dieselbe Bedienung (waagerecht ziehen, Haken am rechten Ende). Beides ist **ein** Werkzeug, ohne
+Umschalten: Die Unterstreichung übernimmt Farbe und Größe des gewählten Zeichens – wer das orange „O“ wählt,
+unterstreicht auch orange. Ein Tipp darf dabei ein paar Pixel verrutschen, ohne zur Linie zu werden; wer eine
+begonnene Linie zum Anfang zurückzieht, bricht sie ab. Farbe, Breite und Stil jedes Werkzeugs
 bleiben gemerkt. Acht Tintenfarben – Blau, Rot und Grün sind die Genusfarben der App – und fünf
 Textmarkerfarben passen sich hellem und dunklem Papier an.
 
@@ -583,7 +585,7 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 247 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 259 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
