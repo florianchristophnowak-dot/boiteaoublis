@@ -31,8 +31,7 @@
     { id: 'pen',         label: 'Stift',            key: 't', hint: 'Handschrift – druckempfindlich' },
     { id: 'marker',      label: 'Marker',           key: 'm', hint: 'breiter Filzstift' },
     { id: 'highlighter', label: 'Textmarker',       key: 'x', hint: 'halbtransparent, liegt hinter der Tinte' },
-    { id: 'underline',   label: 'Unterstreichen',   key: 'u', hint: 'waagerechte Linie – einfach, doppelt, mit Häkchen' },
-    { id: 'stamp',       label: 'Korrekturzeichen', key: 'k', hint: 'Häkchen, halbes Häkchen, Auslassungszeichen, Kürzel' },
+    { id: 'stamp',       label: 'Korrekturzeichen', key: 'k', altKey: 'u', hint: 'Häkchen, Kürzel und Unterstreichungen: Tippen setzt das Zeichen, Ziehen unterstreicht' },
     { id: 'eraser',      label: 'Radierer',         key: 'r', hint: 'ganze Striche oder nur Teile' },
     { id: 'lasso',       label: 'Auswahl',          key: 'l', hint: 'einkreisen – dann verschieben, umfärben, löschen' },
     { id: 'hand',        label: 'Verschieben',      key: 'h', hint: 'Fläche verschieben (auch mit Stift oder Maus)' }
@@ -62,9 +61,13 @@
   var WIDTH_LABELS = ['fein', 'mittel', 'breit'];
   var ERASER_SIZES = [8, 16, 32];     // Radius in Bildschirmpixeln
   var STAMP_SIZES = [22, 30, 44];
+  var MARK_DRAG = 8;                  // ab so vielen Bildschirmpixeln zur Seite wird aus dem Tipp eine Unterstreichung
 
   /* Korrekturzeichen – Formen und Kürzel wie in Capy-note. Die drei
-     handschriftlichen Zeichen sind Vektoren in einem 100×100-Raster. */
+     handschriftlichen Zeichen sind Vektoren in einem 100×100-Raster.
+     Die Unterstreichung gehört dazu: Sie entsteht mit demselben Werkzeug,
+     in der Farbe des gewählten Zeichens und so kräftig wie dessen Strich
+     (WIDTHS.underline und STAMP_SIZES laufen deshalb über dieselbe Stufe). */
   var STAMP_PATHS = {
     check:         { main: 'M 24 36 Q 24 52 28 66 Q 31 78 36 72 Q 55 38 88 9', width: 8 },
     check_crossed: { main: 'M 24 36 Q 24 52 28 66 Q 31 78 36 72 Q 55 38 88 9', accent: 'M 48 45 Q 60 44 74 45', width: 8 },
@@ -93,7 +96,7 @@
     pen:         { color: 'ink', width: 1 },
     marker:      { color: 'blue', width: 1 },
     highlighter: { color: 'yellow', width: 1 },
-    underline:   { color: 'red', width: 1, style: 'solid', double: false, hook: false },
+    underline:   { style: 'solid', double: false, hook: false },   // Farbe und Stärke kommen vom Korrekturzeichen
     stamp:       { color: 'red', size: 1, stamp: 'check' },
     eraser:      { mode: 'stroke', size: 1 },
     touchDraws:  false
@@ -122,8 +125,10 @@
       if (typeof DEFAULT_TOOLS[key] === 'object') Object.assign(tools[key], saved[key]);
       else tools[key] = saved[key];
     });
+    // Unterstreichen war einmal ein eigenes Werkzeug und gehört jetzt zu den Korrekturzeichen.
+    if (tools.tool === 'underline') tools.tool = 'stamp';
     if (!toolDef(tools.tool)) tools.tool = 'pen';
-    ['pen', 'marker', 'highlighter', 'underline'].forEach(function (id) {
+    ['pen', 'marker', 'highlighter'].forEach(function (id) {
       tools[id].width = util.clamp(parseInt(tools[id].width, 10) || 0, 0, 2);
     });
     tools.stamp.size = util.clamp(parseInt(tools.stamp.size, 10) || 0, 0, 2);
@@ -690,7 +695,7 @@
       if (selection.ids.length && !(gesture && gesture.kind === 'move')) drawSelectionMarks(lctx, 0, 0);
 
       if (gesture) {
-        if (gesture.kind === 'draw' || gesture.kind === 'underline') {
+        if (gesture.kind === 'draw' || (gesture.kind === 'mark' && gesture.stroke)) {
           drawStroke(lctx, gesture.stroke, colors);
         } else if (gesture.kind === 'lasso') {
           lctx.save();
@@ -891,43 +896,52 @@
       if (pts.length >= 3) addStroke(whiteboardId, g.stroke);
     }
 
-    function startUnderline(event, wp) {
+    /* Korrekturzeichen: Ein Tipp setzt das gewählte Zeichen, waagerechtes
+       Ziehen unterstreicht – in derselben Farbe und passenden Stärke. Was
+       entsteht, entscheidet sich erst unterwegs: Solange der Zeiger nicht
+       mindestens MARK_DRAG Pixel zur Seite gewandert ist, bleibt es ein Tipp.
+       Einmal Unterstreichung, immer Unterstreichung – wer zum Anfang
+       zurückzieht, bricht sie ab und bekommt kein Zeichen untergeschoben. */
+    function startMark(event, wp, sp) {
       clearSelection();
-      var pref = tools.underline;
+      var pref = tools.stamp;
+      var line = tools.underline;
+      var def = stampDef(pref.stamp);
       gesture = {
-        kind: 'underline', pointerId: event.pointerId, type: event.pointerType, startX: wp.x,
-        stroke: schema.makeStroke({
-          tool: 'underline', color: pref.color, width: WIDTHS.underline[pref.width],
-          x: wp.x, y: wp.y, w: 0, style: pref.style, double: !!pref.double, hook: !!pref.hook
+        kind: 'mark', pointerId: event.pointerId, type: event.pointerType,
+        startX: wp.x, startSx: sp.x, dragging: false, stroke: null,
+        stamp: schema.makeStroke({
+          tool: 'stamp', color: pref.color, variant: def.variant, text: def.text || '',
+          x: ink.round1(wp.x), y: ink.round1(wp.y), size: STAMP_SIZES[pref.size]
+        }),
+        line: schema.makeStroke({
+          tool: 'underline', color: pref.color, width: WIDTHS.underline[pref.size],
+          x: wp.x, y: wp.y, w: 0, style: line.style, double: !!line.double, hook: !!line.hook
         })
       };
     }
 
-    function updateUnderline(wp) {
-      var s = gesture.stroke;
-      s.x = Math.min(gesture.startX, wp.x);
-      s.w = Math.abs(wp.x - gesture.startX);
+    function updateMark(wp, sp) {
+      var g = gesture;
+      if (!g.dragging) {
+        if (Math.abs(sp.x - g.startSx) < MARK_DRAG) return;
+        g.dragging = true;
+        g.stroke = g.line;                // ab jetzt zeigt die Vorschau die Linie
+      }
+      g.line.x = Math.min(g.startX, wp.x);
+      g.line.w = Math.abs(wp.x - g.startX);
       dirty.live = true;
       schedule();
     }
 
-    function finishUnderline(g) {
-      var s = g.stroke;
+    function finishMark(g) {
+      if (!g.dragging) { addStroke(whiteboardId, g.stamp); return; }
+      var s = g.line;
       if (s.w * view.zoom < 3) return;
       s.x = ink.round1(s.x);
       s.y = ink.round1(s.y);
       s.w = ink.round1(s.w);
       addStroke(whiteboardId, s);
-    }
-
-    function placeStamp(wp) {
-      clearSelection();
-      var pref = tools.stamp;
-      var def = stampDef(pref.stamp);
-      addStroke(whiteboardId, schema.makeStroke({
-        tool: 'stamp', color: pref.color, variant: def.variant, text: def.text || '',
-        x: ink.round1(wp.x), y: ink.round1(wp.y), size: STAMP_SIZES[pref.size]
-      }));
     }
 
     function startErase(event, wp) {
@@ -1048,7 +1062,7 @@
       delete container.dataset.panning;
       if (!cancelled) {
         if (g.kind === 'draw') finishDraw(g);
-        else if (g.kind === 'underline') finishUnderline(g);
+        else if (g.kind === 'mark') finishMark(g);
         else if (g.kind === 'erase') finishErase(g);
         else if (g.kind === 'lasso') finishLasso(g);
         else if (g.kind === 'move') finishMove(g);
@@ -1056,7 +1070,7 @@
         dirty.ink = true;
       }
       if (g.kind === 'pan' || g.kind === 'pinch') persistView();
-      dirty.ink = dirty.ink || g.kind === 'draw' || g.kind === 'underline' || g.kind === 'erase';
+      dirty.ink = dirty.ink || g.kind === 'draw' || g.kind === 'mark' || g.kind === 'erase';
       dirty.live = true;
       schedule();
     }
@@ -1090,8 +1104,7 @@
       }
       switch (tools.tool) {
         case 'pen': case 'marker': case 'highlighter': startDraw(event, wp); break;
-        case 'underline': startUnderline(event, wp); break;
-        case 'stamp': placeStamp(wp); break;
+        case 'stamp': startMark(event, wp, sp); break;
         case 'eraser': startErase(event, wp); break;
         case 'lasso': clearSelection(); startLasso(event, wp); break;
         default: startPan(event, sp);
@@ -1111,8 +1124,7 @@
         if (selection.ids.length && ink.pointInBox(wp.x, wp.y, selection.box)) { startMove(event, wp); return; }
         if (tools.touchDraws && tools.tool !== 'hand') {
           if (isDrawingTool(tools.tool)) { startDraw(event, wp); return; }
-          if (tools.tool === 'underline') { startUnderline(event, wp); return; }
-          if (tools.tool === 'stamp') { placeStamp(wp); return; }
+          if (tools.tool === 'stamp') { startMark(event, wp, sp); return; }
           if (tools.tool === 'eraser') { startErase(event, wp); return; }
           if (tools.tool === 'lasso') { clearSelection(); startLasso(event, wp); return; }
         }
@@ -1124,6 +1136,8 @@
           // Zwei Finger kurz nach dem Aufsetzen: Das war kein Strich, sondern eine Zoomgeste.
           if (gesture.stroke.points.length <= 3 * 12) { endGesture(true); }
           else { touches.delete(event.pointerId); return; }
+        } else if (gesture && gesture.kind === 'mark' && !gesture.dragging) {
+          endGesture(true);               // noch nichts gezogen: Der erste Finger gehörte zur Zoomgeste – kein Zeichen setzen
         } else if (gesture && gesture.kind !== 'pan') {
           touches.delete(event.pointerId);
           return;
@@ -1161,7 +1175,7 @@
       if (g.kind === 'draw') { addDrawPoints(event); return; }
       if (g.kind === 'pan') { updatePan(sp); return; }
       var wp = toWorld(sp);
-      if (g.kind === 'underline') updateUnderline(wp);
+      if (g.kind === 'mark') updateMark(wp, sp);
       else if (g.kind === 'lasso') updateLasso(wp);
       else if (g.kind === 'move') updateMove(wp);
       else if (g.kind === 'erase') {
@@ -1257,7 +1271,7 @@
       }
       if (!keysActive(event) || event.ctrlKey || event.metaKey || event.altKey) return;
       var key = event.key.toLowerCase();
-      var tool = TOOLS.filter(function (t) { return t.key === key; })[0];
+      var tool = TOOLS.filter(function (t) { return t.key === key || t.altKey === key; })[0];
       if (tool) { setTool(tool.id); event.preventDefault(); return; }
       switch (event.key) {
         case 'Delete': case 'Backspace':

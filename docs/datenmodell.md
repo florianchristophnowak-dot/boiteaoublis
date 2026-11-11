@@ -205,6 +205,9 @@ Werkzeug kommt hinzu:
 | `underline` | `x, y, w, style, double, hook` | waagerechte Linie ab `x` mit Länge `w`; `style` ist `solid`, `dashed`, `dotted` oder `wavy`; `double` zeichnet zwei Linien, `hook` einen Haken am rechten Ende |
 | `stamp` | `variant, text, x, y, size` | Korrekturzeichen: `check`, `check_crossed`, `omission` (Vektorformen aus Capy-note) oder `text` mit Kürzel (`Gr`, `O`, `V`, `Conj`, `Acc`, `G`) |
 
+`underline` und `stamp` entstehen mit demselben Werkzeug *Korrekturzeichen* – Ziehen ergibt eine Unterstreichung,
+Tippen ein Zeichen – und tragen dann dieselbe Farbe. Gespeichert bleiben sie als zwei Stricharten.
+
 Weltkoordinaten sind Bildschirmpixel bei Zoom 1; der Ursprung liegt dort, wo ein neues Whiteboard beginnt.
 Die Fläche ist unbegrenzt – es gibt weder Breite noch Höhe. `schema.validateState` entfernt beim Laden
 Striche mit unbrauchbarer Geometrie (etwa Punktlisten, deren Länge kein Vielfaches von drei ist) und holt

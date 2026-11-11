@@ -15,7 +15,7 @@
   var wb = BAO.whiteboard;
 
   var TOOL_ICONS = {
-    pen: 'pen', marker: 'marker', highlighter: 'highlighter', underline: 'underline',
+    pen: 'pen', marker: 'marker', highlighter: 'highlighter',
     stamp: 'stamp', eraser: 'eraser', lasso: 'lasso', hand: 'hand'
   };
 
@@ -81,6 +81,13 @@
 
   function sep() { return h('span.wb-options__sep'); }
 
+  /** Eine Zeile der Leiste – für Werkzeuge, deren Einstellungen zwei Zeilen brauchen. */
+  function row(children) {
+    var node = h('div.wb-options__row', {});
+    children.forEach(function (child) { if (child) node.appendChild(child); });
+    return node;
+  }
+
   function swatches(keys, selected, onPick, soft) {
     return group(null, keys.map(function (key) {
       return h('button.wb-swatch' + (soft ? '.wb-swatch--soft' : ''), {
@@ -142,48 +149,51 @@
     } else if (id === 'highlighter') {
       parts.push(swatches(wb.HIGHLIGHT_COLORS, tools.highlighter.color, pick('highlighter', 'color'), true),
         sep(), widths('highlighter', tools, ctrl));
-    } else if (id === 'underline') {
-      var u = tools.underline;
-      parts.push(
-        swatches(wb.INK_COLORS, u.color, pick('underline', 'color')), sep(),
-        group('Linie', wb.UNDERLINE_STYLES.map(function (style) {
-          return h('button.wb-ustyle', {
-            type: 'button', title: style.label, 'aria-label': style.label,
-            'aria-pressed': u.style === style.id ? 'true' : 'false',
-            onclick: function () { ctrl.setToolOption('underline', 'style', style.id); }
-          }, underlineGlyph(style.id));
-        })), sep(),
-        widths('underline', tools, ctrl), sep(),
-        group(null, [
-          toggleButton('Doppelt', u.double, 'Zwei Linien übereinander', function () { ctrl.setToolOption('underline', 'double', !u.double); }),
-          toggleButton('Häkchen rechts', u.hook, 'Kleiner Haken am rechten Ende – wie in Capy-note', function () { ctrl.setToolOption('underline', 'hook', !u.hook); })
-        ]), sep(),
-        h('span.wb-options__label', { text: 'waagerecht ziehen' })
-      );
     } else if (id === 'stamp') {
+      // Zeichen und Unterstreichung teilen sich ein Werkzeug, eine Farbe und
+      // eine Größe: oben, was gesetzt wird – unten, wie es aussieht.
       var st = tools.stamp;
-      parts.push(
-        group('Zeichen', wb.STAMPS.map(function (def) {
-          var button = h('button.wb-stamp', {
-            type: 'button', title: def.label, 'aria-label': def.label,
-            'aria-pressed': st.stamp === def.id ? 'true' : 'false',
-            style: { '--stamp': 'var(--wb-c-' + def.color + ')' },
-            onclick: function () { ctrl.setToolOption('stamp', 'stamp', def.id); }
-          });
-          if (def.variant === 'text') button.appendChild(h('span', { text: def.text }));
-          else button.appendChild(stampGlyph(def.variant));
-          return button;
-        })), sep(),
-        swatches(wb.INK_COLORS, st.color, pick('stamp', 'color')), sep(),
-        group('Größe', wb.STAMP_SIZES.map(function (size, index) {
-          return h('button.wb-width', {
-            type: 'button', title: wb.WIDTH_LABELS[index], 'aria-label': 'Größe ' + wb.WIDTH_LABELS[index],
-            'aria-pressed': st.size === index ? 'true' : 'false',
-            onclick: function () { ctrl.setToolOption('stamp', 'size', index); }
-          }, h('i', { style: { width: (5 + index * 3) + 'px', height: (5 + index * 3) + 'px' } }));
-        })), sep(),
-        h('span.wb-options__label', { text: 'antippen setzt das Zeichen' })
-      );
+      var u = tools.underline;
+      var tint = 'var(--wb-c-' + st.color + ')';
+      parts.push(h('div.wb-options__rows', {},
+        row([
+          group('Zeichen', wb.STAMPS.map(function (def) {
+            var chosen = st.stamp === def.id;
+            var button = h('button.wb-stamp', {
+              type: 'button', title: def.label, 'aria-label': def.label,
+              'aria-pressed': chosen ? 'true' : 'false',
+              style: { '--stamp': chosen ? tint : 'var(--wb-c-' + def.color + ')' },
+              onclick: function () { ctrl.setToolOption('stamp', 'stamp', def.id); }
+            });
+            if (def.variant === 'text') button.appendChild(h('span', { text: def.text }));
+            else button.appendChild(stampGlyph(def.variant));
+            return button;
+          })), sep(),
+          group('Unterstreichung', wb.UNDERLINE_STYLES.map(function (style) {
+            return h('button.wb-ustyle', {
+              type: 'button', title: style.label, 'aria-label': style.label,
+              'aria-pressed': u.style === style.id ? 'true' : 'false',
+              style: { '--stamp': tint },
+              onclick: function () { ctrl.setToolOption('underline', 'style', style.id); }
+            }, underlineGlyph(style.id));
+          })),
+          group(null, [
+            toggleButton('Doppelt', u.double, 'Zwei Linien übereinander', function () { ctrl.setToolOption('underline', 'double', !u.double); }),
+            toggleButton('Haken rechts', u.hook, 'Kleiner Haken am rechten Ende der Linie – wie in Capy-note', function () { ctrl.setToolOption('underline', 'hook', !u.hook); })
+          ])
+        ]),
+        row([
+          swatches(wb.INK_COLORS, st.color, pick('stamp', 'color')), sep(),
+          group('Größe', wb.STAMP_SIZES.map(function (size, index) {
+            return h('button.wb-width', {
+              type: 'button', title: wb.WIDTH_LABELS[index], 'aria-label': 'Größe ' + wb.WIDTH_LABELS[index],
+              'aria-pressed': st.size === index ? 'true' : 'false',
+              onclick: function () { ctrl.setToolOption('stamp', 'size', index); }
+            }, h('i', { style: { width: (5 + index * 3) + 'px', height: (5 + index * 3) + 'px' } }));
+          })), sep(),
+          h('span.wb-options__label', { text: 'Tippen setzt das Zeichen · Ziehen unterstreicht' })
+        ])
+      ));
     } else if (id === 'eraser') {
       var er = tools.eraser;
       parts.push(
