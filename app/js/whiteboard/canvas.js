@@ -136,7 +136,6 @@
       if (typeof DEFAULT_TOOLS[key] === 'object') Object.assign(tools[key], saved[key]);
       else tools[key] = saved[key];
     });
-    if (!penPressureDef(tools.pen.pressure)) tools.pen.pressure = 'normal';
     if (!toolDef(tools.tool)) tools.tool = 'pen';
     ['pen', 'marker', 'highlighter', 'underline'].forEach(function (id) {
       tools[id].width = util.clamp(parseInt(tools[id].width, 10) || 0, 0, 2);
@@ -144,6 +143,7 @@
     tools.stamp.size = util.clamp(parseInt(tools.stamp.size, 10) || 0, 0, 2);
     tools.eraser.size = util.clamp(parseInt(tools.eraser.size, 10) || 0, 0, 2);
     if (tools.eraser.mode !== 'partial') tools.eraser.mode = 'stroke';
+    if (!penPressureDef(tools.pen.pressure)) tools.pen.pressure = 'normal';
     return tools;
   }
 
@@ -1287,12 +1287,12 @@
         && strokesNow().length > 0;
     }
 
-    /** Liefert true, wenn der Strich schon auf der Tinte steht (kein Neuaufbau nötig). */
+    /** Speichert den Strich. Steht er danach schon auf der Tinte, merkt sich die Geste das (appended). */
     function finishDraw(g) {
       var stroke = g.stroke;
       var pts = stroke.points;
       var n = pts.length;
-      if (!n) return false;
+      if (!n) return;
       if (g.pending && Math.hypot(g.pending[0] - pts[n - 3], g.pending[1] - pts[n - 2]) > 0.05) {
         pts.push(ink.round1(g.pending[0]), ink.round1(g.pending[1]), round2(g.pending[2]));
         n += 3;
@@ -1325,11 +1325,11 @@
       appending = quick;
       var saved = addStroke(whiteboardId, stroke);
       appending = false;
-      if (!quick || !saved) return false;
+      if (!quick || !saved) return;
       applyView(ictx, view, size);
       drawStroke(ictx, stroke, colors, 0, size.dpr * view.zoom, true);
       ictx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
-      return true;
+      g.appended = !dirty.ink;          // nichts sonst verlangt einen Neuaufbau (siehe endGesture)
     }
 
     function startUnderline(event, wp) {
@@ -1487,9 +1487,8 @@
       if (!g) return;
       gesture = null;
       delete container.dataset.panning;
-      var appended = false;
       if (!cancelled) {
-        if (g.kind === 'draw') appended = finishDraw(g);
+        if (g.kind === 'draw') finishDraw(g);
         else if (g.kind === 'underline') finishUnderline(g);
         else if (g.kind === 'erase') finishErase(g);
         else if (g.kind === 'lasso') finishLasso(g);
@@ -1498,8 +1497,9 @@
         dirty.ink = true;
       }
       if (g.kind === 'pan' || g.kind === 'pinch') persistView();
-      dirty.ink = dirty.ink || (g.kind === 'draw' && !appended) || g.kind === 'underline' || g.kind === 'erase';
+      dirty.ink = dirty.ink || g.kind === 'draw' || g.kind === 'underline' || g.kind === 'erase';
       dirty.live = true;
+      if (g.appended) dirty.ink = false;  // der Strich steht schon auf der Tinte (siehe finishDraw)
       schedule();
     }
 
