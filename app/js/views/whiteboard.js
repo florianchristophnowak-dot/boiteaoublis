@@ -138,7 +138,17 @@
 
     if (id === 'pen' || id === 'marker') {
       parts.push(swatches(wb.INK_COLORS, tools[id].color, pick(id, 'color')), sep(), widths(id, tools, ctrl));
-      if (id === 'pen') parts.push(sep(), h('span.wb-options__label', { text: 'druckempfindlich' }));
+      if (id === 'pen') {
+        // Der Stift schreibt wie ein Füller – hier lässt sich einstellen, wie stark der Druck wirkt.
+        var feel = segment(wb.PEN_PRESSURES.map(function (level) {
+          return { value: level.id, label: level.label, title: level.hint };
+        }), tools.pen.pressure, pick('pen', 'pressure'));
+        feel.setAttribute('aria-label', 'Druck');
+        var feelGroup = group('Druck', [feel]);
+        feelGroup.title = 'Wie stark der Druck die Linie breiter macht. '
+          + 'Ohne druckempfindlichen Stift (Maus, Finger) zählt das Schreibtempo: langsam breiter, schnell feiner.';
+        parts.push(sep(), feelGroup);
+      }
     } else if (id === 'highlighter') {
       parts.push(swatches(wb.HIGHLIGHT_COLORS, tools.highlighter.color, pick('highlighter', 'color'), true),
         sep(), widths('highlighter', tools, ctrl));

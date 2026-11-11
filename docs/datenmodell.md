@@ -179,6 +179,24 @@ Die Fläche ist unbegrenzt – es gibt weder Breite noch Höhe. `schema.validate
 Striche mit unbrauchbarer Geometrie (etwa Punktlisten, deren Länge kein Vielfaches von drei ist) und holt
 `view` in den gültigen Bereich zurück.
 
+Der Druck `p` ist der *wirksame* Druck, nicht der Messwert des Stifts: `0.5` ergibt genau die Breite `width`,
+darunter wird die Linie feiner, darüber kräftiger. Kennlinie, Glättung und die Einstellung „Druck“ sind beim
+Schreiben schon eingerechnet; ohne Drucksensor (Maus, Finger) steht beim Stift ein Wert aus dem Schreibtempo
+dort, beim Marker `0.5`. Wie weit die Breite ausschlägt, hängt am Werkzeug:
+
+| Strich | Breite bei `p` = 0…1 |
+|---|---|
+| `pen` mit `nib: "fountain"` | Füllerfeder: `width · (0,25 + 1,25·p + 0,5·p²)`, also ein Viertel bis das Doppelte |
+| `pen` ohne `nib` | Stiftstriche aus der Zeit vor der Feder: `width · (0,55 + 0,9·p)` |
+| `marker` | `width · (0,7 + 0,6·p)` |
+| `highlighter` | immer `width` |
+
+`nib` ist das einzige zusätzliche Feld und steht nur an Stiftstrichen. Ältere Striche tragen es nicht und
+behalten deshalb ihre Breite – eine Migration ist nicht nötig, die Schemaversion bleibt gleich. Ein Strich
+mit nur einem Punkt ist ein Tupfer und wird als runder Punkt gezeichnet, mit der Feder mindestens in der
+Breite `width`. Wie stark der Stift dem Druck nachgibt, steht als Vorliebe in
+`settings.whiteboard.pen.pressure` (`off`, `normal` oder `strong`) und nicht im Strich.
+
 Die Schreibwerkzeuge merken sich Werkzeug, Farbe, Breite und Stil in `settings.whiteboard`; wie alle
 Einstellungen bleiben diese Vorlieben beim Zusammenführen lokal.
 

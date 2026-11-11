@@ -13,18 +13,75 @@
   /* --- Breite ----------------------------------------------------------------- */
 
   /**
-   * Linienbreite an einer Stelle des Strichs aus dem gemessenen Druck.
-   * Ohne Druckangabe (Maus, viele Touchscreens) meldet der Browser 0,5 –
-   * dann ergibt sich genau die Grundbreite des Werkzeugs.
+   * Linienbreite an einer Stelle des Strichs aus dem gespeicherten Druck.
+   * Der Druck 0,5 ergibt immer genau die Grundbreite des Werkzeugs.
+   *
+   * Füller (Stift mit nib: 'fountain'): 0,25- bis 2-fache Grundbreite. Leicht
+   * aufgesetzt entsteht eine Haarlinie, fest aufgedrückt ein kräftiger
+   * Abstrich; nach oben hin wächst die Breite schneller – wie bei einer
+   * Feder, die sich unter Druck spreizt. Stiftstriche ohne diese Angabe
+   * sind älter als die Feder und behalten ihre damalige Breite.
    */
   function widthAt(stroke, pressure) {
     var p = typeof pressure === 'number' && pressure > 0 ? Math.min(pressure, 1) : 0.5;
-    if (stroke.tool === 'pen') return stroke.width * (0.55 + 0.9 * p);
+    if (stroke.tool === 'pen') {
+      if (stroke.nib === 'fountain') return stroke.width * (0.25 + 1.25 * p + 0.5 * p * p);
+      return stroke.width * (0.55 + 0.9 * p);
+    }
     if (stroke.tool === 'marker') return stroke.width * (0.7 + 0.6 * p);
     return stroke.width;
   }
 
   function maxWidth(stroke) { return widthAt(stroke, 1); }
+
+  /**
+   * Durchmesser eines einzelnen Punkts. Der Füller hinterlässt beim Aufsetzen
+   * mindestens einen Punkt in Grundbreite – i-Punkte, Satzzeichen und Akzente
+   * bleiben so lesbar, auch wenn sie nur ganz leicht getupft wurden.
+   */
+  function dotWidth(stroke) {
+    var w = widthAt(stroke, stroke.points[2]);
+    return stroke.nib === 'fountain' ? Math.max(w, stroke.width) : w;
+  }
+
+  /* --- Druck und Tempo ---------------------------------------------------------
+     Was beim Schreiben gemessen wird, steht nicht roh im Strich. Gespeichert
+     wird der wirksame Druck: 0,5 bedeutet Grundbreite, darunter wird die
+     Linie feiner, darüber kräftiger (siehe widthAt). */
+
+  /**
+   * Kennlinie des Stifts: gemessener Druck -> wirksamer Druck.
+   * Beim gewöhnlichen Schreiben melden Stifte nur etwa 0,15 bis 0,5; der
+   * volle Ausschlag verlangt unangenehm viel Kraft. Die Kennlinie legt den
+   * üblichen Schreibdruck (rund 0,3) auf die Grundbreite und spreizt den
+   * Bereich darunter – dort, wo sich beim Schreiben tatsächlich etwas tut.
+   */
+  function pressureCurve(measured) {
+    var p = typeof measured === 'number' && measured > 0 ? Math.min(measured, 1) : 0;
+    return Math.pow(p, 0.6);
+  }
+
+  /**
+   * Ersatz für Geräte ohne Drucksensor (Maus, Finger, einfache Stifte): Das
+   * Schreibtempo in Bildschirmpixeln je Millisekunde bestimmt den wirksamen
+   * Druck. Langsam fließt mehr Tinte, im Schwung wird die Linie fein;
+   * gewöhnliches Schreibtempo (0,4) ergibt die Grundbreite.
+   */
+  function speedPressure(speed) {
+    var v = speed > 0 ? speed : 0;
+    return 0.1 + 0.56 / (1 + v);
+  }
+
+  /**
+   * Härte der Feder: 'off' schreibt gleichmäßig, 'strong' verstärkt den
+   * Ausschlag um die Grundbreite herum (weiche Feder), alles andere lässt den
+   * Druck, wie er ist. Das Ergebnis bleibt über 0, weil 0 „keine Angabe“ heißt.
+   */
+  function flexPressure(pressure, mode) {
+    if (mode === 'off') return 0.5;
+    var p = mode === 'strong' ? 0.5 + (pressure - 0.5) * 1.6 : pressure;
+    return p < 0.01 ? 0.01 : (p > 1 ? 1 : p);
+  }
 
   /* Maße der Unterstreichung – dieselben Verhältnisse wie in Capy-note, damit
      eine dort vertraute Linie hier genauso aussieht. */
@@ -338,6 +395,10 @@
   BAO.ink = {
     widthAt: widthAt,
     maxWidth: maxWidth,
+    dotWidth: dotWidth,
+    pressureCurve: pressureCurve,
+    speedPressure: speedPressure,
+    flexPressure: flexPressure,
     hookLength: hookLength,
     doubleGap: doubleGap,
     waveAmplitude: waveAmplitude,
