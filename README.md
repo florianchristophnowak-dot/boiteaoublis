@@ -87,7 +87,9 @@ die Seite erlaubt sein – wird das Fenster blockiert, meldet die App das und bi
 | `Strg + L` | Live-Hilfe einblenden |
 | `Strg + B` | Beamerfenster öffnen / schließen |
 | `Strg + Z` / `Strg + Umschalt + Z` | Rückgängig / Wiederherstellen |
+| `Strg + S` | Sicherungsdatei erstellen |
 | `Alt + 1 … 9` | Ansicht wechseln |
+| `Enter` · `Esc` in einem Dialog | bestätigen · abbrechen (`Strg + Enter` bestätigt auch aus mehrzeiligen Feldern) |
 
 | Auf einer Tafel (Vorschau **und** Beamerfenster) | |
 |---|---|
@@ -178,11 +180,19 @@ Was ergänzt wurde, wirkt sofort auf die Tafel zurück. Zwei Schalter je Tafel e
 Umgekehrt lässt sich alles, was die Lerngruppe schon kennt, über **Aus dem Bestand holen** auf die Tafel
 legen – Wortschatzeinträge und Satzanfänge gleichermaßen. Eine ganze **Wortbank** wird über
 *Tafeln → Aus einer Wortbank* zu einer Tafel; die Einträge verteilen sich gleichmäßig und sind danach
-frei verschiebbar.
+frei verschiebbar. Aus der Wortschatzliste heraus geht es ebenso: Einträge ankreuzen (oder
+**Alle angezeigten auswählen**) und **Auf eine Tafel** wählen.
+
+Wer auf der Tafel etwas tippt, das die Lerngruppe **schon im Bestand** hat, bekommt genau diesen Eintrag –
+mit Artikel und Übersetzung – statt einer Dublette. Derselbe Abgleich warnt im Eintragsformular und
+überspringt bei **Mehrere Zeilen einfügen**, was schon vorhanden ist.
+
+Läuft eine Tafel, legt die **Live-Hilfe** (`Strg + L`) ihren Text als Element auf diese Tafel, statt sie
+am Beamer zu verdrängen.
 
 ### Einfache Grundform oder vollständige Ansicht
 
-Der Knopf **Ansicht** in der Kopfzeile schaltet zwischen beiden um:
+Der Knopf **Ansicht** in der Kopfzeile nennt den geltenden Umfang und schaltet zwischen beiden um:
 
 * **einfache Grundform** – Tafeln, Elemente, Lerngruppen, Daten. Mehr nicht.
 * **vollständige Ansicht** – zusätzlich Startseite, Satzanfänge, Wortbanken und Projektion.
@@ -242,6 +252,10 @@ den Zoom, **Einpassen** holt alles Geschriebene ins Bild. Ein Whiteboard gehört
 Lerngruppe; die Übersicht zeigt eine Vorschau jedes Whiteboards. Die Striche liegen im gewöhnlichen Bestand:
 automatisch lokal gespeichert, in Export und Import enthalten und mit `Strg + Z` rückgängig – Strich für Strich.
 
+**Als Bild speichern** (Pfeilsymbol in der Übersicht und im Kopf des Whiteboards) schreibt alles
+Geschriebene als PNG-Datei – nicht nur den sichtbaren Ausschnitt, stets hell wie auf Papier und in
+doppelter Auflösung. So kommt ein Tafelbild aufs Arbeitsblatt oder auf die Lernplattform.
+
 ---
 
 ## 5. Wie die Inhalte organisiert sind
@@ -259,6 +273,22 @@ Fach (Französisch, Englisch, …)
 **Der Bestand gehört der Lerngruppe, nicht der Reihe.** Eine Wortbank und eine Tafel enthalten keine
 Kopien, sondern Verweise. Deshalb kann derselbe Eintrag in beliebig vielen Wortbanken auftauchen, ohne sich zu vervielfachen –
 und beim Schuljahreswechsel bleibt alles erhalten.
+
+Die Auswahl **Lerngruppe** in der Kopfzeile führt die Lerngruppen aller Fächer: Ein Griff wechselt von
+der 9b in Französisch zur 10a in Englisch.
+
+### Drucken, kopieren, weitergeben
+
+* **Wortliste oder Vokabeltest drucken** – in der Wortschatzliste (alles Angezeigte oder die Auswahl), auf
+  einer Tafel und in einer Wortbank. Das Blatt gibt es als Liste mit beiden Spalten oder als Test mit
+  leerer Spalte (Deutsch → Fremdsprache oder umgekehrt), in der angezeigten Reihenfolge, alphabetisch
+  oder gemischt. Gedruckt wird über den Druckdialog des Browsers; dort lässt es sich auch als PDF speichern.
+* **Als Text kopieren** – dieselben Zeilen, Zielwort und Deutsch durch Tabulator getrennt, zum Einfügen in
+  Textverarbeitung, Tabelle oder Lernplattform.
+* **Für eine andere Lerngruppe kopieren** (Pfeilsymbol auf den Kacheln der Tafeln, Whiteboards und
+  Wortbanken) – die Parallelklasse bekommt dieselbe Stunde. Was es im Bestand der anderen Lerngruppe noch
+  nicht gibt, kommt dort als „neu“ hinzu; Vorhandenes wird wiederverwendet. Angeboten wird es, sobald
+  ein Fach mehr als eine Lerngruppe hat.
 
 ### Satzanfänge erfassen
 
@@ -390,15 +420,23 @@ Alles liegt im lokalen Speicher des Browsers (`localStorage`, Schlüssel `bao.st
 Änderung automatisch gesichert. Die Fußzeile zeigt den Speicherstand; kann der Browser nicht speichern,
 weist die App deutlich darauf hin.
 
+Der Browserspeicher ist aber kein Tresor: Wird er geleert oder der Rechner gewechselt, hilft nur eine
+**Sicherungsdatei**. Deshalb steht ihr Stand ebenfalls in der Fußzeile („Sicherungsdatei: heute“ oder
+„Letzte Sicherungsdatei: …“, wenn es seither Änderungen gibt). Ein Klick darauf oder `Strg + S` erstellt
+die Datei. Laufen eine Woche lang Änderungen ohne Datei auf, erinnert die App beim Start daran –
+höchstens einmal am Tag.
+
 ### Export
 
-**Daten → Alle Daten exportieren** schreibt eine Datei `boite-a-oublis_JJJJ-MM-TT_hhmm.json` mit dem
-gesamten Bestand samt Einstellungen. Zusätzlich lässt sich der Wortschatz einer Lerngruppe als CSV
-ausgeben.
+**Daten → Alle Daten exportieren** (oder `Strg + S`) schreibt eine Datei
+`boite-a-oublis_JJJJ-MM-TT_hhmm.json` mit dem gesamten Bestand samt Tafeln, Whiteboards und Einstellungen.
+Zusätzlich lässt sich der Wortschatz einer Lerngruppe als CSV ausgeben. Die Ansicht *Daten* zeigt, wie
+voll der Browserspeicher ist – am meisten Platz brauchen Whiteboards mit viel Handschrift.
 
 ### Import
 
-Datei auf das Feld ziehen oder auswählen. Die App **prüft zuerst** (Format, Kennzeichen, Datenversion,
+Datei auswählen oder ins Fenster ziehen – das Ablegen klappt in jeder Ansicht, auch für eine CSV-Liste.
+Die App **prüft zuerst** (Format, Kennzeichen, Datenversion,
 Verweise) und zeigt dann einen Vergleich „jetzt / in der Datei“. Erst danach wird entschieden:
 
 | Möglichkeit | Wirkung |
@@ -410,6 +448,13 @@ Verweise) und zeigt dann einen Vergleich „jetzt / in der Datei“. Erst danach
 Vor jedem schreibenden Import wird eine **Sicherheitskopie** des bisherigen Standes abgelegt
 (wiederherstellbar unter *Daten*), und der Schritt landet im Rückgängig-Verlauf.
 Fremde oder beschädigte Dateien werden mit einer verständlichen Meldung abgelehnt, ohne etwas zu verändern.
+
+### Beispieldaten
+
+Ein frischer Bestand bringt zwei Beispiel-Lerngruppen mit. **Beispiele entfernen** (im Hinweis über den
+Tafeln oder unter *Daten*) nimmt genau diese beiden Lerngruppen mit allem Zugehörigen heraus; Fächer und
+eigene Lerngruppen bleiben. Wer eine Lerngruppe oder ein Fach löscht, sieht vorher, was daran hängt –
+Tafeln und Whiteboards eingeschlossen.
 
 ### CSV-Import
 
@@ -445,16 +490,20 @@ boite-a-oublis/
 │   │   ├── shell.css             Kopfzeile, Navigation, Inhalt, Fußzeile
 │   │   ├── views.css             die einzelnen Ansichten
 │   │   ├── whiteboard.css        Whiteboard: Fläche, Werkzeugleisten, Tintenfarben
-│   │   └── projection.css        Rahmen der Projektion in der Lehreransicht
+│   │   ├── projection.css        Rahmen der Projektion in der Lehreransicht
+│   │   └── print.css             Wortliste und Vokabeltest auf dem Papier
 │   └── js/
 │       ├── core/                 util, storage, schema, migrations, store,
-│       │                         selectors, search, csv, backup
+│       │                         selectors, search, csv, backup,
+│       │                         stock (Bestandspflege: wiedererkennen, kopieren, entfernen)
 │       ├── data/seed.js          Beispieldaten
-│       ├── ui/                   toast, modal, components, ipa (Lautschrift-Tastatur)
+│       ├── ui/                   toast, modal, components, ipa (Lautschrift-Tastatur),
+│       │                         print (Wortliste, Vokabeltest), handover (Kopie für die Parallelklasse)
 │       ├── projection/           stage-style, deck, render, output, session,
 │       │                         board (freie Fläche)
 │       ├── whiteboard/           ink (Geometrie: Treffer, Radieren, Lasso),
-│       │                         canvas (Zeichnen, Stift/Finger/Maus, Werkzeuge)
+│       │                         canvas (Zeichnen, Stift/Finger/Maus, Werkzeuge),
+│       │                         export (Whiteboard als Bild)
 │       ├── views/                dashboard, vocab, starters, banks, bank-editor,
 │       │                         boards, board, whiteboards, whiteboard, present,
 │       │                         manage, data
@@ -555,7 +604,7 @@ Systemschriften. `npm run check` prüft das automatisch.
 
 ```bash
 npm run check   # ohne Browser: Dateien, Syntax, keine externen Verweise
-npm test        # mit Browser: 239 Prüfungen entlang der Bedienabläufe
+npm test        # mit Browser: 299 Prüfungen entlang der Bedienabläufe
 ```
 
 Der Testlauf öffnet die App als Datei (`file://`) – genau so, wie sie im Unterricht gestartet wird – und
@@ -569,7 +618,11 @@ Unterstützungsstufen, Fokus- und
 Abschreibmodus, Automatik, Live-Hilfe, das eigene Beamerfenster, die Projektion bei fünf Auflösungen
 (dabei: nichts wird abgeschnitten, die Schrift bleibt groß), Genuserkennung und Artikelfarben in hell und
 dunkel, Schuljahreswechsel, Rückgängig, Export/Import/Zusammenführen, CSV und die Dauerhaftigkeit nach
-einem Neustart. Ein eigener Abschnitt prüft dieselben Abläufe zusätzlich in der portablen
+einem Neustart. Der Abschnitt „Lehreralltag“ prüft, was im Unterrichtsalltag trägt: Suchfelder, die beim
+Tippen den Fokus behalten, Enter in Dialogen, keine Dubletten, vollständiges Löschen einer Lerngruppe,
+den Stand der Sicherungsdatei samt `Strg + S` und Erinnerung, Drucken von Wortliste und Vokabeltest,
+die Kopie für die Parallelklasse, das Whiteboard als Bild und die Bedienung auf schmalen Bildschirmen.
+Ein eigener Abschnitt prüft dieselben Abläufe zusätzlich in der portablen
 Einzeldatei `dist/boite-a-oublis.html` – dort lief einmal ein Einbettungsfehler auf, den der Quelltext
 nicht hatte. Bildschirmfotos landen in `tests/output/`.
 

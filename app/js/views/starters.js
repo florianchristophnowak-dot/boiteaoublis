@@ -200,13 +200,17 @@
 
     var all = select.startersOfGroup(state, ctx.group.id, ctx.subject.id);
     var usedFunctions = util.unique(all.map(function (s) { return s.functionId || ''; })).length;
-    var needle = util.fold(filters.query);
-    var visible = all.filter(function (starter) {
-      if (filters.variant !== 'all' && starter.variant !== filters.variant) return false;
-      if (filters.functionId !== 'all' && starter.functionId !== filters.functionId) return false;
-      if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
-      return true;
-    });
+    var listHost = h('div.result-host');
+
+    function visibleStarters() {
+      var needle = util.fold(filters.query);
+      return all.filter(function (starter) {
+        if (filters.variant !== 'all' && starter.variant !== filters.variant) return false;
+        if (filters.functionId !== 'all' && starter.functionId !== filters.functionId) return false;
+        if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
+        return true;
+      });
+    }
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -235,7 +239,8 @@
       h('input', {
         type: 'search', value: filters.query, placeholder: 'Satzanfänge durchsuchen …',
         'aria-label': 'Satzanfänge durchsuchen',
-        oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
+        // Nur die Trefferliste wird neu gezeichnet; das Feld behält den Fokus.
+        oninput: function (event) { filters.query = event.target.value; drawList(); }
       }),
       ui.selectField({
         value: filters.functionId, ariaLabel: 'Nach Verwendung filtern',
@@ -258,47 +263,53 @@
       )
     ));
 
-    if (!visible.length) {
-      view.appendChild(ui.emptyState({
-        title: all.length ? 'Kein Treffer' : 'Noch keine Satzanfänge',
-        text: all.length
-          ? 'Andere Funktion oder Variante wählen – oder die Suche leeren.'
-          : 'Sammle typische Formulierungen: eine Meinung äußern, begründen, widersprechen, zusammenfassen …',
-        actionLabel: all.length ? 'Filter zurücksetzen' : 'Ersten Satzanfang anlegen',
-        onAction: function () {
-          if (all.length) { filters = { query: '', variant: 'all', functionId: 'all' }; app.scheduleRender(); }
-          else openEditor(null, { subjectId: ctx.subject.id, groupId: ctx.group.id });
-        }
-      }));
-      host.appendChild(view);
-      return;
+    function drawList() {
+      var visible = visibleStarters();
+      util.clear(listHost);
+
+      if (!visible.length) {
+        listHost.appendChild(ui.emptyState({
+          title: all.length ? 'Kein Treffer' : 'Noch keine Satzanfänge',
+          text: all.length
+            ? 'Andere Funktion oder Variante wählen – oder die Suche leeren.'
+            : 'Sammle typische Formulierungen: eine Meinung äußern, begründen, widersprechen, zusammenfassen …',
+          actionLabel: all.length ? 'Filter zurücksetzen' : 'Ersten Satzanfang anlegen',
+          onAction: function () {
+            if (all.length) { filters = { query: '', variant: 'all', functionId: 'all' }; app.scheduleRender(); }
+            else openEditor(null, { subjectId: ctx.subject.id, groupId: ctx.group.id });
+          }
+        }));
+        return;
+      }
+
+      var byFunction = util.groupBy(visible, function (s) { return s.functionId || ''; });
+      select.functions(state).concat([{ id: '', label: 'ohne Funktion', order: 999 }]).forEach(function (fn) {
+        var list = byFunction.get(fn.id);
+        if (!list || !list.length) return;
+        var order = { einfach: 0, standard: 1, anspruchsvoll: 2 };
+        list = list.slice().sort(function (a, b) { return (order[a.variant] || 1) - (order[b.variant] || 1); });
+
+        var group = h('section.func-group', {},
+          h('div.func-group__head', {},
+            h('h3', { text: fn.label }),
+            h('span.chip', { text: list.length + ' ' + util.plural(list.length, 'Formulierung', 'Formulierungen') }),
+            h('span.spacer'),
+            BAO.app.isSimple() ? null : h('button.btn.btn--sm', {
+              type: 'button', text: 'Alle in Wortbank',
+              title: 'Alle Formulierungen dieser Funktion in eine Wortbank übernehmen',
+              onclick: function () {
+                BAO.views.vocab.openAddToBank(list.map(function (s) { return s.id; }), 'starter', ctx.group.id, ctx.subject.id);
+              }
+            })
+          )
+        );
+        list.forEach(function (starter) { group.appendChild(starterRow(starter, ctx)); });
+        listHost.appendChild(group);
+      });
     }
 
-    var byFunction = util.groupBy(visible, function (s) { return s.functionId || ''; });
-    select.functions(state).concat([{ id: '', label: 'ohne Funktion', order: 999 }]).forEach(function (fn) {
-      var list = byFunction.get(fn.id);
-      if (!list || !list.length) return;
-      var order = { einfach: 0, standard: 1, anspruchsvoll: 2 };
-      list = list.slice().sort(function (a, b) { return (order[a.variant] || 1) - (order[b.variant] || 1); });
-
-      var group = h('section.func-group', {},
-        h('div.func-group__head', {},
-          h('h3', { text: fn.label }),
-          h('span.chip', { text: list.length + ' ' + util.plural(list.length, 'Formulierung', 'Formulierungen') }),
-          h('span.spacer'),
-          h('button.btn.btn--sm', {
-            type: 'button', text: 'Alle in Wortbank',
-            title: 'Alle Formulierungen dieser Funktion in eine Wortbank übernehmen',
-            onclick: function () {
-              BAO.views.vocab.openAddToBank(list.map(function (s) { return s.id; }), 'starter', ctx.group.id, ctx.subject.id);
-            }
-          })
-        )
-      );
-      list.forEach(function (starter) { group.appendChild(starterRow(starter, ctx)); });
-      view.appendChild(group);
-    });
-
+    drawList();
+    view.appendChild(listHost);
     host.appendChild(view);
   }
 

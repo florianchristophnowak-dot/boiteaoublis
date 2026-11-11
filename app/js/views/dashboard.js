@@ -57,6 +57,35 @@
     );
   }
 
+  /** Kachel für eine Tafel oder ein Whiteboard in „Zuletzt verwendet“. */
+  function workTile(state, entry, app) {
+    var item = entry.item;
+    var subject = select.subject(state, item.subjectId);
+    var size = entry.type === 'board'
+      ? (item.items || []).length + ' ' + util.plural((item.items || []).length, 'Element', 'Elemente')
+      : (item.strokes || []).length + ' ' + util.plural((item.strokes || []).length, 'Strich', 'Striche');
+    function open() {
+      app.setContext(item.subjectId, item.groupId);
+      app.go(entry.path);
+    }
+    return h('div.tile', { style: ui.subjectVars(subject), dataset: { work: entry.type }, onclick: open },
+      h('span.tile__accent'),
+      h('div.tile__top', {},
+        h('span.tile__title', { text: item.title }),
+        h('span.spacer'),
+        h('span.chip.chip--outline', { text: entry.label })
+      ),
+      h('div.tile__meta', { text: [subject ? subject.name : '', entry.group.name, size].filter(Boolean).join(' · ') }),
+      h('div.tile__meta', { text: (entry.used ? 'zuletzt: ' : 'bearbeitet: ') + util.relativeDate(entry.at) }),
+      h('div.tile__foot', {},
+        h('button.btn.btn--primary.btn--sm', {
+          type: 'button',
+          onclick: function (event) { event.stopPropagation(); open(); }
+        }, ui.icon(entry.type === 'board' ? 'beamer' : 'whiteboard', 15), 'Öffnen')
+      )
+    );
+  }
+
   function statBlock(label, value, hint) {
     return h('div.stat', { title: hint || '' },
       h('span.stat__value', { text: String(value) }),
@@ -85,8 +114,15 @@
     var counts = ctx.group ? select.statusCounts(state, ctx.group.id) : { total: 0, new: 0, active: 0, revisit: 0, core: 0 };
     var banks = ctx.group ? select.banksOfGroup(state, ctx.group.id) : [];
     var starters = ctx.group && ctx.subject ? select.startersOfGroup(state, ctx.group.id, ctx.subject.id) : [];
-    var recents = select.recentBanks(state, 6);
+    var recents = BAO.stock.recentWork(state, 6);
+    var boards = ctx.group ? select.boardsOfGroup(state, ctx.group.id) : [];
     var favourites = select.favouriteBanks(state);
+
+    function openWork(entry) {
+      if (entry.type === 'bank') { app.projectBank(entry.id); return; }
+      app.setContext(entry.item.subjectId, entry.item.groupId);
+      app.go(entry.path);
+    }
 
     /* --- Kopfbereich ---------------------------------------------------- */
     var hero = h('div.dash__hero', { style: ui.subjectVars(ctx.subject) },
@@ -101,12 +137,12 @@
         h('div.dash__heroActions', {},
           recents[0]
             ? h('button.btn.btn--primary', {
-              type: 'button',
-              onclick: function () { app.projectBank(recents[0].id); }
-            }, ui.icon('play', 16), 'Weiter mit „' + recents[0].title + '“')
+              type: 'button', title: recents[0].label + ' · ' + recents[0].group.name,
+              onclick: function () { openWork(recents[0]); }
+            }, ui.icon('play', 16), 'Weiter mit „' + recents[0].item.title + '“')
             : h('button.btn.btn--primary', {
-              type: 'button', text: 'Erste Wortbank anlegen',
-              onclick: function () { app.go('wortbanken'); }
+              type: 'button', text: 'Erste Tafel anlegen',
+              onclick: function () { app.go('tafeln'); }
             }),
           h('button.btn', {
             type: 'button', onclick: function () { app.openLiveHelp(); }
@@ -139,16 +175,26 @@
         statBlock('auffrischen', counts.revisit, 'Einträge, die wieder aufgegriffen werden sollen'),
         statBlock('Grundbestand', counts.core, 'gesicherter Wortschatz'),
         statBlock('Satzanfänge', starters.length),
+        statBlock('Tafeln', boards.length, 'Tafeln dieser Lerngruppe'),
         statBlock('Wortbanken', banks.length)
       )
     );
     view.appendChild(hero);
+    var sampleNote = BAO.handover.sampleNote(state, app);
+    if (sampleNote) view.appendChild(sampleNote);
 
     /* --- Zuletzt verwendet ------------------------------------------------ */
     var recentSection = h('section.section', {},
       h('div.section__head', {},
         h('h2', { text: 'Zuletzt verwendet' }),
+        h('span.sub', { text: 'Tafeln, Whiteboards und Wortbanken aller Lerngruppen' }),
         h('span.spacer'),
+        h('button.btn.btn--ghost.btn--sm', {
+          type: 'button', text: 'Alle Tafeln', onclick: function () { app.go('tafeln'); }
+        }),
+        h('button.btn.btn--ghost.btn--sm', {
+          type: 'button', text: 'Alle Whiteboards', onclick: function () { app.go('whiteboards'); }
+        }),
         h('button.btn.btn--ghost.btn--sm', {
           type: 'button', text: 'Alle Wortbanken', onclick: function () { app.go('wortbanken'); }
         })
@@ -156,14 +202,16 @@
     );
     if (recents.length) {
       var tiles = h('div.tiles');
-      recents.forEach(function (bank) { tiles.appendChild(bankTile(state, bank, app)); });
+      recents.forEach(function (entry) {
+        tiles.appendChild(entry.type === 'bank' ? bankTile(state, entry.item, app) : workTile(state, entry, app));
+      });
       recentSection.appendChild(tiles);
     } else {
       recentSection.appendChild(ui.emptyState({
-        title: 'Noch keine Wortbank geöffnet',
-        text: 'Stelle aus deinem Wortschatz eine Wortbank für eine konkrete Unterrichtsphase zusammen.',
-        actionLabel: 'Wortbank anlegen',
-        onAction: function () { app.go('wortbanken'); }
+        title: 'Noch nichts geöffnet',
+        text: 'Lege eine Tafel für die nächste Stunde an – oder ein Whiteboard zum Schreiben mit dem Stift.',
+        actionLabel: 'Tafel anlegen',
+        onAction: function () { app.go('tafeln'); }
       }));
     }
     view.appendChild(recentSection);

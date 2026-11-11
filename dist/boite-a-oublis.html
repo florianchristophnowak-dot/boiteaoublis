@@ -1,6 +1,6 @@
 <!--
   Boîte à Oublis 1.2.0 – © Florian Nowak
-  Erzeugt am 2026-11-10T22:17:48.860Z aus app/index.html.
+  Erzeugt am 2026-11-11T20:50:28.581Z aus app/index.html.
   Diese Datei ist vollständig eigenständig: einfach im Browser öffnen.
 -->
 <!doctype html>
@@ -261,6 +261,14 @@ a { color: var(--brand); }
 .btn--icon { padding: 0; width: var(--hit); }
 .btn--icon.btn--sm { width: 30px; }
 .btn--wide { width: 100%; }
+
+/* Mit dem Finger bedient (Tablet, interaktive Tafel): Kleine Knöpfe und
+   Kästchen bekommen eine Trefferfläche, die man nicht verfehlt. */
+@media (pointer: coarse) {
+  .btn--sm { min-height: 36px; padding: 0 var(--sp-3); }
+  .btn--icon.btn--sm { width: 38px; padding: 0; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+}
 .btn[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); }
 
 .ico { font-size: 1.05em; line-height: 1; }
@@ -346,6 +354,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 }
 .note--warn { border-color: var(--st-revisit); background: var(--st-revisit-soft); }
 .note--danger { border-color: var(--danger); background: var(--danger-soft); }
+.note--ok { border-color: var(--ok); background: var(--ok-soft); }
 
 /* --- Toasts ------------------------------------------------------------- */
 .toast-root {
@@ -508,6 +517,34 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 .shell[data-rail="collapsed"] .rail__title { display: none; }
 .shell[data-rail="collapsed"] .rail__item { justify-content: center; padding: 9px 0; }
 
+/* Auf schmalen Bildschirmen (Tablet hochkant, halbes Fenster) gehört die
+   Breite dem Inhalt: Die Leiste zeigt von selbst nur ihre Symbole. */
+@media (max-width: 900px) {
+  .shell { --rail-w: 58px; }
+  .brand__text { display: none; }
+  .rail { padding: var(--sp-2) 6px; }
+  .rail__label, .rail__count, .rail__title { display: none; }
+  .rail__item { justify-content: center; padding: 10px 0; }
+  .rail__item--toggle { display: none; }
+}
+
+/* Handy und sehr schmale Fenster: Kopf- und Fußzeile beschränken sich aufs
+   Nötige, damit nichts aus dem Bild läuft. */
+@media (max-width: 640px) {
+  .topbar { gap: var(--sp-2); padding: 0 var(--sp-2); }
+  .topbar__context { gap: var(--sp-1); overflow: hidden; }
+  .topbar__context .chip { display: none; }
+  .ctx-select { padding-left: var(--sp-2); }
+  .ctx-select select { max-width: 12ch; }
+  .topbar__actions .btn { padding: 0 var(--sp-2); min-width: var(--hit); }
+  .appfoot { padding: 0 var(--sp-2); }
+  .appfoot__left { display: none; }
+  .appfoot__side { flex: 1 1 auto; justify-content: space-between; gap: var(--sp-2); }
+  .appfoot:not([data-storage="error"]) .appfoot__right { font-size: 0; gap: 0; }
+  .view__head { margin-bottom: var(--sp-4); }
+  .bulkbar { border-radius: var(--r-lg); }
+}
+
 /* --- Inhaltsbereich ----------------------------------------------------- */
 .main { grid-area: main; overflow: auto; scroll-behavior: smooth; }
 .view { padding: var(--sp-5) var(--sp-6) var(--sp-7); max-width: 1400px; margin: 0 auto; }
@@ -535,6 +572,21 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 .appfoot__right::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
 }
+/* Stand der Sicherungsdatei – ein Klick erstellt sie. */
+.appfoot__left { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appfoot__side { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; }
+.appfoot__backup {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  min-height: 22px; padding: 0 var(--sp-2);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap;
+}
+.appfoot__backup:hover { border-color: var(--line-strong); color: var(--ink); }
+.appfoot__backup[data-backup="open"] { color: var(--ink-2); }
+.appfoot__backup[data-backup="due"] {
+  color: var(--st-revisit); background: var(--st-revisit-soft); border-color: var(--st-revisit); font-weight: 600;
+}
+.appfoot__right { white-space: nowrap; }
 .appfoot[data-storage="error"] .appfoot__right { color: var(--danger); }
 .appfoot[data-storage="error"] .appfoot__right::before { background: var(--danger); }
 
@@ -577,8 +629,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
    ========================================================================== */
 
 /* --- Kachelraster ------------------------------------------------------- */
-.tiles { display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-.tiles--wide { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+/* min(…, 100 %): Auf einem schmalen Bildschirm wird eine Kachel so breit wie
+   der Platz, statt aus dem Bild zu laufen. */
+.tiles { display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
+.tiles--wide { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
 
 .tile {
   display: flex; flex-direction: column; gap: var(--sp-2);
@@ -669,6 +723,21 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 .lex__tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .lex__actions { display: flex; gap: 2px; opacity: .35; transition: opacity .12s ease; }
 .lex:hover .lex__actions, .lex:focus-within .lex__actions { opacity: 1; }
+.lex-host { display: flex; flex-direction: column; gap: var(--sp-2); }
+.lex-all {
+  display: flex; align-items: center; gap: var(--sp-3);
+  min-height: 30px; padding: 0 var(--sp-3) 0 calc(var(--sp-3) + 3px);
+  font-size: var(--fs-sm); color: var(--muted);
+}
+.lex-all label { cursor: pointer; }
+.lex-all .spacer { flex: 1 1 auto; }
+/* Hinweis auf die mitgelieferten Beispieldaten. */
+.sample-note { display: flex; align-items: center; gap: var(--sp-2) var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+.sample-note__text { flex: 1 1 320px; }
+.dash .sample-note { margin-top: var(--sp-4); }
+/* Hinweis im Eintragsformular: Der Ausdruck steht schon im Bestand. */
+.twin-note { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.twin-note span { flex: 1 1 220px; }
 @media (max-width: 980px) {
   .lex { grid-template-columns: 26px minmax(0, 1fr) auto; }
   .lex__col-hide { display: none; }
@@ -855,7 +924,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width:
 .timeline__year { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink-2); min-width: 9ch; }
 
 /* --- Daten -------------------------------------------------------------- */
-.data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--sp-4); align-items: start; }
+.data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: var(--sp-4); align-items: start; }
 .dropzone {
   border: 2px dashed var(--line-strong); border-radius: var(--r-lg); padding: var(--sp-5);
   text-align: center; color: var(--muted); background: var(--surface-2);
@@ -944,6 +1013,19 @@ table.mini tr:last-child td { border-bottom: 0; }
 .ipa-field > label { display: flex; align-items: center; gap: var(--sp-2); }
 .field--action > label .btn,
 .ipa-field > label .btn { margin-left: auto; font-weight: 550; }
+
+/* --- Bedienung ohne Maus -------------------------------------------------- */
+/* Ohne Maus gibt es kein „Darüberfahren“: Die Aktionen der Zeilen sind dann
+   von vornherein deutlich zu sehen. */
+@media (hover: none) {
+  .lex__actions, .starter__actions, .bitem__actions, .belem__actions { opacity: 1; }
+}
+/* Auf dem Handy bleibt die Werkzeugleiste nicht stehen – sie nähme der Liste
+   sonst den halben Bildschirm. */
+@media (max-width: 640px) {
+  .toolbar { position: static; }
+  .toolbar input[type="search"] { min-width: 0; }
+}
 
   </style>
   <style>
@@ -1197,6 +1279,118 @@ table.mini tr:last-child td { border-bottom: 0; }
 body[data-projecting="true"] .toast-root { display: none; }
 
   </style>
+  <style>
+/* styles/print.css */
+/* ==========================================================================
+   Drucken
+   Das Blatt (Wortliste oder Vokabeltest) sieht in der Vorschau des Dialogs
+   genauso aus wie auf dem Papier: schwarz auf weiß, unabhängig von der
+   gewählten Helligkeit der App.
+   ========================================================================== */
+
+.print-root { display: none; }
+
+.sheet {
+  background: #fff;
+  color: #111;
+  font-family: var(--font-ui);
+  font-size: 12pt;
+  line-height: 1.35;
+}
+
+.sheet__head { margin: 0 0 14pt; }
+.sheet__head h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18pt;
+  font-weight: 650;
+  letter-spacing: 0;
+  color: #111;
+}
+.sheet__sub { margin: 3pt 0 0; font-size: 10pt; color: #555; }
+
+.sheet__name {
+  display: flex;
+  gap: 18pt;
+  margin-top: 14pt;
+  font-size: 11pt;
+  color: #111;
+}
+.sheet__name span {
+  flex: 1 1 0;
+  padding-bottom: 2pt;
+  border-bottom: 0.75pt solid #111;
+  white-space: pre;
+}
+.sheet__name .sheet__points { flex: 0 0 auto; min-width: 96pt; }
+
+.sheet__section { margin: 0 0 14pt; }
+.sheet__section h2 {
+  margin: 0 0 4pt;
+  font-size: 12pt;
+  font-weight: 650;
+  color: #111;
+  break-after: avoid;
+}
+
+.sheet__table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.sheet__table td {
+  padding: 5pt 6pt;
+  border-bottom: 0.5pt solid #b8b8b8;
+  vertical-align: bottom;
+  overflow-wrap: anywhere;
+  color: #111;
+}
+.sheet__table tr { break-inside: avoid; }
+.sheet__no { width: 26pt; color: #666; font-size: 9.5pt; text-align: right; font-variant-numeric: tabular-nums; }
+.sheet__term { font-weight: 600; }
+.sheet__de { color: #111; }
+.sheet__extra { color: #444; font-size: 10.5pt; font-style: italic; }
+
+/* Ein Test braucht Platz zum Schreiben. */
+.sheet[data-mode="recall"] .sheet__table td,
+.sheet[data-mode="recognise"] .sheet__table td { padding-top: 11pt; padding-bottom: 4pt; }
+.sheet[data-mode="recall"] .sheet__term,
+.sheet[data-mode="recognise"] .sheet__term { width: 42%; font-weight: 500; }
+.sheet__blank { border-bottom-color: #111 !important; }
+
+.sheet .gap {
+  display: inline-block;
+  width: 3.2em;
+  border-bottom: 0.9pt solid currentColor;
+  transform: translateY(-1pt);
+}
+
+/* --- Vorschau im Dialog --------------------------------------------------- */
+
+.sheet-preview {
+  max-height: min(44vh, 420px);
+  overflow: auto;
+  padding: var(--sp-4) var(--sp-5);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: inset 0 1px 3px rgba(20, 26, 38, .08);
+}
+.sheet-preview .sheet { font-size: 10.5pt; }
+.sheet-preview .sheet__head h1 { font-size: 14pt; }
+
+/* --- Auf dem Papier -------------------------------------------------------- */
+
+@media print {
+  html.is-printing,
+  html.is-printing body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  html.is-printing body > * { display: none !important; }
+  html.is-printing body > .print-root { display: block !important; }
+  html.is-printing .sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { margin: 16mm 15mm; }
+}
+
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#view">Zum Inhalt springen</a>
@@ -1244,13 +1438,19 @@ body[data-projecting="true"] .toast-root { display: none; }
 
     <footer class="appfoot">
       <span class="appfoot__left">Boîte à Oublis <span data-bind="version">–</span> · © Florian Nowak</span>
-      <span class="appfoot__right" data-bind="storage-state">Lokale Speicherung aktiv</span>
+      <span class="appfoot__side">
+        <button class="appfoot__backup" type="button" data-action="backup-now" data-bind="backup-state"
+          title="Sicherungsdatei jetzt erstellen (Strg + S)">Sicherungsdatei</button>
+        <span class="appfoot__right" data-bind="storage-state">Lokale Speicherung aktiv</span>
+      </span>
     </footer>
   </div>
 
   <div id="overlay-root" class="overlay-root"></div>
   <div id="modal-root" class="modal-root" aria-live="polite"></div>
   <div id="toast-root" class="toast-root" aria-live="polite" role="status"></div>
+  <!-- Nimmt auf, was gedruckt wird (Wortlisten, Vokabeltests) – sonst leer. -->
+  <div id="print-root" class="print-root"></div>
 
   <!-- Kern -->
   <script>
@@ -1459,8 +1659,7 @@ body[data-projecting="true"] .toast-root { display: none; }
 
   /* --- Dateien ------------------------------------------------------------ */
 
-  function downloadText(filename, text, mime) {
-    var blob = new Blob([text], { type: (mime || 'application/json') + ';charset=utf-8' });
+  function downloadBlob(filename, blob) {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url; a.download = filename;
@@ -1468,6 +1667,49 @@ body[data-projecting="true"] .toast-root { display: none; }
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
+  function downloadText(filename, text, mime) {
+    downloadBlob(filename, new Blob([text], { type: (mime || 'application/json') + ';charset=utf-8' }));
+  }
+
+  /** Ein Name, der als Dateiname auf jedem System taugt. */
+  function fileSlug(text, fallback) {
+    var slug = fold(text).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+    return slug || fallback || 'datei';
+  }
+
+  /**
+   * Legt Text in die Zwischenablage. Liefert ein Promise mit true oder false –
+   * auch dort, wo die neue Schnittstelle fehlt (Aufruf als Datei, ältere
+   * Browser): Dann hilft der klassische Weg über ein unsichtbares Textfeld.
+   */
+  function copyText(text) {
+    function legacy() {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.top = '-1000px';
+      area.style.opacity = '0';
+      // Innerhalb eines offenen Dialogs einhängen, sonst hält dieser den Fokus fest.
+      var host = document.querySelector('.modal') || document.body;
+      var previous = document.activeElement;
+      host.appendChild(area);
+      var ok = false;
+      try {
+        area.select();
+        area.setSelectionRange(0, area.value.length);
+        ok = document.execCommand('copy');
+      } catch (err) { ok = false; }
+      host.removeChild(area);
+      if (previous && previous.focus) { try { previous.focus(); } catch (err2) { /* Fokusziel verschwunden */ } }
+      return ok;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext !== false) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return legacy(); });
+    }
+    return Promise.resolve(legacy());
   }
 
   function readFileAsText(file) {
@@ -1506,7 +1748,8 @@ body[data-projecting="true"] .toast-root { display: none; }
     plural: plural, formatDate: formatDate, formatDateTime: formatDateTime, relativeDate: relativeDate,
     currentSchoolYear: currentSchoolYear, nextSchoolYear: nextSchoolYear,
     sortBy: sortBy, byOrder: byOrder, groupBy: groupBy, unique: unique, moveInArray: moveInArray,
-    downloadText: downloadText, readFileAsText: readFileAsText, pickFile: pickFile,
+    downloadText: downloadText, downloadBlob: downloadBlob, fileSlug: fileSlug, copyText: copyText,
+    readFileAsText: readFileAsText, pickFile: pickFile,
     prefersReducedMotion: prefersReducedMotion
   };
 })(window.BAO = window.BAO || {});
@@ -1604,6 +1847,38 @@ body[data-projecting="true"] .toast-root { display: none; }
     return raw ? raw.length : 0;
   }
 
+  /** Entfernt die Sicherheitskopie, um Platz zu schaffen. true, wenn es eine gab. */
+  function dropSafetyCopy() {
+    var had = read(SAFETY_KEY) !== null;
+    if (had) remove(SAFETY_KEY);
+    return had;
+  }
+
+  /* Browser gewähren dem lokalen Speicher rund fünf Millionen Zeichen je
+     Herkunft. Genau abfragen lässt sich die Grenze nicht – als Richtwert für
+     die Anzeige „so viel ist belegt“ genügt sie. */
+  var QUOTA_ESTIMATE = 5 * 1024 * 1024;
+
+  /**
+   * Belegung durch alles, was diese App abgelegt hat (Bestand,
+   * Sicherheitskopie, beiseitegelegte beschädigte Stände).
+   * @returns {{used: number, quota: number, share: number}}
+   */
+  function usage() {
+    var used = 0;
+    if (probe()) {
+      try {
+        for (var i = 0; i < window.localStorage.length; i++) {
+          var key = window.localStorage.key(i);
+          if (key && key.indexOf('bao.') === 0) used += key.length + (window.localStorage.getItem(key) || '').length;
+        }
+      } catch (err) { lastError = err; }
+    } else {
+      Object.keys(memory).forEach(function (key) { used += key.length + String(memory[key]).length; });
+    }
+    return { used: used, quota: QUOTA_ESTIMATE, share: Math.min(1, used / QUOTA_ESTIMATE) };
+  }
+
   BAO.storage = {
     KEY: KEY,
     isAvailable: probe,
@@ -1613,6 +1888,8 @@ body[data-projecting="true"] .toast-root { display: none; }
     saveSafetyCopy: saveSafetyCopy,
     loadSafetyCopy: loadSafetyCopy,
     approximateSize: approximateSize,
+    usage: usage,
+    dropSafetyCopy: dropSafetyCopy,
     clearAll: function () { remove(KEY); remove(SAFETY_KEY); }
   };
 })(window.BAO = window.BAO || {});
@@ -2286,6 +2563,9 @@ body[data-projecting="true"] .toast-root { display: none; }
     if (!state) return;
     state.meta.updatedAt = util.nowISO();
     var result = storage.saveState(state);
+    // Speicher voll? Dann weicht zuerst die Sicherheitskopie eines früheren
+    // Imports – der laufende Bestand ist wichtiger als sie.
+    if (!result.ok && result.quota && storage.dropSafetyCopy()) result = storage.saveState(state);
     if (result.ok) {
       storageState = 'ok';
       storageMessage = '';
@@ -2312,6 +2592,24 @@ body[data-projecting="true"] .toast-root { display: none; }
     listeners.forEach(function (fn) {
       try { fn(state, meta || {}); } catch (err) { console.error('Fehler in einem Zustandsbeobachter:', err); }
     });
+  }
+
+  /**
+   * Der Bestand merkt sich, seit wann es Änderungen ohne Sicherungsdatei gibt
+   * (meta.unsavedSince) und wann zuletzt exportiert wurde (meta.lastBackupAt).
+   * Ein Bestand aus einer älteren Programmversion kennt beides noch nicht: Er
+   * gilt ab jetzt als ungesichert – niemand weiß, ob es eine Datei gibt.
+   * Ein frisch angelegter Bestand hat dagegen noch nichts zu sichern.
+   */
+  function trackBackupFields(target, fresh) {
+    var meta = target.meta;
+    if (meta.changedAt === undefined) {
+      var legacy = !fresh && !meta.lastBackupAt;
+      meta.changedAt = legacy ? (meta.updatedAt || util.nowISO()) : '';
+      if (meta.unsavedSince === undefined) meta.unsavedSince = legacy ? util.nowISO() : '';
+    }
+    if (meta.unsavedSince === undefined) meta.unsavedSince = '';
+    if (meta.lastBackupAt === undefined) meta.lastBackupAt = '';
   }
 
   /* --- Initialisierung ---------------------------------------------------- */
@@ -2347,6 +2645,7 @@ body[data-projecting="true"] .toast-root { display: none; }
     }
 
     state.meta.appVersion = schema.APP_VERSION;
+    trackBackupFields(state, startedFresh);
     if (!storage.isAvailable()) {
       storageState = 'session';
       storageMessage = 'Der Browser erlaubt keine lokale Speicherung. Die Daten bleiben nur für diese Sitzung erhalten – bitte exportieren.';
@@ -2386,6 +2685,12 @@ body[data-projecting="true"] .toast-root { display: none; }
     var result = mutator(draft);
     if (result === false) return null;           // Mutator hat abgebrochen
     draft.meta.updatedAt = util.nowISO();
+    // Inhaltliche Änderungen merken: Daran hängt der Hinweis, dass eine neue
+    // Sicherungsdatei fällig ist (siehe BAO.backup.status).
+    if (undoable) {
+      draft.meta.changedAt = draft.meta.updatedAt;
+      if (!draft.meta.unsavedSince) draft.meta.unsavedSince = draft.meta.updatedAt;
+    }
     state = draft;
 
     if (undoable) {
@@ -2404,6 +2709,9 @@ body[data-projecting="true"] .toast-root { display: none; }
     var before = JSON.stringify(state);
     storage.saveSafetyCopy(JSON.parse(before));
     state = nextState;
+    // Ein eingelesener oder neu angelegter Bestand bringt seinen eigenen
+    // Sicherungsstand mit; fehlt er, gilt: nichts Ungesichertes.
+    trackBackupFields(state, true);
     undoStack.push({ label: label || 'Bestand ersetzt', snapshot: before, at: util.nowISO() });
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
     redoStack.length = 0;
@@ -2416,11 +2724,24 @@ body[data-projecting="true"] .toast-root { display: none; }
   function canRedo() { return redoStack.length > 0; }
   function lastUndoLabel() { return undoStack.length ? undoStack[undoStack.length - 1].label : ''; }
 
+  /* Rückgängig und Wiederholen stellen einen früheren Bestand her – mitsamt
+     seinen Vermerken zur Sicherung. Wurde inzwischen eine Sicherungsdatei
+     erstellt, bleibt sie die jüngste, und der Bestand weicht nun von ihr ab. */
+  function keepBackupTrack(previous) {
+    var meta = state.meta;
+    if (!previous || !previous.lastBackupAt) return;
+    if (String(meta.lastBackupAt || '') >= previous.lastBackupAt) return;
+    meta.lastBackupAt = previous.lastBackupAt;
+    if (!meta.unsavedSince) meta.unsavedSince = util.nowISO();
+  }
+
   function undo() {
     if (!undoStack.length) return null;
     var entry = undoStack.pop();
+    var previousMeta = state.meta;
     redoStack.push({ label: entry.label, snapshot: JSON.stringify(state), at: util.nowISO() });
     state = JSON.parse(entry.snapshot);
+    keepBackupTrack(previousMeta);
     persist.cancel();
     persistNow();
     notify({ reason: 'undo', label: entry.label });
@@ -2430,8 +2751,10 @@ body[data-projecting="true"] .toast-root { display: none; }
   function redo() {
     if (!redoStack.length) return null;
     var entry = redoStack.pop();
+    var previousMeta = state.meta;
     undoStack.push({ label: entry.label, snapshot: JSON.stringify(state), at: util.nowISO() });
     state = JSON.parse(entry.snapshot);
+    keepBackupTrack(previousMeta);
     persist.cancel();
     persistNow();
     notify({ reason: 'redo', label: entry.label });
@@ -2444,6 +2767,7 @@ body[data-projecting="true"] .toast-root { display: none; }
       message: storageMessage,
       savedAt: lastSavedAt,
       bytes: storage.approximateSize(),
+      usage: storage.usage(),
       available: storage.isAvailable()
     };
   }
@@ -3583,8 +3907,62 @@ body[data-projecting="true"] .toast-root { display: none; }
 
   function exportToFile(state) {
     var payload = buildExport(state);
+    // Die Datei trägt ihren Zeitpunkt in sich: Wer sie später
+    // wiederherstellt, sieht einen Bestand, der genau so gesichert ist.
+    payload.data.meta = Object.assign({}, payload.data.meta, {
+      lastBackupAt: payload.exportedAt, unsavedSince: ''
+    });
     util.downloadText(suggestFilename(state), JSON.stringify(payload, null, 2), 'application/json');
+    if (BAO.store && BAO.store.getState() === state) markBackedUp(payload.exportedAt);
     return payload;
+  }
+
+  /* --- Stand der Sicherung ---------------------------------------------------
+     Alles liegt nur im Browser dieses Rechners. Eine Sicherungsdatei ist der
+     einzige Schutz vor einem geleerten Browserspeicher – und der Weg auf einen
+     anderen Rechner. Deshalb merkt sich der Bestand, wann zuletzt exportiert
+     wurde und seit wann es ungesicherte Änderungen gibt. */
+
+  var DAY = 24 * 60 * 60 * 1000;
+  var REMIND_AFTER_DAYS = 7;
+
+  function markBackedUp(at) {
+    BAO.store.commit('Sicherung erstellt', function (draft) {
+      draft.meta.lastBackupAt = at || util.nowISO();
+      draft.meta.unsavedSince = '';
+    }, { undoable: false });
+  }
+
+  /**
+   * @returns {{last: string, never: boolean, dirty: boolean, ageDays: number|null,
+   *            unsavedDays: number, due: boolean}}
+   * due = es gibt seit mindestens einer Woche Änderungen ohne Sicherungsdatei.
+   */
+  function status(state, now) {
+    var meta = (state && state.meta) || {};
+    var nowMs = now ? new Date(now).getTime() : Date.now();
+    var last = meta.lastBackupAt || '';
+    var since = meta.unsavedSince || '';
+    function daysSince(iso) {
+      var t = new Date(iso).getTime();
+      return isNaN(t) ? 0 : Math.max(0, Math.floor((nowMs - t) / DAY));
+    }
+    var unsavedDays = since ? daysSince(since) : 0;
+    return {
+      last: last,
+      never: !last,
+      dirty: !!since,
+      ageDays: last ? daysSince(last) : null,
+      unsavedDays: unsavedDays,
+      due: !!since && unsavedDays >= REMIND_AFTER_DAYS
+    };
+  }
+
+  /** Kurze Auskunft für Fußzeile und Datenansicht. */
+  function statusLabel(info) {
+    if (info.never) return info.dirty ? 'Noch keine Sicherungsdatei' : 'Noch nichts zu sichern';
+    var when = util.relativeDate(info.last);
+    return info.dirty ? 'Letzte Sicherungsdatei: ' + when : 'Sicherungsdatei: ' + when;
   }
 
   /**
@@ -3707,12 +4085,557 @@ body[data-projecting="true"] .toast-root { display: none; }
   BAO.backup = {
     buildExport: buildExport,
     exportToFile: exportToFile,
+    markBackedUp: markBackedUp,
+    status: status,
+    statusLabel: statusLabel,
+    REMIND_AFTER_DAYS: REMIND_AFTER_DAYS,
     suggestFilename: suggestFilename,
     analyse: analyse,
     merge: merge,
     counts: counts,
     COUNT_LABELS: COUNT_LABELS,
     summariseReport: summariseReport
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/core/stock.js */
+/* ==========================================================================
+   Bestandspflege
+   Alles, was mehrere Ansichten über den Bestand wissen müssen und was über
+   eine reine Abfrage hinausgeht:
+
+   - Einträge am Text wiedererkennen (damit beim Tippen keine Dubletten
+     entstehen),
+   - Lerngruppen und Fächer vollständig entfernen – mitsamt Tafeln und
+     Whiteboards,
+   - Tafeln, Whiteboards und Wortbanken für eine andere Lerngruppe kopieren
+     (die Parallelklasse),
+   - Einträge auf eine Tafel legen,
+   - Wortlisten für Druck und Zwischenablage zusammenstellen.
+
+   Die verändernden Funktionen erwarten den Entwurf eines commit-Mutators.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var schema = BAO.schema;
+  var select = BAO.select;
+
+  /* --- Wiedererkennen --------------------------------------------------------- */
+
+  /**
+   * Vergleichsform eines Textes: Apostrophe und Leerraum vereinheitlicht,
+   * Leerstellen in jeder Schreibweise gleich. Groß- und Kleinschreibung sowie
+   * Akzente bleiben bedeutsam – „ou“ ist nicht „où“.
+   */
+  function normalize(text) {
+    return String(text == null ? '' : text)
+      .replace(/[‘’']/g, "'")
+      .replace(/(_{2,}|\.{3,}|…)/g, '___')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /** So, wie der Eintrag geschrieben dasteht: „le stage“, „l’entreprise“. */
+  function labelOf(lex) { return BAO.ui.termLabel(lex); }
+
+  /**
+   * Sucht im Bestand einer Lerngruppe den Eintrag, der genau so geschrieben
+   * wird. Die vollständige Form mit Artikel hat Vorrang vor dem bloßen
+   * Zielwort.
+   */
+  function findLexeme(state, groupId, text, exceptId) {
+    var needle = normalize(text);
+    if (!needle || !groupId) return null;
+    var byTerm = null;
+    var list = select.lexemesOfGroup(state, groupId);
+    for (var i = 0; i < list.length; i++) {
+      var lex = list[i];
+      if (lex.id === exceptId) continue;
+      if (normalize(labelOf(lex)) === needle) return lex;
+      if (!byTerm && normalize(lex.term) === needle) byTerm = lex;
+    }
+    return byTerm;
+  }
+
+  /** Dasselbe für Satzanfänge der Lerngruppe (einschließlich der fachweiten). */
+  function findStarter(state, groupId, subjectId, text, exceptId) {
+    var needle = normalize(text);
+    if (!needle) return null;
+    var list = select.startersOfGroup(state, groupId, subjectId);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id !== exceptId && normalize(list[i].text) === needle) return list[i];
+    }
+    return null;
+  }
+
+  /**
+   * Was steht zu einem getippten Text schon im Bestand?
+   * @returns {{kind: 'lex'|'starter', ref: object}|null}
+   */
+  function findEntry(state, groupId, subjectId, text) {
+    var lex = findLexeme(state, groupId, text);
+    if (lex) return { kind: 'lex', ref: lex };
+    var starter = findStarter(state, groupId, subjectId, text);
+    return starter ? { kind: 'starter', ref: starter } : null;
+  }
+
+  /* --- Lerngruppen und Fächer entfernen ---------------------------------------- */
+
+  function idMap(ids) {
+    var map = Object.create(null);
+    (ids || []).forEach(function (id) { map[id] = true; });
+    return map;
+  }
+
+  /** Was hängt an diesen Lerngruppen? Für die Rückfrage vor dem Löschen. */
+  function contentOfGroups(state, groupIds) {
+    var gone = idMap(groupIds);
+    function count(list) { return (list || []).filter(function (item) { return gone[item.groupId]; }).length; }
+    return {
+      groups: (groupIds || []).length,
+      units: count(state.units),
+      lexemes: count(state.lexemes),
+      starters: count(state.starters),
+      banks: count(state.banks),
+      boards: count(state.boards),
+      whiteboards: count(state.whiteboards)
+    };
+  }
+
+  /** Dasselbe für ein ganzes Fach – fachweite Satzanfänge zählen mit. */
+  function contentOfSubject(state, subjectId) {
+    function count(list) { return (list || []).filter(function (item) { return item.subjectId === subjectId; }).length; }
+    var groupIds = state.groups.filter(function (g) { return g.subjectId === subjectId; }).map(function (g) { return g.id; });
+    var gone = idMap(groupIds);
+    return {
+      groups: groupIds.length,
+      units: state.units.filter(function (u) { return gone[u.groupId]; }).length,
+      lexemes: count(state.lexemes),
+      starters: count(state.starters),
+      banks: count(state.banks),
+      boards: count(state.boards),
+      whiteboards: count(state.whiteboards)
+    };
+  }
+
+  /** „12 Wortschatzeinträge, 2 Tafeln und 1 Whiteboard“ – nur was vorhanden ist. */
+  function describeContent(counts) {
+    var parts = [];
+    function add(n, one, many) { if (n) parts.push(n + ' ' + util.plural(n, one, many)); }
+    add(counts.lexemes, 'Wortschatzeintrag', 'Wortschatzeinträge');
+    add(counts.starters, 'Satzanfang', 'Satzanfänge');
+    add(counts.banks, 'Wortbank', 'Wortbanken');
+    add(counts.boards, 'Tafel', 'Tafeln');
+    add(counts.whiteboards, 'Whiteboard', 'Whiteboards');
+    add(counts.units, 'Unterrichtsreihe', 'Unterrichtsreihen');
+    if (!parts.length) return '';
+    if (parts.length === 1) return parts[0];
+    return parts.slice(0, -1).join(', ') + ' und ' + parts[parts.length - 1];
+  }
+
+  function cleanRecents(draft) {
+    var bankIds = idMap(draft.banks.map(function (b) { return b.id; }));
+    var groupIds = idMap(draft.groups.map(function (g) { return g.id; }));
+    draft.ui.recentBanks = (draft.ui.recentBanks || []).filter(function (id) { return bankIds[id]; });
+    draft.ui.recentGroups = (draft.ui.recentGroups || []).filter(function (id) { return groupIds[id]; });
+  }
+
+  /**
+   * Entfernt Lerngruppen mit allem, was ihnen gehört: Reihen, Wortschatz,
+   * Satzanfänge, Wortbanken – und ebenso Tafeln und Whiteboards, die sonst
+   * unsichtbar im Bestand zurückblieben.
+   */
+  function removeGroups(draft, groupIds) {
+    var gone = idMap(groupIds);
+    function keep(item) { return !gone[item.groupId]; }
+    draft.groups = draft.groups.filter(function (g) { return !gone[g.id]; });
+    draft.units = draft.units.filter(keep);
+    draft.lexemes = draft.lexemes.filter(keep);
+    draft.starters = draft.starters.filter(keep);
+    draft.banks = draft.banks.filter(keep);
+    draft.boards = (draft.boards || []).filter(keep);
+    draft.whiteboards = (draft.whiteboards || []).filter(keep);
+    if (gone[draft.ui.groupId]) draft.ui.groupId = '';
+    cleanRecents(draft);
+  }
+
+  /** Entfernt ein Fach vollständig. */
+  function removeSubject(draft, subjectId) {
+    var groupIds = draft.groups.filter(function (g) { return g.subjectId === subjectId; })
+      .map(function (g) { return g.id; });
+    removeGroups(draft, groupIds);
+    function keep(item) { return item.subjectId !== subjectId; }
+    draft.subjects = draft.subjects.filter(function (s) { return s.id !== subjectId; });
+    draft.lexemes = draft.lexemes.filter(keep);
+    draft.starters = draft.starters.filter(keep);
+    draft.banks = draft.banks.filter(keep);
+    draft.boards = (draft.boards || []).filter(keep);
+    draft.whiteboards = (draft.whiteboards || []).filter(keep);
+    if (draft.ui.subjectId === subjectId) {
+      draft.ui.subjectId = draft.subjects[0] ? draft.subjects[0].id : '';
+      draft.ui.groupId = '';
+    }
+    cleanRecents(draft);
+  }
+
+  /** Löst die Zuordnung zu einer Unterrichtsreihe – überall, wo sie steht. */
+  function detachUnit(draft, unitId) {
+    draft.lexemes.forEach(function (l) { if (l.introducedUnitId === unitId) l.introducedUnitId = ''; });
+    [draft.banks, draft.boards || [], draft.whiteboards || []].forEach(function (list) {
+      list.forEach(function (item) { if (item.unitId === unitId) item.unitId = ''; });
+    });
+  }
+
+  /* --- Beispieldaten ----------------------------------------------------------- */
+
+  var SAMPLE_GROUPS = ['grp_fr9b', 'grp_en10a'];
+
+  /** Die mitgelieferten Beispiel-Lerngruppen, soweit sie noch im Bestand liegen. */
+  function sampleGroups(state) {
+    if (!state || !state.meta || !state.meta.seededAt) return [];
+    return state.groups.filter(function (g) { return SAMPLE_GROUPS.indexOf(g.id) >= 0; });
+  }
+
+  function hasSampleData(state) { return sampleGroups(state).length > 0; }
+
+  /**
+   * Entfernt die Beispiel-Lerngruppen mit allem, was ihnen gehört. Die Fächer
+   * bleiben – unter ihnen liegen oft schon die eigenen Lerngruppen.
+   */
+  function removeSampleData(draft) {
+    var ids = sampleGroups(draft).map(function (g) { return g.id; });
+    removeGroups(draft, ids);
+    // Der Arbeitskontext zeigt danach auf etwas Eigenes, falls vorhanden.
+    var subject = select.subject(draft, draft.ui.subjectId);
+    var own = subject ? select.groupsOfSubject(draft, subject.id) : [];
+    if (!own.length) {
+      var other = draft.groups.filter(function (g) { return !g.archived; })[0];
+      if (other) { draft.ui.subjectId = other.subjectId; draft.ui.groupId = other.id; }
+    } else if (!draft.ui.groupId) {
+      draft.ui.groupId = own[0].id;
+    }
+    return ids.length;
+  }
+
+  /* --- Für eine andere Lerngruppe kopieren -------------------------------------- */
+
+  /** Lerngruppen, in die sich etwas kopieren lässt: dasselbe Fach, nicht archiviert. */
+  function siblingGroups(state, item) {
+    return select.groupsOfSubject(state, item.subjectId).filter(function (g) { return g.id !== item.groupId; });
+  }
+
+  /**
+   * Sucht zu einem Eintrag das Gegenstück in der Ziel-Lerngruppe oder legt es
+   * dort an. Fachweite Satzanfänge gelten ohnehin für alle Lerngruppen.
+   */
+  function counterpart(draft, kind, refId, target, cache, report) {
+    var key = kind + ':' + refId;
+    if (cache[key] !== undefined) return cache[key];
+    var now = util.nowISO();
+    var unit = select.currentUnit(draft, target.id);
+
+    if (kind === 'starter') {
+      var starter = select.starter(draft, refId);
+      if (!starter) return (cache[key] = null);
+      if (!starter.groupId && starter.subjectId === target.subjectId) return (cache[key] = starter.id);
+      var sameStarter = findStarter(draft, target.id, target.subjectId, starter.text);
+      if (sameStarter) { report.reused += 1; return (cache[key] = sameStarter.id); }
+      var starterCopy = Object.assign(util.clone(starter), {
+        id: util.uid('sta'), subjectId: target.subjectId, groupId: target.id,
+        createdAt: now, updatedAt: now
+      });
+      draft.starters.push(starterCopy);
+      report.created += 1;
+      return (cache[key] = starterCopy.id);
+    }
+
+    var lex = select.lexeme(draft, refId);
+    if (!lex) return (cache[key] = null);
+    var sameLexeme = findLexeme(draft, target.id, labelOf(lex));
+    if (sameLexeme) { report.reused += 1; return (cache[key] = sameLexeme.id); }
+    var lexCopy = Object.assign(util.clone(lex), {
+      id: util.uid('lex'), subjectId: target.subjectId, groupId: target.id,
+      status: 'new', favorite: false,
+      introducedUnitId: unit ? unit.id : '', introducedSchoolYear: target.schoolYear || '',
+      createdAt: now, updatedAt: now
+    });
+    draft.lexemes.push(lexCopy);
+    report.created += 1;
+    return (cache[key] = lexCopy.id);
+  }
+
+  function freshCopy(source, target, draft, prefix) {
+    var now = util.nowISO();
+    var unit = select.currentUnit(draft, target.id);
+    return Object.assign(util.clone(source), {
+      id: util.uid(prefix), subjectId: target.subjectId, groupId: target.id,
+      unitId: unit ? unit.id : '', favorite: false, lastUsedAt: '',
+      createdAt: now, updatedAt: now
+    });
+  }
+
+  function newReport(target) { return { id: '', group: target, created: 0, reused: 0, items: 0 }; }
+
+  /** Kopiert eine Tafel; ihre Elemente verweisen danach auf den Bestand der Zielgruppe. */
+  function copyBoardTo(draft, boardId, targetGroupId) {
+    var board = select.board(draft, boardId);
+    var target = select.group(draft, targetGroupId);
+    if (!board || !target) return null;
+    var report = newReport(target);
+    var cache = {};
+    var copy = freshCopy(board, target, draft, 'brd');
+    copy.items = (board.items || []).map(function (item) {
+      var refId = counterpart(draft, item.kind, item.refId, target, cache, report);
+      if (!refId) return null;
+      return Object.assign(util.clone(item), { id: util.uid('bit'), refId: refId });
+    }).filter(Boolean);
+    draft.boards.push(copy);
+    report.id = copy.id;
+    report.items = copy.items.length;
+    return report;
+  }
+
+  /** Kopiert eine Wortbank samt Abschnitten. */
+  function copyBankTo(draft, bankId, targetGroupId) {
+    var bank = select.bank(draft, bankId);
+    var target = select.group(draft, targetGroupId);
+    if (!bank || !target) return null;
+    var report = newReport(target);
+    var cache = {};
+    var copy = freshCopy(bank, target, draft, 'bnk');
+    copy.sections = (bank.sections || []).map(function (section) {
+      var sectionCopy = Object.assign(util.clone(section), { id: util.uid('sec') });
+      sectionCopy.items = (section.items || []).map(function (item) {
+        var refId = counterpart(draft, item.kind, item.refId, target, cache, report);
+        if (!refId) return null;
+        report.items += 1;
+        return Object.assign(util.clone(item), { id: util.uid('itm'), refId: refId });
+      }).filter(Boolean);
+      return sectionCopy;
+    });
+    draft.banks.push(copy);
+    report.id = copy.id;
+    return report;
+  }
+
+  /** Kopiert ein Whiteboard – Handschrift hängt an keinem Bestand. */
+  function copyWhiteboardTo(draft, whiteboardId, targetGroupId) {
+    var board = select.whiteboard(draft, whiteboardId);
+    var target = select.group(draft, targetGroupId);
+    if (!board || !target) return null;
+    var report = newReport(target);
+    var copy = freshCopy(board, target, draft, 'wbd');
+    copy.strokes = (copy.strokes || []).map(function (stroke) {
+      stroke.id = util.uid('stk');
+      return stroke;
+    });
+    draft.whiteboards.push(copy);
+    report.id = copy.id;
+    report.items = copy.strokes.length;
+    return report;
+  }
+
+  /* --- Zuletzt verwendet ----------------------------------------------------------- */
+
+  var WORK_LABEL = { board: 'Tafel', whiteboard: 'Whiteboard', bank: 'Wortbank' };
+  var WORK_ROUTE = { board: 'tafel/', whiteboard: 'whiteboard/', bank: 'wortbank/' };
+
+  /**
+   * Woran zuletzt gearbeitet wurde – Tafeln, Whiteboards und Wortbanken aller
+   * Lerngruppen in einer Liste, das Jüngste zuerst. Für Startseite und
+   * Schnellsuche: Der Weg in die nächste Stunde beginnt meist dort, wo die
+   * letzte aufgehört hat.
+   * options.banks === false lässt die Wortbanken aus (einfache Grundform).
+   */
+  function recentWork(state, limit, options) {
+    options = options || {};
+    var list = [];
+    function collect(type, items) {
+      (items || []).forEach(function (item) {
+        var group = select.group(state, item.groupId);
+        if (!group || group.archived) return;
+        var at = item.lastUsedAt || item.updatedAt || item.createdAt || '';
+        list.push({
+          type: type, id: item.id, item: item, group: group, at: at,
+          used: !!item.lastUsedAt,
+          label: WORK_LABEL[type], path: WORK_ROUTE[type] + item.id
+        });
+      });
+    }
+    collect('board', state.boards);
+    collect('whiteboard', state.whiteboards);
+    if (options.banks !== false) collect('bank', state.banks);
+    // Tatsächlich Verwendetes steht vor bloß Angelegtem.
+    list.sort(function (a, b) {
+      if (a.used !== b.used) return a.used ? -1 : 1;
+      return String(b.at).localeCompare(String(a.at));
+    });
+    return list.slice(0, limit || 6);
+  }
+
+  /* --- Einträge auf eine Tafel legen ---------------------------------------------- */
+
+  /** Die freieste Stelle eines Rasters – mit Abstand zu allem, was schon liegt. */
+  function freeSpot(placed) {
+    if (!placed.length) return { x: 0.5, y: 0.45 };
+    var best = { x: 0.5, y: 0.5 };
+    var bestDistance = -1;
+    for (var col = 0; col < 6; col++) {
+      for (var row = 0; row < 4; row++) {
+        var x = 0.14 + col * 0.144;
+        var y = 0.16 + row * 0.226;
+        var nearest = Infinity;
+        for (var i = 0; i < placed.length; i++) {
+          var dx = placed[i].x - x;
+          var dy = (placed[i].y - y) * 0.6;       // waagerecht ist mehr Platz
+          nearest = Math.min(nearest, dx * dx + dy * dy);
+        }
+        if (nearest > bestDistance) { bestDistance = nearest; best = { x: x, y: y }; }
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Legt Einträge auf eine Tafel. Was dort schon liegt oder nicht zur
+   * Lerngruppe der Tafel gehört, wird ausgelassen.
+   * refs: [{ kind: 'lex'|'starter', id }]
+   * @returns {{added: number, skipped: number}}
+   */
+  function placeOnBoard(draft, board, refs) {
+    var present = Object.create(null);
+    (board.items || []).forEach(function (item) { present[item.kind + ':' + item.refId] = true; });
+    var result = { added: 0, skipped: 0 };
+    var wasEmpty = !(board.items || []).length;
+    var fresh = [];
+
+    (refs || []).forEach(function (ref) {
+      var entry = ref.kind === 'starter' ? select.starter(draft, ref.id) : select.lexeme(draft, ref.id);
+      if (!entry || present[ref.kind + ':' + ref.id] || !select.belongsToBoard(entry, board)) {
+        result.skipped += 1;
+        return;
+      }
+      present[ref.kind + ':' + ref.id] = true;
+      var spot = freeSpot(board.items);
+      var item = schema.makeBoardItem({ kind: ref.kind, refId: ref.id, x: spot.x, y: spot.y });
+      board.items.push(item);
+      fresh.push(item);
+      result.added += 1;
+    });
+
+    // Eine eben erst gefüllte Tafel bekommt ein gleichmäßiges Raster.
+    if (wasEmpty && fresh.length > 1) {
+      var cols = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(fresh.length * 1.6))));
+      var rows = Math.max(1, Math.ceil(fresh.length / cols));
+      fresh.forEach(function (item, index) {
+        item.x = ((index % cols) + 0.5) / cols;
+        item.y = (Math.floor(index / cols) + 0.5) / rows;
+      });
+    }
+    if (result.added) board.updatedAt = util.nowISO();
+    return result;
+  }
+
+  /* --- Wortlisten ----------------------------------------------------------------- */
+
+  function rowOfLexeme(lex) {
+    return {
+      kind: 'lex',
+      term: labelOf(lex),
+      translation: lex.translation || '',
+      extra: lex.collocation || lex.chunk || lex.example || '',
+      sortKey: util.fold(lex.term)          // ohne Artikel: „le stage“ steht unter S
+    };
+  }
+
+  function rowOfStarter(starter) {
+    return {
+      kind: 'starter', term: starter.text || '', translation: starter.translation || '',
+      extra: '', sortKey: util.fold(starter.text)
+    };
+  }
+
+  function rowsOfLexemes(lexemes) { return (lexemes || []).map(rowOfLexeme); }
+
+  /**
+   * Die Elemente einer Tafel als Liste – gelesen wie die Fläche selbst:
+   * zeilenweise von oben nach unten, innerhalb einer Zeile von links nach
+   * rechts. Zwölf Zeilen sind fein genug für jede sinnvolle Anordnung.
+   */
+  function rowsOfBoard(state, board) {
+    function line(entry) { return Math.round(entry.item.y * 12); }
+    var seen = Object.create(null);
+    return select.boardEntries(state, board).slice().sort(function (a, b) {
+      return (line(a) - line(b)) || (a.item.x - b.item.x);
+    }).filter(function (entry) {
+      // Liegt derselbe Eintrag zweimal auf der Fläche, steht er einmal in der Liste.
+      var key = entry.kind + ':' + entry.ref.id;
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    }).map(function (entry) {
+      return entry.kind === 'starter' ? rowOfStarter(entry.ref) : rowOfLexeme(entry.ref);
+    });
+  }
+
+  /** Die Abschnitte einer Wortbank als Liste von Listen. */
+  function sectionsOfBank(state, bank) {
+    return (bank.sections || []).map(function (section) {
+      return {
+        title: section.title || '',
+        rows: (section.items || []).map(function (item) {
+          var resolved = select.resolveItem(state, item);
+          if (!resolved) return null;
+          return resolved.kind === 'starter' ? rowOfStarter(resolved.ref) : rowOfLexeme(resolved.ref);
+        }).filter(Boolean)
+      };
+    }).filter(function (section) { return section.rows.length; });
+  }
+
+  /** Reiner Text für die Zwischenablage: eine Zeile je Eintrag, Spalten per Tabulator. */
+  function rowsToText(sections) {
+    var lines = [];
+    (sections || []).forEach(function (section, index) {
+      if (section.title && sections.length > 1) {
+        if (index) lines.push('');
+        lines.push(section.title);
+      }
+      section.rows.forEach(function (row) {
+        lines.push(row.translation ? row.term + '\t' + row.translation : row.term);
+      });
+    });
+    return lines.join('\n');
+  }
+
+  BAO.stock = {
+    normalize: normalize,
+    findLexeme: findLexeme,
+    findStarter: findStarter,
+    findEntry: findEntry,
+    contentOfGroups: contentOfGroups,
+    contentOfSubject: contentOfSubject,
+    describeContent: describeContent,
+    removeGroups: removeGroups,
+    removeSubject: removeSubject,
+    detachUnit: detachUnit,
+    sampleGroups: sampleGroups,
+    hasSampleData: hasSampleData,
+    removeSampleData: removeSampleData,
+    siblingGroups: siblingGroups,
+    copyBoardTo: copyBoardTo,
+    copyBankTo: copyBankTo,
+    copyWhiteboardTo: copyWhiteboardTo,
+    recentWork: recentWork,
+    freeSpot: freeSpot,
+    placeOnBoard: placeOnBoard,
+    rowsOfLexemes: rowsOfLexemes,
+    rowsOfBoard: rowsOfBoard,
+    sectionsOfBank: sectionsOfBank,
+    rowsToText: rowsToText
   };
 })(window.BAO = window.BAO || {});
 
@@ -3800,7 +4723,9 @@ body[data-projecting="true"] .toast-root { display: none; }
 /* ==========================================================================
    Dialoge
    Ein einziger, schlichter Dialogtyp für Formulare, Rückfragen und
-   Entscheidungen. Tastaturbedienung inklusive (Esc, Tabulatorfalle, Enter).
+   Entscheidungen. Tastaturbedienung inklusive: Esc schließt, Enter in einem
+   einzeiligen Feld bestätigt, Strg + Enter bestätigt von überall, der
+   Tabulator bleibt im Dialog.
    ========================================================================== */
 (function (BAO) {
   'use strict';
@@ -3808,6 +4733,9 @@ body[data-projecting="true"] .toast-root { display: none; }
   var util = BAO.util;
   var h = util.h;
   var openStack = [];
+
+  /* Feldarten, in denen Enter den Dialog bestätigt. */
+  var ENTER_TYPES = ['text', 'search', 'number', 'email', 'url', 'tel', 'password'];
 
   /* Untergeordnete Einblendungen (z. B. die IPA-Tastatur) dürfen die
      Esc-Taste zuerst bekommen – sonst schließt Esc gleich den ganzen Dialog
@@ -3945,6 +4873,25 @@ body[data-projecting="true"] .toast-root { display: none; }
         }
       }
 
+      // Enter in einem einzeiligen Feld bestätigt den Dialog – wie in jedem
+      // Formular. Bewusst erst in der Aufstiegsphase: Ein Feld, das Enter
+      // selbst braucht (Schlagwörter), hat das Ereignis dann schon verbraucht.
+      // Mehrzeilige Felder, Auswahllisten und Knöpfe bleiben außen vor.
+      dialog.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing) return;
+        if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+        if (openStack[openStack.length - 1] !== api) return;
+        var target = event.target;
+        if (!target || target.tagName !== 'INPUT') return;
+        var type = (target.getAttribute('type') || 'text').toLowerCase();
+        if (ENTER_TYPES.indexOf(type) < 0) return;
+        if (target.getAttribute('list')) return;      // Vorschlagsliste: Enter wählt dort aus
+        var primary = actions.filter(function (a) { return a.kind === 'primary'; })[0];
+        if (!primary) return;
+        event.preventDefault();
+        choose(primary);
+      });
+
       backdrop.addEventListener('mousedown', function (event) {
         if (event.target === backdrop && config.dismissable !== false) finish(null);
       });
@@ -4036,6 +4983,9 @@ body[data-projecting="true"] .toast-root { display: none; }
     focus: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
     school: 'M12 4 3 8.5 12 13l9-4.5zM7 11v5.2c0 .7 2.2 2.3 5 2.3s5-1.6 5-2.3V11',
     archive: 'M3.5 6.5h17v3.5h-17zM5.5 10v8.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V10M10 13.5h4',
+    print: 'M7 8.5V4h10v4.5M7 17H5a1.5 1.5 0 0 1-1.5-1.5V11A2.5 2.5 0 0 1 6 8.5h12a2.5 2.5 0 0 1 2.5 2.5v4.5A1.5 1.5 0 0 1 19 17h-2M7 13.5h10V20H7z',
+    download: 'M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14',
+    share: 'M4 12h12.5M12 7l5 5-5 5M20 5v14',
     // Whiteboard und seine Werkzeuge
     whiteboard: 'M3 5h18v12H3zM9 17l-2 4M15 17l2 4M7 12c1.5-2.2 3-2.2 4.5 0s3 2.2 4.5 0',
     pen: 'M4 20l4.2-1.1L18.5 8.6a2.2 2.2 0 0 0-3.1-3.1L5.1 15.8zM13.2 7.7l3.1 3.1',
@@ -4885,6 +5835,467 @@ body[data-projecting="true"] .toast-root { display: none; }
     insert: insert,
     backspace: backspace,
     layoutForSubject: layoutForSubject
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/ui/print.js */
+/* ==========================================================================
+   Drucken und Weitergeben
+   Aus dem Bestand wird ein Blatt für die Lernenden: eine Wortliste zum
+   Mitnehmen oder ein Vokabeltest mit einer leeren Spalte. Gedruckt wird über
+   den Druckdialog des Browsers – dort lässt sich das Blatt auch als PDF
+   speichern. Dieselben Zeilen gehen als Text in die Zwischenablage, etwa für
+   ein Arbeitsblatt oder die Lernplattform.
+
+   Eine Liste besteht aus Abschnitten mit Zeilen (siehe BAO.stock):
+     { title, rows: [{ kind, term, translation, extra, sortKey }] }
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var h = util.h;
+  var ui = BAO.ui;
+
+  var MODES = [
+    { id: 'list', label: 'Wortliste – beide Spalten ausgefüllt' },
+    { id: 'recall', label: 'Vokabeltest – Deutsch steht da, die Fremdsprache wird ergänzt' },
+    { id: 'recognise', label: 'Vokabeltest – die Fremdsprache steht da, Deutsch wird ergänzt' }
+  ];
+  var ORDERS = [
+    { id: 'given', label: 'wie angezeigt' },
+    { id: 'alpha', label: 'alphabetisch' },
+    { id: 'shuffle', label: 'gemischt' }
+  ];
+
+  // Die zuletzt gewählte Einstellung gilt für das nächste Blatt weiter.
+  var last = { mode: 'list', order: 'given', extra: false };
+
+  function isTest(mode) { return mode === 'recall' || mode === 'recognise'; }
+
+  function countRows(sections) {
+    return (sections || []).reduce(function (sum, section) { return sum + section.rows.length; }, 0);
+  }
+
+  /* Zufallszahlen aus einem Startwert: Dieselbe Mischung lässt sich so ein
+     zweites Mal erzeugen – das gedruckte Blatt gleicht der Vorschau. */
+  function randomFrom(seed) {
+    var a = (seed >>> 0) || 1;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function newSeed() { return Math.floor(Math.random() * 4294967296); }
+
+  function shuffled(list, random) {
+    var copy = list.slice();
+    for (var i = copy.length - 1; i > 0; i--) {
+      var j = Math.floor(random() * (i + 1));
+      var swap = copy[i]; copy[i] = copy[j]; copy[j] = swap;
+    }
+    return copy;
+  }
+
+  /**
+   * Wendet Art und Reihenfolge auf die Zeilen an.
+   * Für einen Test taugt nur, was eine deutsche Entsprechung hat – der Rest
+   * wird ausgelassen und gezählt. options.seed legt die Mischung fest.
+   * @returns {{sections: Array, total: number, skipped: number}}
+   */
+  function prepare(sections, options) {
+    options = options || {};
+    var skipped = 0;
+    var random = options.seed === undefined ? Math.random : randomFrom(options.seed);
+    var result = (sections || []).map(function (section) {
+      var rows = section.rows.slice();
+      if (isTest(options.mode)) {
+        rows = rows.filter(function (row) {
+          if (row.translation) return true;
+          skipped += 1;
+          return false;
+        });
+      }
+      if (options.order === 'alpha') {
+        rows.sort(function (a, b) {
+          return String(a.sortKey || util.fold(a.term)).localeCompare(String(b.sortKey || util.fold(b.term)), 'de');
+        });
+      } else if (options.order === 'shuffle') {
+        rows = shuffled(rows, random);
+      }
+      return { title: section.title || '', rows: rows };
+    }).filter(function (section) { return section.rows.length; });
+    return { sections: result, total: countRows(result), skipped: skipped };
+  }
+
+  /* --- Das Blatt ---------------------------------------------------------------- */
+
+  function cell(className, content) {
+    var td = h('td' + (className ? '.' + className : ''));
+    if (content && content.nodeType) td.appendChild(content);
+    else if (content) td.textContent = content;
+    return td;
+  }
+
+  /** Text mit Leerstellen als Linien – wie auf der Tafel. */
+  function withGaps(text) { return ui.gapText(text, document); }
+
+  /**
+   * Baut das Blatt. options: { mode, order, extra, title, seed }
+   * Wird sowohl für die Vorschau im Dialog als auch für den Druck verwendet.
+   */
+  function buildSheet(config, options) {
+    options = Object.assign({ mode: 'list', order: 'given', extra: false }, options || {});
+    var prepared = prepare(config.sections, options);
+    var test = isTest(options.mode);
+    var showExtra = !test && options.extra && prepared.sections.some(function (section) {
+      return section.rows.some(function (row) { return row.extra; });
+    });
+
+    var sheet = h('div.sheet', { dataset: { mode: options.mode } });
+    var head = h('div.sheet__head', {},
+      h('h1', { text: options.title || config.title || 'Wortliste' }),
+      config.subtitle ? h('p.sheet__sub', { text: config.subtitle }) : null
+    );
+    if (test) {
+      head.appendChild(h('div.sheet__name', {},
+        h('span', { text: 'Name:' }),
+        h('span', { text: 'Datum:' }),
+        h('span.sheet__points', { text: 'Punkte:        / ' + prepared.total })
+      ));
+    }
+    sheet.appendChild(head);
+
+    var number = 0;
+    prepared.sections.forEach(function (section) {
+      var body = h('tbody');
+      section.rows.forEach(function (row) {
+        number += 1;
+        var tr = h('tr', {}, cell('sheet__no', String(number)));
+        if (options.mode === 'recall') {
+          tr.appendChild(cell('sheet__term', row.translation));
+          tr.appendChild(cell('sheet__blank', ''));
+        } else if (options.mode === 'recognise') {
+          tr.appendChild(cell('sheet__term', withGaps(row.term)));
+          tr.appendChild(cell('sheet__blank', ''));
+        } else {
+          tr.appendChild(cell('sheet__term', withGaps(row.term)));
+          tr.appendChild(cell('sheet__de', row.translation));
+          if (showExtra) tr.appendChild(cell('sheet__extra', row.extra));
+        }
+        body.appendChild(tr);
+      });
+      sheet.appendChild(h('div.sheet__section', {},
+        section.title && prepared.sections.length > 1 ? h('h2', { text: section.title }) : null,
+        h('table.sheet__table', {}, body)
+      ));
+    });
+    sheet.rowCount = prepared.total;
+    sheet.skipped = prepared.skipped;
+    return sheet;
+  }
+
+  /* --- Drucken ------------------------------------------------------------------ */
+
+  /**
+   * Übergibt einen Knoten an den Druckdialog. Solange gedruckt wird, zeigt
+   * das Dokument nur ihn (siehe styles/print.css); danach ist alles wie zuvor.
+   */
+  function printNode(node, title) {
+    var root = document.getElementById('print-root');
+    if (!root) return false;
+    var html = document.documentElement;
+    var previousTitle = document.title;
+    var done = false;
+
+    function cleanup() {
+      if (done) return;
+      done = true;
+      window.removeEventListener('afterprint', cleanup);
+      document.removeEventListener('pointerdown', cleanup, true);
+      document.removeEventListener('keydown', cleanup, true);
+      html.classList.remove('is-printing');
+      util.clear(root);
+      document.title = previousTitle;
+    }
+
+    util.clear(root);
+    root.appendChild(node);
+    html.classList.add('is-printing');
+    // Der Titel wird zum vorgeschlagenen Dateinamen beim Speichern als PDF.
+    if (title) document.title = title;
+    window.addEventListener('afterprint', cleanup);
+    try {
+      window.print();
+    } catch (err) {
+      cleanup();
+      BAO.toast.error('Der Druckdialog ließ sich nicht öffnen.');
+      return false;
+    }
+    // Manche Browser melden das Ende des Druckens nicht: Dann räumt die
+    // nächste Eingabe auf.
+    window.setTimeout(function () {
+      if (done) return;
+      document.addEventListener('pointerdown', cleanup, true);
+      document.addEventListener('keydown', cleanup, true);
+    }, 0);
+    return true;
+  }
+
+  /* --- Dialog ------------------------------------------------------------------- */
+
+  /**
+   * Fragt Art und Reihenfolge ab und druckt oder kopiert die Liste.
+   * config: { title, subtitle, sections: [{ title, rows }] }
+   */
+  function openWordList(config) {
+    var total = countRows(config.sections);
+    if (!total) {
+      BAO.toast.show('Hier gibt es noch nichts zu drucken.');
+      return null;
+    }
+
+    // Eine Mischung je Wahl der Reihenfolge: Gedruckt wird, was die Vorschau zeigt.
+    var seed = newSeed();
+    var fieldTitle = ui.textField({ label: 'Überschrift', value: config.title || 'Wortliste' });
+    var fieldMode = ui.selectField({
+      label: 'Art des Blatts', value: last.mode,
+      options: MODES.map(function (mode) { return { value: mode.id, label: mode.label }; }),
+      onChange: refresh
+    });
+    var fieldOrder = ui.selectField({
+      label: 'Reihenfolge', value: last.order,
+      options: ORDERS.map(function (order) { return { value: order.id, label: order.label }; }),
+      onChange: function () { seed = newSeed(); refresh(); }
+    });
+    var extraId = util.uid('chk');
+    var extraBox = h('input', { type: 'checkbox', id: extraId, checked: last.extra ? true : null, onchange: refresh });
+    var extraRow = h('div.toggle-row', {}, extraBox,
+      h('label', { for: extraId, text: 'Wortverbindung oder Beispiel als dritte Spalte' }));
+    var info = h('span.hint');
+    var preview = h('div.sheet-preview', { 'aria-label': 'Vorschau des Blatts' });
+
+    function options() {
+      return {
+        mode: util.$('select', fieldMode).value,
+        order: util.$('select', fieldOrder).value,
+        extra: extraBox.checked,
+        title: fieldTitle.input.value.trim() || config.title || 'Wortliste',
+        seed: seed
+      };
+    }
+
+    function refresh() {
+      var chosen = options();
+      last = { mode: chosen.mode, order: chosen.order, extra: chosen.extra };
+      extraRow.hidden = isTest(chosen.mode);
+      var sheet = buildSheet(config, chosen);
+      util.clear(preview);
+      preview.appendChild(sheet);
+      info.textContent = sheet.rowCount + ' ' + util.plural(sheet.rowCount, 'Zeile', 'Zeilen')
+        + (sheet.skipped
+          ? ' · ' + sheet.skipped + ' ohne deutsche Entsprechung '
+            + util.plural(sheet.skipped, 'bleibt', 'bleiben') + ' im Test außen vor'
+          : '');
+      return sheet;
+    }
+
+    fieldTitle.input.addEventListener('input', refresh);
+    refresh();
+
+    return BAO.modal.open({
+      title: 'Wortliste drucken',
+      subtitle: 'Als Liste zum Mitnehmen oder als Vokabeltest. Im Druckdialog lässt sich das Blatt auch als PDF speichern.',
+      width: '680px',
+      body: h('div.stack', {},
+        fieldTitle,
+        h('div.grid2', {}, fieldMode, fieldOrder),
+        extraRow,
+        preview,
+        info
+      ),
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        {
+          label: 'Als Text kopieren',
+          onSelect: function () {
+            var prepared = prepare(config.sections, { mode: 'list', order: options().order, seed: seed });
+            util.copyText(BAO.stock.rowsToText(prepared.sections)).then(function (ok) {
+              if (ok) {
+                BAO.toast.ok(prepared.total + ' ' + util.plural(prepared.total, 'Zeile', 'Zeilen')
+                  + ' kopiert – einfügen in Textverarbeitung, Tabelle oder Lernplattform.');
+              } else {
+                BAO.toast.error('Der Browser hat das Kopieren nicht erlaubt.');
+              }
+            });
+            return false;
+          }
+        },
+        {
+          label: 'Drucken', kind: 'primary',
+          onSelect: function () {
+            var chosen = options();
+            var sheet = buildSheet(config, chosen);
+            if (!sheet.rowCount) {
+              BAO.toast.error('Für einen Test braucht jeder Eintrag eine deutsche Entsprechung.');
+              return false;
+            }
+            // Erst schließen, dann drucken – der Druckdialog hält die Seite an.
+            window.setTimeout(function () { printNode(sheet, chosen.title); }, 30);
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
+  BAO.print = {
+    MODES: MODES,
+    prepare: prepare,
+    buildSheet: buildSheet,
+    printNode: printNode,
+    openWordList: openWordList
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/ui/handover.js */
+/* ==========================================================================
+   Weitergeben innerhalb des Bestands
+   - Eine Tafel, ein Whiteboard oder eine Wortbank für eine andere Lerngruppe
+     desselben Fachs kopieren – die Parallelklasse bekommt dieselbe Stunde.
+   - Der Hinweis auf die mitgelieferten Beispieldaten.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var h = util.h;
+  var ui = BAO.ui;
+  var select = BAO.select;
+
+  var KINDS = {
+    board: { label: 'Tafel', copy: 'copyBoardTo', path: 'tafel/', withStock: true },
+    whiteboard: { label: 'Whiteboard', copy: 'copyWhiteboardTo', path: 'whiteboard/', withStock: false },
+    bank: { label: 'Wortbank', copy: 'copyBankTo', path: 'wortbank/', withStock: true }
+  };
+
+  /** Gibt es eine Lerngruppe, für die sich eine Kopie anlegen ließe? */
+  function canCopy(state, item) {
+    return !!item && BAO.stock.siblingGroups(state, item).length > 0;
+  }
+
+  /**
+   * Fragt die Ziel-Lerngruppe ab und legt die Kopie an.
+   * kind: 'board' | 'whiteboard' | 'bank'
+   */
+  function copyToGroup(kind, item, app) {
+    var info = KINDS[kind];
+    var state = BAO.store.getState();
+    var groups = info ? BAO.stock.siblingGroups(state, item) : [];
+    if (!groups.length) return null;
+
+    var groupSelect = ui.selectField({
+      label: 'Für welche Lerngruppe?',
+      value: groups[0].id,
+      options: groups.map(function (g) { return { value: g.id, label: g.name + ' · Jg. ' + g.grade }; })
+    });
+
+    return BAO.modal.open({
+      title: info.label + ' für eine andere Lerngruppe kopieren',
+      subtitle: '„' + item.title + '“ – zum Beispiel für die Parallelklasse.',
+      width: '520px',
+      body: h('div.stack', {},
+        groupSelect,
+        h('div.note', {
+          text: info.withStock
+            ? 'Was es im Bestand der anderen Lerngruppe noch nicht gibt, kommt dort als „neu“ hinzu. '
+              + 'Einträge, die dort schon stehen, werden verwendet – es entstehen keine Dubletten.'
+            : 'Die Handschrift wird vollständig kopiert. Das Original bleibt unverändert.'
+        })
+      ),
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        {
+          label: 'Kopie anlegen', kind: 'primary',
+          onSelect: function () {
+            var targetId = util.$('select', groupSelect).value;
+            var report = null;
+            BAO.store.commit(info.label + ' für eine andere Lerngruppe kopiert', function (draft) {
+              report = BAO.stock[info.copy](draft, item.id, targetId);
+              if (!report) return false;
+            });
+            if (!report) { BAO.toast.error('Die Kopie ließ sich nicht anlegen.'); return false; }
+            var target = { id: report.group.id, subjectId: report.group.subjectId, name: report.group.name };
+            var parts = [];
+            if (report.created) parts.push(report.created + ' ' + util.plural(report.created, 'Eintrag', 'Einträge') + ' neu im Bestand');
+            if (report.reused) parts.push(report.reused + ' dort schon vorhanden');
+            BAO.toast.show('Kopie für ' + target.name + ' angelegt' + (parts.length ? ' – ' + parts.join(', ') : '') + '.', {
+              actionLabel: 'Öffnen', timeout: 9000,
+              onAction: function () {
+                app.setContext(target.subjectId, target.id);
+                app.go(info.path + report.id);
+              }
+            });
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
+  /** Der Knopf für die Kacheln – nur dort, wo es eine zweite Lerngruppe gibt. */
+  function copyButton(kind, item, state, app) {
+    if (!canCopy(state, item)) return null;
+    return h('button.btn.btn--sm.btn--icon', {
+      type: 'button',
+      title: 'Für eine andere Lerngruppe kopieren',
+      'aria-label': 'Für eine andere Lerngruppe kopieren',
+      onclick: function (event) { event.stopPropagation(); copyToGroup(kind, item, app); }
+    }, ui.icon('share', 15));
+  }
+
+  /**
+   * Solange die Beispiel-Lerngruppe geöffnet ist: ein Hinweis, dass dies
+   * Beispiele sind – mit dem Weg zur eigenen Lerngruppe. Lässt sich ausblenden.
+   */
+  function sampleNote(state, app) {
+    if (state.ui.sampleNoteHidden || !BAO.stock.hasSampleData(state)) return null;
+    var open = BAO.stock.sampleGroups(state).some(function (g) { return g.id === state.ui.groupId; });
+    if (!open) return null;
+    return h('div.note.sample-note', { role: 'note' },
+      h('span.sample-note__text', {},
+        h('strong', { text: 'Das sind Beispieldaten zum Ausprobieren. ' }),
+        'Für den eigenen Unterricht legst du unter „Lerngruppen“ deine Klassen an.'),
+      h('button.btn.btn--sm', {
+        type: 'button', text: 'Eigene Lerngruppe anlegen',
+        onclick: function () { app.go('verwaltung'); }
+      }),
+      h('button.btn.btn--sm', {
+        type: 'button', text: 'Beispiele entfernen',
+        onclick: function () { BAO.views.data.removeSamples(); }
+      }),
+      h('button.btn.btn--ghost.btn--sm.btn--icon', {
+        type: 'button', text: '×', title: 'Hinweis ausblenden', 'aria-label': 'Hinweis ausblenden',
+        onclick: function () {
+          BAO.store.commit('Hinweis ausgeblendet', function (draft) { draft.ui.sampleNoteHidden = true; }, { undoable: false });
+        }
+      })
+    );
+  }
+
+  BAO.handover = {
+    canCopy: canCopy,
+    copyToGroup: copyToGroup,
+    copyButton: copyButton,
+    sampleNote: sampleNote
   };
 })(window.BAO = window.BAO || {});
 
@@ -7047,6 +8458,12 @@ body { position: relative; }
    * Legt aus einem oder mehreren Textzeilen Elemente an.
    * Jedes Element ist ein gewöhnlicher Eintrag des Bestands und lässt sich
    * später um Artikel, Übersetzung, Beispiel und alles Weitere ergänzen.
+   *
+   * Steht ein Text genau so schon im Bestand der Lerngruppe, wird dieser
+   * Eintrag verwendet. Sonst wüchse der Bestand mit jeder Tafel um Dubletten –
+   * und was am vorhandenen Eintrag ergänzt wurde (Artikel, Übersetzung),
+   * fehlte auf der neuen Tafel. Die Rückgabe trägt in „reused“, wie viele
+   * Elemente auf diese Weise aus dem Bestand kamen.
    */
   function addAt(text, x, y) {
     var lines = String(text || '').split(/\r?\n/).map(function (line) { return line.trim(); })
@@ -7054,24 +8471,33 @@ body { position: relative; }
     if (!lines.length) return null;
 
     var created = [];
+    var reused = 0;
     var ok = BAO.store.commit(lines.length > 1 ? lines.length + ' Elemente angelegt' : 'Element angelegt', function (draft) {
       var board = select.board(draft, state.boardId);
       if (!board) return false;
       var group = select.group(draft, board.groupId);
       var unit = board.unitId ? select.unit(draft, board.unitId) : select.currentUnit(draft, board.groupId);
       lines.forEach(function (line, index) {
-        var lexeme = schema.makeLexeme({
-          subjectId: board.subjectId,
-          groupId: board.groupId,
-          term: line,
-          status: 'new',
-          introducedUnitId: unit ? unit.id : '',
-          introducedSchoolYear: group ? group.schoolYear : ''
-        });
-        draft.lexemes.push(lexeme);
+        var known = BAO.stock.findEntry(draft, board.groupId, board.subjectId, line);
+        var kind = known ? known.kind : 'lex';
+        var refId = known ? known.ref.id : '';
+        if (known) {
+          reused += 1;
+        } else {
+          var lexeme = schema.makeLexeme({
+            subjectId: board.subjectId,
+            groupId: board.groupId,
+            term: line,
+            status: 'new',
+            introducedUnitId: unit ? unit.id : '',
+            introducedSchoolYear: group ? group.schoolYear : ''
+          });
+          draft.lexemes.push(lexeme);
+          refId = lexeme.id;
+        }
         var item = schema.makeBoardItem({
-          kind: 'lex',
-          refId: lexeme.id,
+          kind: kind,
+          refId: refId,
           // Mehrere Zeilen legen sich versetzt ab, statt sich zu verdecken.
           x: util.clamp(x + index * 0.035, 0.05, 0.95),
           y: util.clamp(y + index * 0.075, 0.06, 0.94)
@@ -7082,6 +8508,7 @@ body { position: relative; }
       board.updatedAt = util.nowISO();
     });
     if (!ok) return null;
+    created.reused = reused;
     select_(created[created.length - 1] || '');
     emit('added');
     return created;
@@ -9281,6 +10708,131 @@ body { position: relative; }
 })(window.BAO = window.BAO || {});
 
   </script>
+  <script>
+/* js/whiteboard/export.js */
+/* ==========================================================================
+   Whiteboard als Bild
+   Was auf einem Whiteboard geschrieben steht, soll die Stunde überleben: als
+   Bild fürs Arbeitsblatt, für die Lernplattform oder zum Verschicken an die
+   Klasse. Gezeichnet wird alles Geschriebene – nicht nur der Ausschnitt, der
+   gerade zu sehen ist – stets hell, wie auf Papier.
+
+   Verwendet nur die öffentliche Zeichenschnittstelle der Fläche
+   (BAO.whiteboard, BAO.ink).
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+
+  var MARGIN = 40;            // Rand um das Geschriebene, in Einheiten der Fläche
+  var SCALE = 2;              // Bildpunkte je Einheit – scharf auch im Ausdruck
+  var MAX_SIDE = 8000;        // Browser begrenzen die Kantenlänge einer Leinwand
+  var MAX_PIXELS = 24e6;
+  var GRID_STEP = 40;         // Raster wie auf der Zeichenfläche
+
+  /** Die Farben der hellen Darstellung – auch wenn die App gerade dunkel ist. */
+  function lightColors() {
+    var root = document.documentElement;
+    var previous = root.dataset.theme;
+    root.dataset.theme = 'light';
+    var colors;
+    try { colors = BAO.whiteboard.resolveColors(document); }
+    finally {
+      if (previous === undefined) delete root.dataset.theme; else root.dataset.theme = previous;
+    }
+    return colors;
+  }
+
+  /** Linien, Karos oder Punkte – in den Koordinaten der Fläche. */
+  function drawPattern(ctx, kind, colors, area, scale) {
+    if (kind !== 'lines' && kind !== 'grid' && kind !== 'dots') return;
+    var startX = Math.ceil(area.x0 / GRID_STEP) * GRID_STEP;
+    var startY = Math.ceil(area.y0 / GRID_STEP) * GRID_STEP;
+    var x, y;
+    ctx.strokeStyle = colors.grid;
+    ctx.fillStyle = colors.grid;
+    ctx.lineWidth = 1 / Math.min(scale, 1.5);
+    if (kind === 'dots') {
+      for (x = startX; x <= area.x1; x += GRID_STEP) {
+        for (y = startY; y <= area.y1; y += GRID_STEP) {
+          ctx.beginPath();
+          ctx.arc(x, y, 1.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      return;
+    }
+    ctx.beginPath();
+    for (y = startY; y <= area.y1; y += GRID_STEP) { ctx.moveTo(area.x0, y); ctx.lineTo(area.x1, y); }
+    if (kind === 'grid') {
+      for (x = startX; x <= area.x1; x += GRID_STEP) { ctx.moveTo(x, area.y0); ctx.lineTo(x, area.y1); }
+    }
+    ctx.stroke();
+  }
+
+  /**
+   * Zeichnet ein Whiteboard vollständig auf eine neue Leinwand.
+   * @returns {HTMLCanvasElement|null} null, wenn nichts geschrieben steht
+   */
+  function toCanvas(board) {
+    var strokes = (board && board.strokes) || [];
+    var box = BAO.ink.contentBox(strokes);
+    if (!box) return null;
+
+    var area = { x0: box.x0 - MARGIN, y0: box.y0 - MARGIN, x1: box.x1 + MARGIN, y1: box.y1 + MARGIN };
+    var width = area.x1 - area.x0;
+    var height = area.y1 - area.y0;
+    // Sehr große Flächen werden etwas gröber – lieber ein Bild als keines.
+    var scale = Math.min(SCALE, MAX_SIDE / Math.max(width, height), Math.sqrt(MAX_PIXELS / (width * height)));
+
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    var ctx = canvas.getContext('2d');
+    var colors = lightColors();
+
+    ctx.fillStyle = colors.paper;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(scale, 0, 0, scale, -area.x0 * scale, -area.y0 * scale);
+    drawPattern(ctx, board.background, colors, area, scale);
+    BAO.whiteboard.drawStrokes(ctx, strokes, { colors: colors });
+    return canvas;
+  }
+
+  /** Speichert das Whiteboard als PNG-Datei im Download-Ordner. */
+  function savePng(board) {
+    var canvas;
+    try { canvas = toCanvas(board); }
+    catch (err) {
+      console.error('Whiteboard ließ sich nicht als Bild zeichnen:', err);
+      BAO.toast.error('Das Bild ließ sich nicht erzeugen.');
+      return Promise.resolve(false);
+    }
+    if (!canvas) {
+      BAO.toast.show('Auf diesem Whiteboard steht noch nichts.');
+      return Promise.resolve(false);
+    }
+    var name = 'whiteboard_' + util.fileSlug(board.title, 'tafelbild') + '.png';
+    return new Promise(function (resolve) {
+      canvas.toBlob(function (blob) {
+        if (!blob) {
+          BAO.toast.error('Das Bild ließ sich nicht erzeugen.');
+          resolve(false);
+          return;
+        }
+        util.downloadBlob(name, blob);
+        BAO.toast.ok('„' + board.title + '“ als Bild gespeichert (' + canvas.width + ' × ' + canvas.height
+          + ' Bildpunkte). Es liegt im Download-Ordner.');
+        resolve(true);
+      }, 'image/png');
+    });
+  }
+
+  BAO.whiteboardImage = { toCanvas: toCanvas, savePng: savePng };
+})(window.BAO = window.BAO || {});
+
+  </script>
 <!-- Ansichten -->
   <script>
 /* js/views/dashboard.js */
@@ -9343,6 +10895,35 @@ body { position: relative; }
     );
   }
 
+  /** Kachel für eine Tafel oder ein Whiteboard in „Zuletzt verwendet“. */
+  function workTile(state, entry, app) {
+    var item = entry.item;
+    var subject = select.subject(state, item.subjectId);
+    var size = entry.type === 'board'
+      ? (item.items || []).length + ' ' + util.plural((item.items || []).length, 'Element', 'Elemente')
+      : (item.strokes || []).length + ' ' + util.plural((item.strokes || []).length, 'Strich', 'Striche');
+    function open() {
+      app.setContext(item.subjectId, item.groupId);
+      app.go(entry.path);
+    }
+    return h('div.tile', { style: ui.subjectVars(subject), dataset: { work: entry.type }, onclick: open },
+      h('span.tile__accent'),
+      h('div.tile__top', {},
+        h('span.tile__title', { text: item.title }),
+        h('span.spacer'),
+        h('span.chip.chip--outline', { text: entry.label })
+      ),
+      h('div.tile__meta', { text: [subject ? subject.name : '', entry.group.name, size].filter(Boolean).join(' · ') }),
+      h('div.tile__meta', { text: (entry.used ? 'zuletzt: ' : 'bearbeitet: ') + util.relativeDate(entry.at) }),
+      h('div.tile__foot', {},
+        h('button.btn.btn--primary.btn--sm', {
+          type: 'button',
+          onclick: function (event) { event.stopPropagation(); open(); }
+        }, ui.icon(entry.type === 'board' ? 'beamer' : 'whiteboard', 15), 'Öffnen')
+      )
+    );
+  }
+
   function statBlock(label, value, hint) {
     return h('div.stat', { title: hint || '' },
       h('span.stat__value', { text: String(value) }),
@@ -9371,8 +10952,15 @@ body { position: relative; }
     var counts = ctx.group ? select.statusCounts(state, ctx.group.id) : { total: 0, new: 0, active: 0, revisit: 0, core: 0 };
     var banks = ctx.group ? select.banksOfGroup(state, ctx.group.id) : [];
     var starters = ctx.group && ctx.subject ? select.startersOfGroup(state, ctx.group.id, ctx.subject.id) : [];
-    var recents = select.recentBanks(state, 6);
+    var recents = BAO.stock.recentWork(state, 6);
+    var boards = ctx.group ? select.boardsOfGroup(state, ctx.group.id) : [];
     var favourites = select.favouriteBanks(state);
+
+    function openWork(entry) {
+      if (entry.type === 'bank') { app.projectBank(entry.id); return; }
+      app.setContext(entry.item.subjectId, entry.item.groupId);
+      app.go(entry.path);
+    }
 
     /* --- Kopfbereich ---------------------------------------------------- */
     var hero = h('div.dash__hero', { style: ui.subjectVars(ctx.subject) },
@@ -9387,12 +10975,12 @@ body { position: relative; }
         h('div.dash__heroActions', {},
           recents[0]
             ? h('button.btn.btn--primary', {
-              type: 'button',
-              onclick: function () { app.projectBank(recents[0].id); }
-            }, ui.icon('play', 16), 'Weiter mit „' + recents[0].title + '“')
+              type: 'button', title: recents[0].label + ' · ' + recents[0].group.name,
+              onclick: function () { openWork(recents[0]); }
+            }, ui.icon('play', 16), 'Weiter mit „' + recents[0].item.title + '“')
             : h('button.btn.btn--primary', {
-              type: 'button', text: 'Erste Wortbank anlegen',
-              onclick: function () { app.go('wortbanken'); }
+              type: 'button', text: 'Erste Tafel anlegen',
+              onclick: function () { app.go('tafeln'); }
             }),
           h('button.btn', {
             type: 'button', onclick: function () { app.openLiveHelp(); }
@@ -9425,16 +11013,26 @@ body { position: relative; }
         statBlock('auffrischen', counts.revisit, 'Einträge, die wieder aufgegriffen werden sollen'),
         statBlock('Grundbestand', counts.core, 'gesicherter Wortschatz'),
         statBlock('Satzanfänge', starters.length),
+        statBlock('Tafeln', boards.length, 'Tafeln dieser Lerngruppe'),
         statBlock('Wortbanken', banks.length)
       )
     );
     view.appendChild(hero);
+    var sampleNote = BAO.handover.sampleNote(state, app);
+    if (sampleNote) view.appendChild(sampleNote);
 
     /* --- Zuletzt verwendet ------------------------------------------------ */
     var recentSection = h('section.section', {},
       h('div.section__head', {},
         h('h2', { text: 'Zuletzt verwendet' }),
+        h('span.sub', { text: 'Tafeln, Whiteboards und Wortbanken aller Lerngruppen' }),
         h('span.spacer'),
+        h('button.btn.btn--ghost.btn--sm', {
+          type: 'button', text: 'Alle Tafeln', onclick: function () { app.go('tafeln'); }
+        }),
+        h('button.btn.btn--ghost.btn--sm', {
+          type: 'button', text: 'Alle Whiteboards', onclick: function () { app.go('whiteboards'); }
+        }),
         h('button.btn.btn--ghost.btn--sm', {
           type: 'button', text: 'Alle Wortbanken', onclick: function () { app.go('wortbanken'); }
         })
@@ -9442,14 +11040,16 @@ body { position: relative; }
     );
     if (recents.length) {
       var tiles = h('div.tiles');
-      recents.forEach(function (bank) { tiles.appendChild(bankTile(state, bank, app)); });
+      recents.forEach(function (entry) {
+        tiles.appendChild(entry.type === 'bank' ? bankTile(state, entry.item, app) : workTile(state, entry, app));
+      });
       recentSection.appendChild(tiles);
     } else {
       recentSection.appendChild(ui.emptyState({
-        title: 'Noch keine Wortbank geöffnet',
-        text: 'Stelle aus deinem Wortschatz eine Wortbank für eine konkrete Unterrichtsphase zusammen.',
-        actionLabel: 'Wortbank anlegen',
-        onAction: function () { app.go('wortbanken'); }
+        title: 'Noch nichts geöffnet',
+        text: 'Lege eine Tafel für die nächste Stunde an – oder ein Whiteboard zum Schreiben mit dem Stift.',
+        actionLabel: 'Tafel anlegen',
+        onAction: function () { app.go('tafeln'); }
       }));
     }
     view.appendChild(recentSection);
@@ -9593,6 +11193,32 @@ body { position: relative; }
       label: 'Verwendung (kommunikative Funktion)'
     });
 
+    // Steht derselbe Ausdruck schon im Bestand der Lerngruppe? Dann lieber
+    // den vorhandenen Eintrag ergänzen, als einen zweiten anzulegen.
+    var dialog = null;
+    var twinNote = h('div.note.note--warn.twin-note', { hidden: true, role: 'status' });
+    function checkTwin() {
+      var term = fieldTerm.input.value.trim();
+      var twin = term ? BAO.stock.findLexeme(BAO.store.getState(), data.groupId,
+        ui.termLabel({ term: term, article: fieldArticle.input.value.trim() }), data.id) : null;
+      util.clear(twinNote);
+      twinNote.hidden = !twin;
+      if (!twin) return;
+      twinNote.appendChild(h('span', {
+        text: '„' + ui.termLabel(twin) + '“ steht schon im Bestand dieser Lerngruppe'
+          + (twin.translation ? ' (' + twin.translation + ')' : '') + '.'
+      }));
+      twinNote.appendChild(h('button.btn.btn--sm', {
+        type: 'button', text: 'Vorhandenen Eintrag öffnen',
+        onclick: function () {
+          if (dialog) dialog.close(null);
+          openEditor(select.lexeme(BAO.store.getState(), twin.id));
+        }
+      }));
+    }
+    fieldTerm.input.addEventListener('input', checkTwin);
+    fieldArticle.input.addEventListener('input', checkTwin);
+
     function collect() {
       return {
         term: fieldTerm.input.value.trim(),
@@ -9648,6 +11274,7 @@ body { position: relative; }
             groupId: data.groupId, subjectId: data.subjectId,
             introducedUnitId: values.introducedUnitId, status: values.status
           });
+          checkTwin();
           fieldTerm.input.focus();
           return false;
         }
@@ -9669,15 +11296,19 @@ body { position: relative; }
       subtitle: 'Pflichtfeld ist nur das Zielwort. Alles andere ist optional – und wird nur projiziert, wenn es gebraucht wird.',
       width: '720px',
       initialFocus: 'input',
-      body: h('div.stack', {},
-        h('div.grid2.entry-form', {}, fieldTerm, fieldArticle, fieldTranslation, fieldGram,
-          fieldCollocation, fieldChunk, fieldExplanation, fieldExample),
-        h('details.form-more', { open: isNew ? null : true },
-          h('summary', { text: 'Weitere Angaben: Aussprache, Themen, Status, Reihe' }),
-          h('div.grid2.entry-form', {}, fieldCefr, fieldFunction, fieldStatus, fieldUnit,
-            fieldTopics, fieldTags, fieldPronunciation)
-        )
-      ),
+      body: function (api) {
+        dialog = api;
+        return h('div.stack', {},
+          h('div.grid2.entry-form', {}, fieldTerm, fieldArticle, fieldTranslation, fieldGram,
+            fieldCollocation, fieldChunk, fieldExplanation, fieldExample),
+          twinNote,
+          h('details.form-more', { open: isNew ? null : true },
+            h('summary', { text: 'Weitere Angaben: Aussprache, Themen, Status, Reihe' }),
+            h('div.grid2.entry-form', {}, fieldCefr, fieldFunction, fieldStatus, fieldUnit,
+              fieldTopics, fieldTags, fieldPronunciation)
+          )
+        );
+      },
       actions: actions
     });
   }
@@ -9697,13 +11328,39 @@ body { position: relative; }
     var fieldStatus = ui.selectField({ label: 'Status für alle', value: 'new', options: ui.statusOptions() });
     var fieldUnit = ui.selectField({ label: 'Reihe', value: unitId || '', options: ui.unitOptions(state, groupId) });
 
-    function parsed() { return BAO.csv.parseQuickLines(area.value); }
+    /* Was schon im Bestand steht (oder in den Zeilen doppelt vorkommt), wird
+       nicht noch einmal angelegt – beim Einfügen aus einer Liste passiert
+       das schnell. */
+    function parsed() {
+      var current = BAO.store.getState();
+      var seen = Object.create(null);
+      var result = { fresh: [], known: [] };
+      BAO.csv.parseQuickLines(area.value).forEach(function (row) {
+        var key = BAO.stock.normalize(row.term);
+        if (seen[key] || BAO.stock.findLexeme(current, groupId, row.term)) { result.known.push(row); return; }
+        seen[key] = true;
+        result.fresh.push(row);
+      });
+      return result;
+    }
+
+    function knownNote(known) {
+      return h('span.hint', {
+        dataset: { role: 'known' },
+        text: known.length + ' ' + util.plural(known.length, 'Zeile steht', 'Zeilen stehen')
+          + ' schon im Bestand und ' + util.plural(known.length, 'wird', 'werden') + ' übersprungen: '
+          + known.slice(0, 4).map(function (row) { return row.term; }).join(', ')
+          + (known.length > 4 ? ' …' : '')
+      });
+    }
 
     function refresh() {
-      var rows = parsed();
+      var found = parsed();
+      var rows = found.fresh;
       util.clear(preview);
       if (!rows.length) {
-        preview.appendChild(h('span.hint', { text: 'Noch nichts erkannt.' }));
+        preview.appendChild(h('span.hint', { text: found.known.length ? 'Nichts Neues erkannt.' : 'Noch nichts erkannt.' }));
+        if (found.known.length) preview.appendChild(knownNote(found.known));
         return;
       }
       preview.appendChild(h('strong', { text: rows.length + ' ' + util.plural(rows.length, 'Eintrag', 'Einträge') + ' erkannt:' }));
@@ -9715,6 +11372,7 @@ body { position: relative; }
         ));
       });
       if (rows.length > 6) preview.appendChild(h('span.hint', { text: '… und ' + (rows.length - 6) + ' weitere.' }));
+      if (found.known.length) preview.appendChild(knownNote(found.known));
     }
 
     area.addEventListener('input', refresh);
@@ -9734,12 +11392,13 @@ body { position: relative; }
         {
           label: 'Einträge anlegen', kind: 'primary',
           onSelect: function () {
-            var rows = parsed();
-            if (!rows.length) return false;
+            var found = parsed();
+            var rows = found.fresh;
+            if (!rows.length) { area.focus(); return false; }
             var status = util.$('select', fieldStatus).value;
             var selectedUnit = util.$('select', fieldUnit).value;
             var unit = selectedUnit ? select.unit(BAO.store.getState(), selectedUnit) : null;
-            BAO.store.commit(rows.length + ' Einträge angelegt', function (draft) {
+            BAO.store.commit(rows.length + ' ' + util.plural(rows.length, 'Eintrag', 'Einträge') + ' angelegt', function (draft) {
               rows.forEach(function (row) {
                 draft.lexemes.push(schema.makeLexeme({
                   groupId: groupId, subjectId: subjectId,
@@ -9749,7 +11408,9 @@ body { position: relative; }
                 }));
               });
             });
-            BAO.toast.undoable(rows.length + ' Einträge angelegt.');
+            BAO.toast.undoable(rows.length + ' ' + util.plural(rows.length, 'Eintrag', 'Einträge') + ' angelegt'
+              + (found.known.length ? ', ' + found.known.length + ' schon '
+                + util.plural(found.known.length, 'vorhandener', 'vorhandene') + ' übersprungen.' : '.'));
             return true;
           }
         }
@@ -9835,6 +11496,98 @@ body { position: relative; }
     });
   }
 
+  /* --- Auf eine Tafel legen ---------------------------------------------------- */
+
+  /**
+   * Legt Einträge aus dem Bestand auf eine Tafel der Lerngruppe – der kurze
+   * Weg von der Vokabelliste zur Stunde.
+   */
+  function openPlaceOnBoard(ids, ctx) {
+    var state = BAO.store.getState();
+    var boards = select.boardsOfGroup(state, ctx.group.id);
+    var boardSelect = ui.selectField({
+      label: 'Tafel',
+      value: boards.length ? boards[0].id : '__new',
+      options: boards.map(function (b) {
+        return { value: b.id, label: b.title + ' (' + (b.items || []).length + ')' };
+      }).concat([{ value: '__new', label: '+ Neue Tafel anlegen' }])
+    });
+    var titleField = ui.textField({ label: 'Titel der neuen Tafel', value: ctx.unit ? ctx.unit.title : 'Neue Tafel' });
+    function refresh() { titleField.hidden = util.$('select', boardSelect).value !== '__new'; }
+    util.$('select', boardSelect).addEventListener('change', refresh);
+    refresh();
+
+    function place(open) {
+      var value = util.$('select', boardSelect).value;
+      var outcome = null;
+      var boardId = '';
+      var title = '';
+      BAO.store.commit('Einträge auf die Tafel gelegt', function (draft) {
+        var board;
+        if (value === '__new') {
+          board = schema.makeBoard({
+            groupId: ctx.group.id, subjectId: ctx.subject.id,
+            unitId: ctx.unit ? ctx.unit.id : '',
+            title: titleField.input.value.trim() || 'Neue Tafel'
+          });
+          draft.boards.push(board);
+        } else {
+          board = select.board(draft, value);
+        }
+        if (!board) return false;
+        outcome = BAO.stock.placeOnBoard(draft, board, ids.map(function (id) { return { kind: 'lex', id: id }; }));
+        boardId = board.id;
+        title = board.title;
+        if (!outcome.added && value !== '__new') return false;
+      });
+      if (!outcome) return false;
+      if (!outcome.added) {
+        BAO.toast.show(util.plural(ids.length, 'Der Eintrag liegt', 'Alle Einträge liegen') + ' schon auf „' + title + '“.');
+        return true;
+      }
+      BAO.toast.undoable(outcome.added + ' ' + util.plural(outcome.added, 'Eintrag', 'Einträge')
+        + ' auf „' + title + '“ gelegt'
+        + (outcome.skipped ? ', ' + outcome.skipped + ' ' + util.plural(outcome.skipped, 'lag', 'lagen') + ' schon dort.' : '.'));
+      clearSelection();
+      if (open) BAO.app.go('tafel/' + boardId); else BAO.app.scheduleRender();
+      return true;
+    }
+
+    return BAO.modal.open({
+      title: ids.length + ' ' + util.plural(ids.length, 'Eintrag', 'Einträge') + ' auf eine Tafel legen',
+      subtitle: 'Die Einträge erscheinen als verschiebbare Elemente. Was schon auf der Tafel liegt, kommt nicht doppelt.',
+      width: '520px',
+      body: h('div.stack', {}, boardSelect, titleField),
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        { label: 'Auflegen', onSelect: function () { return place(false); } },
+        { label: 'Auflegen und Tafel öffnen', kind: 'primary', onSelect: function () { return place(true); } }
+      ]
+    });
+  }
+
+  /* --- Drucken und kopieren ------------------------------------------------------ */
+
+  function printLexemes(lexemes, ctx) {
+    BAO.print.openWordList({
+      title: 'Wortschatz ' + ctx.group.name,
+      subtitle: ctx.subject.name + (ctx.unit ? ' · ' + ctx.unit.title : ''),
+      sections: [{ title: '', rows: BAO.stock.rowsOfLexemes(lexemes) }]
+    });
+  }
+
+  function copyLexemes(lexemes) {
+    var text = BAO.stock.rowsToText([{ title: '', rows: BAO.stock.rowsOfLexemes(lexemes) }]);
+    util.copyText(text).then(function (ok) {
+      if (ok) {
+        BAO.toast.ok(lexemes.length + ' ' + util.plural(lexemes.length, 'Eintrag', 'Einträge')
+          + ' kopiert – einfügen in Textverarbeitung, Tabelle oder Lernplattform.');
+      } else {
+        BAO.toast.error('Der Browser hat das Kopieren nicht erlaubt.');
+      }
+    });
+  }
+
   /* --- Löschen ---------------------------------------------------------------- */
 
   function deleteLexemes(ids) {
@@ -9907,7 +11660,7 @@ body { position: relative; }
     });
   }
 
-  function lexemeRow(state, lex, ctx, app) {
+  function lexemeRow(state, lex, ctx, onPick) {
     var info = schema.statusInfo(lex.status);
     var unit = lex.introducedUnitId ? select.unit(state, lex.introducedUnitId) : null;
 
@@ -9920,7 +11673,8 @@ body { position: relative; }
         checked: selection[lex.id] ? true : null,
         onchange: function (event) {
           selection[lex.id] = event.target.checked;
-          BAO.app.scheduleRender();
+          row.dataset.selected = event.target.checked ? 'true' : 'false';
+          onPick();
         }
       }),
       h('div.lex__mid', {},
@@ -9941,6 +11695,10 @@ body { position: relative; }
       ),
       h('div.lex__actions', {},
         h('button.btn.btn--ghost.btn--sm.btn--icon', {
+          type: 'button', title: 'Auf eine Tafel legen', 'aria-label': 'Auf eine Tafel legen',
+          onclick: function () { openPlaceOnBoard([lex.id], ctx); }
+        }, ui.icon('beamer', 15)),
+        BAO.app.isSimple() ? null : h('button.btn.btn--ghost.btn--sm.btn--icon', {
           type: 'button', title: 'In eine Wortbank übernehmen',
           onclick: function () { openAddToBank([lex.id], 'lex', ctx.group.id, ctx.subject.id); }
         }, ui.icon('grid', 15)),
@@ -9981,7 +11739,10 @@ body { position: relative; }
 
     var all = select.lexemesOfGroup(state, ctx.group.id);
     var counts = select.statusCounts(state, ctx.group.id);
-    var visible = applyFilters(state, all);
+    var visible = [];
+    var listHost = h('div.lex-host');
+    var bulkHost = h('div.bulk-host');
+    var allBox = null;
 
     // Vorausgewählter Eintrag aus der Schnellsuche
     if (context.params[0]) {
@@ -9999,6 +11760,10 @@ body { position: relative; }
       ),
       h('div.spacer'),
       h('div.view__actions', {},
+        all.length ? h('button.btn.btn--sm', {
+          type: 'button', title: 'Die angezeigten Einträge als Wortliste oder Vokabeltest drucken',
+          onclick: function () { printLexemes(visible, ctx); }
+        }, ui.icon('print', 15), h('span.btn__label', { text: 'Drucken' })) : null,
         h('button.btn.btn--sm', {
           type: 'button', text: 'Mehrere Zeilen einfügen',
           onclick: function () { openQuickAdd(ctx.group.id, ctx.subject.id, ctx.unit ? ctx.unit.id : ''); }
@@ -10019,7 +11784,9 @@ body { position: relative; }
     var searchInput = h('input', {
       type: 'search', value: filters.query, placeholder: 'Im Bestand suchen …',
       'aria-label': 'Wortschatz durchsuchen',
-      oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
+      // Nur die Liste wird neu gezeichnet – das Feld selbst bleibt stehen,
+      // behält Fokus und Schreibmarke, und nichts geht beim Tippen verloren.
+      oninput: function (event) { filters.query = event.target.value; drawList(); }
     });
 
     var statusButtons = h('div.filterbar', {});
@@ -10067,39 +11834,93 @@ body { position: relative; }
     );
     view.appendChild(toolbar);
 
-    /* --- Liste ------------------------------------------------------------- */
-    if (!all.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Der Bestand ist noch leer',
-        text: 'Lege einzelne Einträge an oder füge mehrere Zeilen auf einmal ein. '
-          + 'Ein Eintrag braucht nur ein Zielwort – alles Weitere kann später dazukommen.',
-        actionLabel: 'Ersten Eintrag anlegen',
-        onAction: function () {
-          openEditor(null, { groupId: ctx.group.id, subjectId: ctx.subject.id, unitId: ctx.unit ? ctx.unit.id : '' });
-        },
-        secondaryLabel: 'Mehrere Zeilen einfügen',
-        onSecondary: function () { openQuickAdd(ctx.group.id, ctx.subject.id, ctx.unit ? ctx.unit.id : ''); }
-      }));
-    } else if (!visible.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Kein Treffer',
-        text: 'Zu dieser Kombination aus Suche und Filtern gibt es keinen Eintrag.',
-        actionLabel: 'Filter zurücksetzen',
-        onAction: function () {
-          filters = { query: '', status: 'all', unitId: 'all', topic: 'all', sort: filters.sort };
-          app.scheduleRender();
+    /* --- Liste -------------------------------------------------------------
+       Liste und Sammelleiste werden an Ort und Stelle gezeichnet: Beim Suchen
+       und beim Ankreuzen bleibt der Rest der Ansicht unangetastet. */
+    function syncAllBox() {
+      if (!allBox) return;
+      var picked = visible.filter(function (lex) { return selection[lex.id]; }).length;
+      allBox.checked = !!visible.length && picked === visible.length;
+      allBox.indeterminate = picked > 0 && picked < visible.length;
+    }
+
+    function onPick() { syncAllBox(); drawBulk(); }
+
+    function drawList() {
+      visible = applyFilters(state, all);
+      allBox = null;
+      util.clear(listHost);
+      if (!all.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Der Bestand ist noch leer',
+          text: 'Lege einzelne Einträge an oder füge mehrere Zeilen auf einmal ein. '
+            + 'Ein Eintrag braucht nur ein Zielwort – alles Weitere kann später dazukommen.',
+          actionLabel: 'Ersten Eintrag anlegen',
+          onAction: function () {
+            openEditor(null, { groupId: ctx.group.id, subjectId: ctx.subject.id, unitId: ctx.unit ? ctx.unit.id : '' });
+          },
+          secondaryLabel: 'Mehrere Zeilen einfügen',
+          onSecondary: function () { openQuickAdd(ctx.group.id, ctx.subject.id, ctx.unit ? ctx.unit.id : ''); }
+        }));
+        return;
+      }
+      if (!visible.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Kein Treffer',
+          text: 'Zu dieser Kombination aus Suche und Filtern gibt es keinen Eintrag.',
+          actionLabel: 'Filter zurücksetzen',
+          onAction: function () {
+            filters = { query: '', status: 'all', unitId: 'all', topic: 'all', sort: filters.sort };
+            app.scheduleRender();
+          }
+        }));
+        return;
+      }
+      var allId = util.uid('all');
+      allBox = h('input', {
+        type: 'checkbox', id: allId,
+        onchange: function (event) {
+          var checked = event.target.checked;
+          visible.forEach(function (lex) { selection[lex.id] = checked; });
+          util.$$('.lex', listHost).forEach(function (row) {
+            row.dataset.selected = checked ? 'true' : 'false';
+            util.$('input[type="checkbox"]', row).checked = checked;
+          });
+          onPick();
         }
-      }));
-    } else {
+      });
+      listHost.appendChild(h('div.lex-all', {},
+        allBox,
+        h('label', { for: allId, text: 'Alle angezeigten auswählen' }),
+        h('span.spacer'),
+        h('span.hint', {
+          text: visible.length === all.length
+            ? all.length + ' ' + util.plural(all.length, 'Eintrag', 'Einträge')
+            : visible.length + ' von ' + all.length + ' Einträgen'
+        })
+      ));
       var list = h('div.lex-list');
-      visible.forEach(function (lex) { list.appendChild(lexemeRow(state, lex, ctx, app)); });
-      view.appendChild(list);
+      visible.forEach(function (lex) { list.appendChild(lexemeRow(state, lex, ctx, onPick)); });
+      listHost.appendChild(list);
+      syncAllBox();
     }
 
     /* --- Sammelaktionen ----------------------------------------------------- */
-    var chosen = selectedIds();
-    if (chosen.length) {
-      view.appendChild(h('div.bulkbar', {},
+    function chosenLexemes() {
+      // In der angezeigten Reihenfolge; Ausgewähltes außerhalb des Filters folgt danach.
+      var seen = {};
+      var list = visible.filter(function (lex) { return selection[lex.id]; });
+      list.forEach(function (lex) { seen[lex.id] = true; });
+      all.forEach(function (lex) { if (selection[lex.id] && !seen[lex.id]) list.push(lex); });
+      return list;
+    }
+
+    function drawBulk() {
+      util.clear(bulkHost);
+      var picked = chosenLexemes();
+      var chosen = picked.map(function (lex) { return lex.id; });
+      if (!chosen.length) return;
+      bulkHost.appendChild(h('div.bulkbar', {},
         h('strong', { text: chosen.length + ' ausgewählt' }),
         ui.selectField({
           value: '', ariaLabel: 'Status setzen',
@@ -10113,8 +11934,23 @@ body { position: relative; }
           }
         }),
         h('button.btn.btn--sm', {
+          type: 'button', text: 'Auf eine Tafel',
+          title: 'Die ausgewählten Einträge auf eine Tafel legen',
+          onclick: function () { openPlaceOnBoard(chosen, ctx); }
+        }),
+        BAO.app.isSimple() ? null : h('button.btn.btn--sm', {
           type: 'button', text: 'In Wortbank',
           onclick: function () { openAddToBank(chosen, 'lex', ctx.group.id, ctx.subject.id); }
+        }),
+        h('button.btn.btn--sm', {
+          type: 'button', text: 'Drucken',
+          title: 'Als Wortliste oder Vokabeltest drucken',
+          onclick: function () { printLexemes(picked, ctx); }
+        }),
+        h('button.btn.btn--sm', {
+          type: 'button', text: 'Kopieren',
+          title: 'Als Text in die Zwischenablage – für Arbeitsblatt oder Lernplattform',
+          onclick: function () { copyLexemes(picked); }
         }),
         h('button.btn.btn--sm', {
           type: 'button', text: 'Löschen',
@@ -10128,6 +11964,11 @@ body { position: relative; }
       ));
     }
 
+    drawList();
+    drawBulk();
+    view.appendChild(listHost);
+    view.appendChild(bulkHost);
+
     host.appendChild(view);
   }
 
@@ -10136,7 +11977,8 @@ body { position: relative; }
     render: render,
     openEditor: openEditor,
     openQuickAdd: openQuickAdd,
-    openAddToBank: openAddToBank
+    openAddToBank: openAddToBank,
+    openPlaceOnBoard: openPlaceOnBoard
   };
 })(window.BAO = window.BAO || {});
 
@@ -10345,13 +12187,17 @@ body { position: relative; }
 
     var all = select.startersOfGroup(state, ctx.group.id, ctx.subject.id);
     var usedFunctions = util.unique(all.map(function (s) { return s.functionId || ''; })).length;
-    var needle = util.fold(filters.query);
-    var visible = all.filter(function (starter) {
-      if (filters.variant !== 'all' && starter.variant !== filters.variant) return false;
-      if (filters.functionId !== 'all' && starter.functionId !== filters.functionId) return false;
-      if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
-      return true;
-    });
+    var listHost = h('div.result-host');
+
+    function visibleStarters() {
+      var needle = util.fold(filters.query);
+      return all.filter(function (starter) {
+        if (filters.variant !== 'all' && starter.variant !== filters.variant) return false;
+        if (filters.functionId !== 'all' && starter.functionId !== filters.functionId) return false;
+        if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
+        return true;
+      });
+    }
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -10380,7 +12226,8 @@ body { position: relative; }
       h('input', {
         type: 'search', value: filters.query, placeholder: 'Satzanfänge durchsuchen …',
         'aria-label': 'Satzanfänge durchsuchen',
-        oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
+        // Nur die Trefferliste wird neu gezeichnet; das Feld behält den Fokus.
+        oninput: function (event) { filters.query = event.target.value; drawList(); }
       }),
       ui.selectField({
         value: filters.functionId, ariaLabel: 'Nach Verwendung filtern',
@@ -10403,47 +12250,53 @@ body { position: relative; }
       )
     ));
 
-    if (!visible.length) {
-      view.appendChild(ui.emptyState({
-        title: all.length ? 'Kein Treffer' : 'Noch keine Satzanfänge',
-        text: all.length
-          ? 'Andere Funktion oder Variante wählen – oder die Suche leeren.'
-          : 'Sammle typische Formulierungen: eine Meinung äußern, begründen, widersprechen, zusammenfassen …',
-        actionLabel: all.length ? 'Filter zurücksetzen' : 'Ersten Satzanfang anlegen',
-        onAction: function () {
-          if (all.length) { filters = { query: '', variant: 'all', functionId: 'all' }; app.scheduleRender(); }
-          else openEditor(null, { subjectId: ctx.subject.id, groupId: ctx.group.id });
-        }
-      }));
-      host.appendChild(view);
-      return;
+    function drawList() {
+      var visible = visibleStarters();
+      util.clear(listHost);
+
+      if (!visible.length) {
+        listHost.appendChild(ui.emptyState({
+          title: all.length ? 'Kein Treffer' : 'Noch keine Satzanfänge',
+          text: all.length
+            ? 'Andere Funktion oder Variante wählen – oder die Suche leeren.'
+            : 'Sammle typische Formulierungen: eine Meinung äußern, begründen, widersprechen, zusammenfassen …',
+          actionLabel: all.length ? 'Filter zurücksetzen' : 'Ersten Satzanfang anlegen',
+          onAction: function () {
+            if (all.length) { filters = { query: '', variant: 'all', functionId: 'all' }; app.scheduleRender(); }
+            else openEditor(null, { subjectId: ctx.subject.id, groupId: ctx.group.id });
+          }
+        }));
+        return;
+      }
+
+      var byFunction = util.groupBy(visible, function (s) { return s.functionId || ''; });
+      select.functions(state).concat([{ id: '', label: 'ohne Funktion', order: 999 }]).forEach(function (fn) {
+        var list = byFunction.get(fn.id);
+        if (!list || !list.length) return;
+        var order = { einfach: 0, standard: 1, anspruchsvoll: 2 };
+        list = list.slice().sort(function (a, b) { return (order[a.variant] || 1) - (order[b.variant] || 1); });
+
+        var group = h('section.func-group', {},
+          h('div.func-group__head', {},
+            h('h3', { text: fn.label }),
+            h('span.chip', { text: list.length + ' ' + util.plural(list.length, 'Formulierung', 'Formulierungen') }),
+            h('span.spacer'),
+            BAO.app.isSimple() ? null : h('button.btn.btn--sm', {
+              type: 'button', text: 'Alle in Wortbank',
+              title: 'Alle Formulierungen dieser Funktion in eine Wortbank übernehmen',
+              onclick: function () {
+                BAO.views.vocab.openAddToBank(list.map(function (s) { return s.id; }), 'starter', ctx.group.id, ctx.subject.id);
+              }
+            })
+          )
+        );
+        list.forEach(function (starter) { group.appendChild(starterRow(starter, ctx)); });
+        listHost.appendChild(group);
+      });
     }
 
-    var byFunction = util.groupBy(visible, function (s) { return s.functionId || ''; });
-    select.functions(state).concat([{ id: '', label: 'ohne Funktion', order: 999 }]).forEach(function (fn) {
-      var list = byFunction.get(fn.id);
-      if (!list || !list.length) return;
-      var order = { einfach: 0, standard: 1, anspruchsvoll: 2 };
-      list = list.slice().sort(function (a, b) { return (order[a.variant] || 1) - (order[b.variant] || 1); });
-
-      var group = h('section.func-group', {},
-        h('div.func-group__head', {},
-          h('h3', { text: fn.label }),
-          h('span.chip', { text: list.length + ' ' + util.plural(list.length, 'Formulierung', 'Formulierungen') }),
-          h('span.spacer'),
-          h('button.btn.btn--sm', {
-            type: 'button', text: 'Alle in Wortbank',
-            title: 'Alle Formulierungen dieser Funktion in eine Wortbank übernehmen',
-            onclick: function () {
-              BAO.views.vocab.openAddToBank(list.map(function (s) { return s.id; }), 'starter', ctx.group.id, ctx.subject.id);
-            }
-          })
-        )
-      );
-      list.forEach(function (starter) { group.appendChild(starterRow(starter, ctx)); });
-      view.appendChild(group);
-    });
-
+    drawList();
+    view.appendChild(listHost);
     host.appendChild(view);
   }
 
@@ -10596,6 +12449,7 @@ body { position: relative; }
           type: 'button', title: 'Duplizieren',
           onclick: function (event) { event.stopPropagation(); duplicate(bank, app); }
         }, ui.icon('copy', 15)),
+        BAO.handover.copyButton('bank', bank, state, app),
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Löschen',
           onclick: function (event) { event.stopPropagation(); remove(bank); }
@@ -10621,13 +12475,17 @@ body { position: relative; }
     }
 
     var all = select.banksOfGroup(state, ctx.group.id);
-    var needle = util.fold(filters.query);
-    var visible = all.filter(function (bank) {
-      if (filters.scene !== 'all' && bank.scene !== filters.scene) return false;
-      if (filters.unitId !== 'all' && bank.unitId !== filters.unitId) return false;
-      if (needle && util.fold(bank.title + ' ' + bank.scene + ' ' + (bank.note || '')).indexOf(needle) < 0) return false;
-      return true;
-    });
+    var listHost = h('div.result-host');
+
+    function visibleBanks() {
+      var needle = util.fold(filters.query);
+      return all.filter(function (bank) {
+        if (filters.scene !== 'all' && bank.scene !== filters.scene) return false;
+        if (filters.unitId !== 'all' && bank.unitId !== filters.unitId) return false;
+        if (needle && util.fold(bank.title + ' ' + bank.scene + ' ' + (bank.note || '')).indexOf(needle) < 0) return false;
+        return true;
+      });
+    }
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -10650,7 +12508,8 @@ body { position: relative; }
         h('input', {
           type: 'search', value: filters.query, placeholder: 'Wortbanken durchsuchen …',
           'aria-label': 'Wortbanken durchsuchen',
-          oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
+          // Nur die Kacheln werden neu gezeichnet; das Feld behält den Fokus.
+          oninput: function (event) { filters.query = event.target.value; drawList(); }
         }),
         ui.selectField({
           value: filters.scene, ariaLabel: 'Nach Szene filtern',
@@ -10667,30 +12526,36 @@ body { position: relative; }
       ));
     }
 
-    if (!all.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Noch keine Wortbank',
-        text: 'Eine Wortbank ist eine kleine, gezielte Auswahl aus dem Gesamtbestand – '
-          + 'für ein Partnergespräch, eine Diskussion oder eine Schreibphase.',
-        actionLabel: 'Erste Wortbank anlegen',
-        onAction: function () { createBank(ctx, app); }
-      }));
-    } else if (!visible.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Kein Treffer',
-        text: 'Mit diesen Filtern gibt es keine Wortbank.',
-        actionLabel: 'Filter zurücksetzen',
-        onAction: function () { filters = { query: '', scene: 'all', unitId: 'all' }; app.scheduleRender(); }
-      }));
-    } else {
-      var tiles = h('div.tiles.tiles--wide');
-      visible.forEach(function (bank) { tiles.appendChild(bankTile(state, bank, app)); });
-      tiles.appendChild(h('button.tile.tile--add', {
-        type: 'button', onclick: function () { createBank(ctx, app); }
-      }, ui.icon('plus', 22), h('span', { text: 'Neue Wortbank' })));
-      view.appendChild(tiles);
+    function drawList() {
+      var visible = visibleBanks();
+      util.clear(listHost);
+      if (!all.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Noch keine Wortbank',
+          text: 'Eine Wortbank ist eine kleine, gezielte Auswahl aus dem Gesamtbestand – '
+            + 'für ein Partnergespräch, eine Diskussion oder eine Schreibphase.',
+          actionLabel: 'Erste Wortbank anlegen',
+          onAction: function () { createBank(ctx, app); }
+        }));
+      } else if (!visible.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Kein Treffer',
+          text: 'Mit diesen Filtern gibt es keine Wortbank.',
+          actionLabel: 'Filter zurücksetzen',
+          onAction: function () { filters = { query: '', scene: 'all', unitId: 'all' }; app.scheduleRender(); }
+        }));
+      } else {
+        var tiles = h('div.tiles.tiles--wide');
+        visible.forEach(function (bank) { tiles.appendChild(bankTile(state, bank, app)); });
+        tiles.appendChild(h('button.tile.tile--add', {
+          type: 'button', onclick: function () { createBank(ctx, app); }
+        }, ui.icon('plus', 22), h('span', { text: 'Neue Wortbank' })));
+        listHost.appendChild(tiles);
+      }
     }
 
+    drawList();
+    view.appendChild(listHost);
     host.appendChild(view);
   }
 
@@ -10952,57 +12817,64 @@ body { position: relative; }
     });
 
     var list = h('div.picker__list');
-    var needle = util.fold(picker.query);
 
-    if (picker.tab === 'lex') {
-      var lexemes = select.lexemesOfGroup(state, ctx.group.id).filter(function (lex) {
-        if (picker.status !== 'all' && lex.status !== picker.status) return false;
-        if (picker.status === 'all' && lex.status === 'archived') return false;
-        if (needle && !BAO.search.matchesLexeme(lex, needle)) return false;
-        return true;
-      }).sort(function (a, b) { return util.fold(a.term).localeCompare(util.fold(b.term), 'de'); });
+    /* Die Trefferliste wird beim Suchen an Ort und Stelle neu gefüllt – das
+       Suchfeld bleibt stehen und behält Fokus und Schreibmarke. */
+    function fillList() {
+      var needle = util.fold(picker.query);
+      util.clear(list);
 
-      if (!lexemes.length) {
-        list.appendChild(h('span.hint', { text: 'Kein passender Eintrag im Bestand.' }));
-      }
-      lexemes.forEach(function (lex) {
-        var used = inBank['lex:' + lex.id];
-        list.appendChild(h('button.picker__item', {
-          type: 'button', dataset: { inBank: used ? 'true' : 'false' },
-          title: used ? 'Bereits in dieser Wortbank' : 'Zum aktiven Abschnitt hinzufügen',
-          onclick: function () { addToActiveSection(bank, 'lex', lex.id, app); }
-        },
-          h('span.plus', { text: used ? '✓' : '+' }),
-          h('span.bitem__label', { title: ui.termLabel(lex) }, ui.termNode(lex),
-            lex.translation ? h('span.bitem__kind', { text: '  ' + lex.translation }) : null),
-          ui.statusChip(lex.status)
-        ));
-      });
-    } else {
-      var starters = select.startersOfGroup(state, ctx.group.id, ctx.subject.id).filter(function (starter) {
-        if (picker.functionId !== 'all' && starter.functionId !== picker.functionId) return false;
-        if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
-        return true;
-      });
-      if (!starters.length) list.appendChild(h('span.hint', { text: 'Kein passender Satzanfang.' }));
-      var byFunction = util.groupBy(starters, function (s) { return s.functionId; });
-      select.functions(state).forEach(function (fn) {
-        var group = byFunction.get(fn.id);
-        if (!group) return;
-        list.appendChild(h('div.palette__group', { text: fn.label }));
-        group.forEach(function (starter) {
-          var used = inBank['starter:' + starter.id];
+      if (picker.tab === 'lex') {
+        var lexemes = select.lexemesOfGroup(state, ctx.group.id).filter(function (lex) {
+          if (picker.status !== 'all' && lex.status !== picker.status) return false;
+          if (picker.status === 'all' && lex.status === 'archived') return false;
+          if (needle && !BAO.search.matchesLexeme(lex, needle)) return false;
+          return true;
+        }).sort(function (a, b) { return util.fold(a.term).localeCompare(util.fold(b.term), 'de'); });
+
+        if (!lexemes.length) {
+          list.appendChild(h('span.hint', { text: 'Kein passender Eintrag im Bestand.' }));
+        }
+        lexemes.forEach(function (lex) {
+          var used = inBank['lex:' + lex.id];
           list.appendChild(h('button.picker__item', {
             type: 'button', dataset: { inBank: used ? 'true' : 'false' },
-            onclick: function () { addToActiveSection(bank, 'starter', starter.id, app); }
+            title: used ? 'Bereits in dieser Wortbank' : 'Zum aktiven Abschnitt hinzufügen',
+            onclick: function () { addToActiveSection(bank, 'lex', lex.id, app); }
           },
             h('span.plus', { text: used ? '✓' : '+' }),
-            h('span.bitem__label', { text: ui.plainStarterText(starter.text) }),
-            ui.variantPips(starter.variant)
+            h('span.bitem__label', { title: ui.termLabel(lex) }, ui.termNode(lex),
+              lex.translation ? h('span.bitem__kind', { text: '  ' + lex.translation }) : null),
+            ui.statusChip(lex.status)
           ));
         });
-      });
+      } else {
+        var starters = select.startersOfGroup(state, ctx.group.id, ctx.subject.id).filter(function (starter) {
+          if (picker.functionId !== 'all' && starter.functionId !== picker.functionId) return false;
+          if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
+          return true;
+        });
+        if (!starters.length) list.appendChild(h('span.hint', { text: 'Kein passender Satzanfang.' }));
+        var byFunction = util.groupBy(starters, function (s) { return s.functionId || ''; });
+        select.functions(state).concat([{ id: '', label: 'ohne Funktion' }]).forEach(function (fn) {
+          var group = byFunction.get(fn.id);
+          if (!group) return;
+          list.appendChild(h('div.palette__group', { text: fn.label }));
+          group.forEach(function (starter) {
+            var used = inBank['starter:' + starter.id];
+            list.appendChild(h('button.picker__item', {
+              type: 'button', dataset: { inBank: used ? 'true' : 'false' },
+              onclick: function () { addToActiveSection(bank, 'starter', starter.id, app); }
+            },
+              h('span.plus', { text: used ? '✓' : '+' }),
+              h('span.bitem__label', { text: ui.plainStarterText(starter.text) }),
+              ui.variantPips(starter.variant)
+            ));
+          });
+        });
+      }
     }
+    fillList();
 
     var activeSection = (bank.sections || []).filter(function (s) {
       return s.id === (activeSectionByBank[bank.id] || (bank.sections[0] && bank.sections[0].id));
@@ -11027,7 +12899,7 @@ body { position: relative; }
         ),
         h('input', {
           type: 'search', value: picker.query, placeholder: 'Suchen …', 'aria-label': 'Bestand durchsuchen',
-          oninput: function (event) { picker.query = event.target.value; app.scheduleRender(); }
+          oninput: function (event) { picker.query = event.target.value; fillList(); }
         }),
         picker.tab === 'lex'
           ? ui.selectField({
@@ -11109,6 +12981,16 @@ body { position: relative; }
       ),
       h('div.spacer'),
       h('div.view__actions', {},
+        count ? h('button.btn.btn--sm', {
+          type: 'button', title: 'Als Wortliste oder Vokabeltest drucken',
+          onclick: function () {
+            BAO.print.openWordList({
+              title: bank.title,
+              subtitle: [ctx.subject ? ctx.subject.name : '', ctx.group ? ctx.group.name : ''].filter(Boolean).join(' · '),
+              sections: BAO.stock.sectionsOfBank(BAO.store.getState(), bank)
+            });
+          }
+        }, ui.icon('print', 15), h('span.btn__label', { text: 'Drucken' })) : null,
         h('button.btn.btn--sm', {
           type: 'button', text: 'Duplizieren',
           onclick: function () { BAO.views.banks.duplicate(bank, app); }
@@ -11412,6 +13294,7 @@ body { position: relative; }
           type: 'button', title: 'Duplizieren',
           onclick: function (event) { event.stopPropagation(); duplicate(board, app); }
         }, ui.icon('copy', 15)),
+        BAO.handover.copyButton('board', board, state, app),
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Löschen',
           onclick: function (event) { event.stopPropagation(); remove(board); }
@@ -11437,6 +13320,7 @@ body { position: relative; }
     }
 
     var all = select.boardsOfGroup(state, ctx.group.id);
+    var sampleNote = BAO.handover.sampleNote(state, app);
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -11457,6 +13341,8 @@ body { position: relative; }
         }, ui.icon('plus', 16), 'Neue Tafel')
       )
     ));
+
+    if (sampleNote) view.appendChild(sampleNote);
 
     if (!all.length) {
       view.appendChild(ui.emptyState({
@@ -11506,24 +13392,42 @@ body { position: relative; }
   var pick = { query: '' };
   var listenerBound = false;
   var refs = {};
+  // Was im Feld „Element hinzufügen“ steht, überdauert einen Neuaufbau der
+  // Ansicht – etwa wenn gleichzeitig am Beamer ein Element verschoben wird.
+  var draft = { boardId: '', text: '' };
+
+  /** Rückmeldung nach dem Anlegen – mit dem Hinweis, was schon im Bestand stand. */
+  function announceAdded(created) {
+    if (!created) return;
+    var known = created.reused || 0;
+    var message = created.length > 1 ? created.length + ' Elemente auf der Tafel.' : 'Element auf der Tafel.';
+    if (known) {
+      message += created.length === 1
+        ? ' Der Eintrag stand schon im Bestand und wurde von dort geholt.'
+        : ' ' + known + ' davon ' + util.plural(known, 'stand', 'standen') + ' schon im Bestand.';
+    }
+    BAO.toast.undoable(message);
+  }
 
   /* --- Panel: Elemente hinzufügen -------------------------------------------- */
 
-  function addCard() {
+  function addCard(board) {
+    if (draft.boardId !== board.id) draft = { boardId: board.id, text: '' };
     var input = h('textarea', {
       rows: 2, placeholder: 'Wort oder Satz … (mehrere Zeilen sind möglich)',
-      'aria-label': 'Neues Element'
+      'aria-label': 'Neues Element',
+      oninput: function () { draft.text = input.value; }
     });
+    input.value = draft.text;
 
     function submit() {
       var text = input.value;
       if (!text.trim()) { input.focus(); return; }
       var created = BAO.board.add(text);
       input.value = '';
+      draft.text = '';
       input.focus();
-      if (created) BAO.toast.undoable(created.length > 1
-        ? created.length + ' Elemente auf der Tafel.'
-        : 'Element auf der Tafel.');
+      announceAdded(created);
     }
 
     input.addEventListener('keydown', function (event) {
@@ -11604,14 +13508,23 @@ body { position: relative; }
 
   /* --- Panel: vorhandene Einträge holen -------------------------------------- */
 
-  function pickCard(state, board, app) {
+  function pickCard(state, board) {
     var group = select.group(state, board.groupId);
     var used = {};
     (board.items || []).forEach(function (item) { used[item.kind + ':' + item.refId] = true; });
 
-    var needle = util.fold(pick.query);
-    var candidates = [];
-    if (needle) {
+    // Die Trefferliste zeichnet sich selbst neu. Das Suchfeld bleibt dabei
+    // stehen – sonst verlöre es nach jedem Buchstaben den Fokus.
+    var results = h('div.picker__list');
+
+    function drawResults() {
+      util.clear(results);
+      var needle = util.fold(pick.query);
+      if (!needle) {
+        results.appendChild(h('div.note', { text: 'Suchbegriff eingeben – gefunden wird alles, was diese Lerngruppe schon kennt.' }));
+        return;
+      }
+      var candidates = [];
       select.lexemesOfGroup(state, board.groupId).forEach(function (lex) {
         if (used['lex:' + lex.id]) return;
         if (util.fold(ui.termLabel(lex) + ' ' + (lex.translation || '')).indexOf(needle) < 0) return;
@@ -11622,14 +13535,10 @@ body { position: relative; }
         if (util.fold(starter.text + ' ' + (starter.translation || '')).indexOf(needle) < 0) return;
         candidates.push({ kind: 'starter', id: starter.id, text: starter.text, meta: starter.translation || '' });
       });
-    }
-
-    var results = h('div.picker__list');
-    if (!needle) {
-      results.appendChild(h('div.note', { text: 'Suchbegriff eingeben – gefunden wird alles, was diese Lerngruppe schon kennt.' }));
-    } else if (!candidates.length) {
-      results.appendChild(h('div.note', { text: 'Kein Treffer. Neue Elemente entstehen oben oder direkt auf der Fläche.' }));
-    } else {
+      if (!candidates.length) {
+        results.appendChild(h('div.note', { text: 'Kein Treffer. Neue Elemente entstehen oben oder direkt auf der Fläche.' }));
+        return;
+      }
       candidates.slice(0, 12).forEach(function (candidate) {
         results.appendChild(h('button.picker__item', {
           type: 'button',
@@ -11643,7 +13552,11 @@ body { position: relative; }
             candidate.meta ? h('small', { text: ' · ' + candidate.meta }) : null)
         ));
       });
+      if (candidates.length > 12) {
+        results.appendChild(h('span.hint', { text: '… und ' + (candidates.length - 12) + ' weitere. Genauer suchen grenzt ein.' }));
+      }
     }
+    drawResults();
 
     return h('div.ctrl-card', {},
       h('h3', {}, 'Aus dem Bestand holen',
@@ -11653,7 +13566,7 @@ body { position: relative; }
       h('input', {
         type: 'search', value: pick.query, placeholder: 'Suchen …',
         'aria-label': 'Im Bestand suchen',
-        oninput: function (event) { pick.query = event.target.value; app.scheduleRender(); }
+        oninput: function (event) { pick.query = event.target.value; drawResults(); }
       }),
       results
     );
@@ -11797,9 +13710,9 @@ body { position: relative; }
     );
 
     var panel = h('div.ctrl-panel', {},
-      addCard(),
+      addCard(board),
       elementsCard(entries, board),
-      pickCard(state, board, app),
+      pickCard(state, board),
       appearanceCard(board, session, app),
       h('div.ctrl-card', {},
         h('h3', {}, 'Auf der Fläche'),
@@ -11827,6 +13740,18 @@ body { position: relative; }
       h('div.spacer'),
       h('div.view__actions', {},
         h('button.btn', { type: 'button', onclick: function () { app.go('tafeln'); } }, 'Alle Tafeln'),
+        entries.length ? h('button.btn.btn--sm', {
+          type: 'button', title: 'Die Elemente der Tafel als Wortliste oder Vokabeltest drucken',
+          onclick: function () {
+            var now = BAO.store.getState();
+            var latest = select.board(now, board.id) || board;
+            BAO.print.openWordList({
+              title: latest.title,
+              subtitle: [subject ? subject.name : '', group ? group.name : ''].filter(Boolean).join(' · '),
+              sections: [{ title: '', rows: BAO.stock.rowsOfBoard(now, latest) }]
+            });
+          }
+        }, ui.icon('print', 15), h('span.btn__label', { text: 'Drucken' })) : null,
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Titel ändern',
           onclick: function () {
@@ -12051,10 +13976,15 @@ body { position: relative; }
           type: 'button',
           onclick: function (event) { event.stopPropagation(); app.go('whiteboard/' + board.id); }
         }, ui.icon('pen', 15), 'Öffnen'),
+        count ? h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Als Bild speichern (PNG)', 'aria-label': 'Als Bild speichern',
+          onclick: function (event) { event.stopPropagation(); BAO.whiteboardImage.savePng(board); }
+        }, ui.icon('download', 15)) : null,
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Duplizieren',
           onclick: function (event) { event.stopPropagation(); duplicate(board, app); }
         }, ui.icon('copy', 15)),
+        BAO.handover.copyButton('whiteboard', board, state, app),
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Löschen',
           onclick: function (event) { event.stopPropagation(); remove(board); }
@@ -12559,6 +14489,12 @@ body { position: relative; }
             });
           }
         }, ui.icon('edit', 15)),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Als Bild speichern (PNG)', 'aria-label': 'Als Bild speichern',
+          onclick: function () {
+            BAO.whiteboardImage.savePng(select.whiteboard(BAO.store.getState(), board.id) || board);
+          }
+        }, ui.icon('download', 15)),
         h('button.btn.btn--sm', {
           type: 'button', title: 'Vollbild auf diesem Bildschirm (Taste F)',
           onclick: function () { if (active) active.ctrl.toggleFullscreen(); }
@@ -13374,30 +15310,18 @@ body { position: relative; }
 
   function removeSubject(subject) {
     var state = BAO.store.getState();
-    var groups = select.groupsOfSubject(state, subject.id, true);
-    var lexemes = state.lexemes.filter(function (l) { return l.subjectId === subject.id; }).length;
+    var content = BAO.stock.contentOfSubject(state, subject.id);
+    var what = BAO.stock.describeContent(content);
     BAO.modal.confirm({
       title: 'Fach „' + subject.name + '“ löschen?',
       text: 'Damit verschwinden auch alle zugehörigen Inhalte.',
-      detail: groups.length + ' ' + util.plural(groups.length, 'Lerngruppe', 'Lerngruppen') + ', '
-        + lexemes + ' Wortschatzeinträge und alle zugehörigen Wortbanken werden entfernt. '
+      detail: 'Betroffen: ' + content.groups + ' ' + util.plural(content.groups, 'Lerngruppe', 'Lerngruppen')
+        + (what ? ' sowie ' + what : '') + '. '
         + 'Rückgängig machen ist möglich, ein Export vorher schadet trotzdem nicht.',
       confirmLabel: 'Fach löschen', danger: true
     }).then(function (confirmed) {
       if (!confirmed) return;
-      var groupIds = groups.map(function (g) { return g.id; });
-      BAO.store.commit('Fach gelöscht', function (draft) {
-        draft.subjects = draft.subjects.filter(function (s) { return s.id !== subject.id; });
-        draft.groups = draft.groups.filter(function (g) { return g.subjectId !== subject.id; });
-        draft.units = draft.units.filter(function (u) { return groupIds.indexOf(u.groupId) < 0; });
-        draft.lexemes = draft.lexemes.filter(function (l) { return l.subjectId !== subject.id; });
-        draft.starters = draft.starters.filter(function (s) { return s.subjectId !== subject.id; });
-        draft.banks = draft.banks.filter(function (b) { return b.subjectId !== subject.id; });
-        if (draft.ui.subjectId === subject.id) {
-          draft.ui.subjectId = draft.subjects[0] ? draft.subjects[0].id : '';
-          draft.ui.groupId = '';
-        }
-      });
+      BAO.store.commit('Fach gelöscht', function (draft) { BAO.stock.removeSubject(draft, subject.id); });
       BAO.toast.undoable('Fach gelöscht.');
     });
   }
@@ -13555,24 +15479,16 @@ body { position: relative; }
 
   function removeGroup(group) {
     var state = BAO.store.getState();
-    var lexemes = select.lexemesOfGroup(state, group.id).length;
-    var banks = select.banksOfGroup(state, group.id).length;
+    var what = BAO.stock.describeContent(BAO.stock.contentOfGroups(state, [group.id]));
     BAO.modal.confirm({
       title: 'Lerngruppe „' + group.name + '“ löschen?',
-      text: 'Der gesamte Bestand dieser Lerngruppe wird entfernt.',
-      detail: lexemes + ' Wortschatzeinträge und ' + banks + ' Wortbanken sind betroffen. '
+      text: 'Alles, was dieser Lerngruppe gehört, wird entfernt.',
+      detail: (what ? 'Betroffen: ' + what + '. ' : 'Die Lerngruppe ist noch leer. ')
         + 'Alternative: die Lerngruppe archivieren – dann bleibt alles erhalten.',
       confirmLabel: 'Endgültig löschen', danger: true
     }).then(function (confirmed) {
       if (!confirmed) return;
-      BAO.store.commit('Lerngruppe gelöscht', function (draft) {
-        draft.groups = draft.groups.filter(function (g) { return g.id !== group.id; });
-        draft.units = draft.units.filter(function (u) { return u.groupId !== group.id; });
-        draft.lexemes = draft.lexemes.filter(function (l) { return l.groupId !== group.id; });
-        draft.starters = draft.starters.filter(function (s) { return s.groupId !== group.id; });
-        draft.banks = draft.banks.filter(function (b) { return b.groupId !== group.id; });
-        if (draft.ui.groupId === group.id) draft.ui.groupId = '';
-      });
+      BAO.store.commit('Lerngruppe gelöscht', function (draft) { BAO.stock.removeGroups(draft, [group.id]); });
       BAO.toast.undoable('Lerngruppe gelöscht.');
     });
   }
@@ -13649,8 +15565,8 @@ body { position: relative; }
       if (!confirmed) return;
       BAO.store.commit('Unterrichtsreihe gelöscht', function (draft) {
         draft.units = draft.units.filter(function (u) { return u.id !== unit.id; });
-        draft.lexemes.forEach(function (l) { if (l.introducedUnitId === unit.id) l.introducedUnitId = ''; });
-        draft.banks.forEach(function (b) { if (b.unitId === unit.id) b.unitId = ''; });
+        // Wortschatz, Wortbanken, Tafeln und Whiteboards bleiben – nur ohne Reihe.
+        BAO.stock.detachUnit(draft, unit.id);
       });
       BAO.toast.undoable('Unterrichtsreihe gelöscht.');
     });
@@ -13664,6 +15580,15 @@ body { position: relative; }
     var units = select.unitsOfGroup(state, group.id);
     var counts = select.statusCounts(state, group.id);
     var banks = select.banksOfGroup(state, group.id).length;
+    var boards = select.boardsOfGroup(state, group.id).length;
+    var whiteboards = select.whiteboardsOfGroup(state, group.id).length;
+    // Was die Lerngruppe besitzt – in der Reihenfolge der Navigationsleiste.
+    var summary = [
+      boards + ' ' + util.plural(boards, 'Tafel', 'Tafeln'),
+      whiteboards + ' ' + util.plural(whiteboards, 'Whiteboard', 'Whiteboards'),
+      counts.total + ' ' + util.plural(counts.total, 'Wort', 'Wörter'),
+      banks + ' ' + util.plural(banks, 'Wortbank', 'Wortbanken')
+    ].join(' · ');
 
     var unitList = h('div.grp__units');
     if (!units.length) {
@@ -13710,9 +15635,7 @@ body { position: relative; }
         h('span.chip', { text: 'Jahrgang ' + group.grade }),
         h('span.chip.chip--outline', { text: group.schoolYear }),
         group.archived ? h('span.chip.chip--st-archived', {}, h('i.dot'), 'archiviert') : null,
-        h('span.hint', {
-          text: counts.total + ' Wörter · ' + banks + ' ' + util.plural(banks, 'Wortbank', 'Wortbanken')
-        }),
+        h('span.hint', { text: summary }),
         h('span.spacer'),
         h('button.btn.btn--sm', {
           type: 'button', text: 'Öffnen',
@@ -13845,8 +15768,73 @@ body { position: relative; }
 
   function exportAll() {
     var payload = BAO.backup.exportToFile(BAO.store.getState());
-    BAO.toast.ok('Sicherung erstellt: ' + payload.counts.lexemes + ' Wortschatzeinträge, '
-      + payload.counts.starters + ' Satzanfänge, ' + payload.counts.banks + ' Wortbanken.');
+    var summary = BAO.stock.describeContent(Object.assign({}, payload.counts, { units: 0 }));
+    BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '')
+      + '. Sie liegt im Download-Ordner – am besten zusätzlich auf einem Stick oder in der Schul-Cloud ablegen.',
+      { timeout: 7000 });
+    return payload;
+  }
+
+  /* --- Stand der Sicherung -------------------------------------------------------- */
+
+  /** Der Hinweis über der Exportschaltfläche: Wie steht es um die Sicherung? */
+  function backupNote(state) {
+    var info = BAO.backup.status(state);
+    if (info.never && !info.dirty) {
+      return h('div.note', { dataset: { backup: 'none' }, text: 'Noch nichts Eigenes zu sichern. Sobald du etwas änderst, lohnt sich eine Sicherungsdatei.' });
+    }
+    if (info.never) {
+      return h('div.note.note--warn', { dataset: { backup: 'never' } },
+        h('strong', { text: 'Es gibt noch keine Sicherungsdatei. ' }),
+        'Alle Daten liegen nur im Speicher dieses Browsers – wird er geleert, sind sie verloren.');
+    }
+    var when = util.formatDateTime(info.last);
+    if (info.due) {
+      return h('div.note.note--warn', { dataset: { backup: 'due' } },
+        h('strong', { text: 'Seit ' + info.unsavedDays + ' Tagen gibt es Änderungen ohne Sicherungsdatei. ' }),
+        'Letzte Sicherungsdatei: ' + when + '.');
+    }
+    if (info.dirty) {
+      return h('div.note', { dataset: { backup: 'open' }, text: 'Letzte Sicherungsdatei: ' + when + '. Seitdem gibt es Änderungen.' });
+    }
+    return h('div.note.note--ok', { dataset: { backup: 'ok' }, text: 'Alles gesichert – Sicherungsdatei vom ' + when + '.' });
+  }
+
+  /** Wie voll ist der Speicher des Browsers? Handschrift braucht am meisten Platz. */
+  function usageNote(storage) {
+    var usage = storage.usage;
+    if (!usage || !storage.available) return null;
+    var percent = Math.round(usage.share * 100);
+    if (usage.share < 0.6) return null;
+    return h('div.note' + (usage.share >= 0.8 ? '.note--warn' : ''), { dataset: { usage: String(percent) } },
+      h('strong', { text: 'Der Speicher des Browsers ist zu etwa ' + percent + ' % gefüllt. ' }),
+      'Am meisten Platz brauchen Whiteboards mit viel Handschrift. Eine Sicherungsdatei erstellen und danach '
+        + 'nicht mehr benötigte Whiteboards löschen schafft Luft.');
+  }
+
+  /* --- Beispieldaten ---------------------------------------------------------------- */
+
+  function removeSamples() {
+    var state = BAO.store.getState();
+    var groups = BAO.stock.sampleGroups(state);
+    if (!groups.length) return Promise.resolve(false);
+    var content = BAO.stock.describeContent(BAO.stock.contentOfGroups(state, groups.map(function (g) { return g.id; })));
+    return BAO.modal.confirm({
+      title: 'Beispieldaten entfernen?',
+      text: 'Entfernt ' + util.plural(groups.length, 'wird die Beispiel-Lerngruppe ', 'werden die Beispiel-Lerngruppen ')
+        + groups.map(function (g) {
+          var subject = select.subject(state, g.subjectId);
+          return g.name + (subject ? ' (' + subject.name + ')' : '');
+        }).join(' und ') + ' mit allem, was dazugehört.',
+      detail: (content ? 'Betroffen: ' + content + '. ' : '')
+        + 'Fächer und eigene Lerngruppen bleiben erhalten. Der Schritt lässt sich mit Strg + Z rückgängig machen.',
+      confirmLabel: 'Beispiele entfernen', danger: true
+    }).then(function (confirmed) {
+      if (!confirmed) return false;
+      BAO.store.commit('Beispieldaten entfernt', function (draft) { BAO.stock.removeSampleData(draft); });
+      BAO.toast.undoable('Die Beispieldaten sind entfernt.');
+      return true;
+    });
   }
 
   function exportCsv(ctx) {
@@ -13921,8 +15909,10 @@ body { position: relative; }
           label: 'Zusammenführen', kind: 'primary',
           onSelect: function () {
             var merged = BAO.backup.merge(BAO.store.getState(), incoming);
-            BAO.store.replaceState(merged.state, 'Sicherung zusammengeführt');
             var lines = BAO.backup.summariseReport(merged.report);
+            // Der zusammengeführte Bestand steht so in keiner Sicherungsdatei.
+            if (lines.length && !merged.state.meta.unsavedSince) merged.state.meta.unsavedSince = util.nowISO();
+            BAO.store.replaceState(merged.state, 'Sicherung zusammengeführt');
             BAO.toast.undoable(lines.length ? 'Zusammengeführt – ' + lines.join(', ') : 'Nichts Neues gefunden.', { timeout: 12000 });
             return true;
           }
@@ -13937,6 +15927,10 @@ body { position: relative; }
               confirmLabel: 'Ersetzen', danger: true
             }).then(function (confirmed) {
               if (!confirmed) return false;
+              // Der Bestand entspricht danach genau dieser Datei.
+              if (!incoming.meta.lastBackupAt && result.meta.exportedAt) incoming.meta.lastBackupAt = result.meta.exportedAt;
+              incoming.meta.unsavedSince = '';
+              incoming.meta.changedAt = incoming.meta.changedAt || '';
               BAO.store.replaceState(incoming, 'Sicherung wiederhergestellt');
               BAO.toast.undoable('Bestand aus der Sicherung wiederhergestellt.', { timeout: 12000 });
               return true;
@@ -14199,7 +16193,7 @@ body { position: relative; }
 
     var dropzone = h('div.dropzone', {},
       h('strong', { text: 'Sicherungsdatei hierher ziehen' }),
-      h('p', { text: 'oder Datei auswählen (.json)' }),
+      h('p', { text: 'oder Datei auswählen (.json) – das Ablegen klappt überall im Fenster' }),
       h('button.btn', {
         type: 'button', text: 'Datei auswählen',
         onclick: function () { util.pickFile('application/json,.json').then(handleBackupFile); }
@@ -14225,9 +16219,12 @@ body { position: relative; }
       h('div.card', {},
         h('div.card__head', {}, h('h2', { text: 'Sicherung erstellen' })),
         h('div.card__body.stack', {},
+          backupNote(state),
+          usageNote(storage),
           h('p', {
-            text: 'Der Export enthält alle Fächer, Lerngruppen, Reihen, Wortschatzeinträge, Satzanfänge, '
-              + 'Wortbanken, Tafeln und Einstellungen in einer einzigen Datei.'
+            text: 'Die Sicherungsdatei enthält alles in einer einzigen Datei: Fächer, Lerngruppen, Reihen, '
+              + 'Wortschatz, Satzanfänge, Wortbanken, Tafeln, Whiteboards und Einstellungen. '
+              + 'Mit ihr zieht der Bestand auch auf einen anderen Rechner um.'
           }),
           h('dl.kv', {},
             h('dt', { text: 'Fächer' }), h('dd', { text: String(totals.subjects) }),
@@ -14235,9 +16232,13 @@ body { position: relative; }
             h('dt', { text: 'Wortschatz' }), h('dd', { text: String(totals.lexemes) }),
             h('dt', { text: 'Satzanfänge' }), h('dd', { text: String(totals.starters) }),
             h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) }),
-            h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) })
+            h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) }),
+            h('dt', { text: 'Whiteboards' }), h('dd', { text: String(totals.whiteboards) })
           ),
-          h('button.btn.btn--primary.btn--wide', { type: 'button', text: 'Alle Daten exportieren', onclick: exportAll }),
+          h('button.btn.btn--primary.btn--wide', {
+            type: 'button', title: 'Sicherungsdatei erstellen (Strg + S)', onclick: exportAll
+          }, ui.icon('download', 16), 'Alle Daten exportieren'),
+          h('span.hint', { text: 'Geht von überall mit Strg + S oder einem Klick auf den Sicherungsstand unten in der Fußzeile.' }),
           h('button.btn.btn--wide', {
             type: 'button',
             text: ctx.group ? 'Wortschatz von ' + ctx.group.name + ' als CSV' : 'CSV-Export (Lerngruppe wählen)',
@@ -14313,6 +16314,7 @@ body { position: relative; }
           h('dt', { text: 'Speicherung' }), h('dd', {
             text: storage.available
               ? 'lokal im Browser (localStorage), etwa ' + Math.round(storage.bytes / 1024) + ' kB'
+                + (storage.usage ? ' – rund ' + Math.max(1, Math.round(storage.usage.share * 100)) + ' % des üblichen Platzes' : '')
               : 'nicht verfügbar – bitte regelmäßig exportieren'
           }),
           h('dt', { text: 'Zuletzt gespeichert' }), h('dd', { text: util.formatDateTime(storage.savedAt) || '–' }),
@@ -14321,7 +16323,12 @@ body { position: relative; }
           }),
           h('dt', { text: 'Urheber' }), h('dd', { text: '© Florian Nowak' })
         ),
-        h('div.row', { style: { 'margin-top': 'var(--sp-4)' } },
+        h('div.row', { style: { 'margin-top': 'var(--sp-4)', 'flex-wrap': 'wrap' } },
+          BAO.stock.hasSampleData(state) ? h('button.btn.btn--sm', {
+            type: 'button', text: 'Beispieldaten entfernen',
+            title: 'Entfernt die mitgelieferten Beispiel-Lerngruppen – Eigenes bleibt erhalten',
+            onclick: removeSamples
+          }) : null,
           h('button.btn.btn--danger.btn--sm', {
             type: 'button', text: 'Alle lokalen Daten zurücksetzen',
             onclick: function () {
@@ -14348,7 +16355,10 @@ body { position: relative; }
   }
 
   BAO.views = BAO.views || {};
-  BAO.views.data = { render: render, exportAll: exportAll, handleBackupFile: handleBackupFile };
+  BAO.views.data = {
+    render: render, exportAll: exportAll, removeSamples: removeSamples,
+    handleBackupFile: handleBackupFile, handleCsvFile: handleCsvFile
+  };
 })(window.BAO = window.BAO || {});
 
   </script>
@@ -14492,14 +16502,37 @@ body { position: relative; }
     if (!ctx.groups.length) {
       groupSelect.appendChild(h('option', { value: '', text: 'keine Lerngruppe' }));
     }
-    ctx.groups.forEach(function (group) {
-      groupSelect.appendChild(h('option', {
+    function groupOption(group) {
+      return h('option', {
         value: group.id,
         text: group.name + ' · Jg. ' + group.grade + (group.favorite ? ' ★' : ''),
         selected: ctx.group && group.id === ctx.group.id ? true : null
-      }));
+      });
+    }
+    // Der Wechsel zwischen zwei Stunden ist oft ein Wechsel des Fachs: Die
+    // Lerngruppen der anderen Fächer stehen deshalb in derselben Auswahl,
+    // und ein Griff stellt Fach und Lerngruppe zugleich um.
+    var elsewhere = ctx.subjects.filter(function (subject) { return subject.id !== ctx.subject.id; })
+      .map(function (subject) { return { subject: subject, groups: select.groupsOfSubject(state, subject.id) }; })
+      .filter(function (entry) { return entry.groups.length; });
+    if (!elsewhere.length) {
+      ctx.groups.forEach(function (group) { groupSelect.appendChild(groupOption(group)); });
+    } else {
+      if (ctx.groups.length) {
+        var own = h('optgroup', { label: ctx.subject.name });
+        ctx.groups.forEach(function (group) { own.appendChild(groupOption(group)); });
+        groupSelect.appendChild(own);
+      }
+      elsewhere.forEach(function (entry) {
+        var other = h('optgroup', { label: entry.subject.name });
+        entry.groups.forEach(function (group) { other.appendChild(groupOption(group)); });
+        groupSelect.appendChild(other);
+      });
+    }
+    groupSelect.addEventListener('change', function () {
+      var chosen = select.group(BAO.store.getState(), groupSelect.value);
+      setContext(chosen ? chosen.subjectId : ctx.subject.id, groupSelect.value);
     });
-    groupSelect.addEventListener('change', function () { setContext(ctx.subject.id, groupSelect.value); });
 
     host.appendChild(h('div.ctx-select', {},
       h('span.ctx-select__label', { text: 'Lerngruppe' }),
@@ -14559,7 +16592,7 @@ body { position: relative; }
     });
 
     rail.appendChild(h('div.spacer'));
-    rail.appendChild(h('button.rail__item', {
+    rail.appendChild(h('button.rail__item.rail__item--toggle', {
       type: 'button',
       title: 'Navigationsleiste schmal/breit',
       onclick: function () {
@@ -14578,6 +16611,63 @@ body { position: relative; }
 
   /* --- Ansicht --------------------------------------------------------------- */
 
+  /* Eine Ansicht wird nach jeder Änderung vollständig neu aufgebaut. Wer
+     gerade in einem Textfeld schreibt, darf davon nichts merken: Fokus und
+     Cursor ziehen in das entsprechende Feld der neuen Ansicht um. Erkannt
+     wird es an Art, Beschriftung und Platzhalter – und an seiner Stelle
+     unter gleichartigen Feldern.
+     Bewusst nur Textfelder: Ein Kontrollkästchen oder eine Auswahlliste, die
+     den Fokus behielte, würde die Tastenkürzel der Projektion und des
+     Whiteboards verschlucken. */
+  var TEXT_TYPES = ['text', 'search', 'number', 'email', 'url', 'tel', 'password'];
+
+  function isTextField(node) {
+    if (!node || !node.tagName) return false;
+    if (node.tagName === 'TEXTAREA') return true;
+    if (node.tagName !== 'INPUT') return false;
+    return TEXT_TYPES.indexOf((node.getAttribute('type') || 'text').toLowerCase()) >= 0;
+  }
+
+  function fieldSignature(node) {
+    return [node.tagName, node.getAttribute('type') || '', node.getAttribute('aria-label') || '',
+      node.getAttribute('placeholder') || '', node.getAttribute('name') || ''].join('|');
+  }
+
+  function fieldsLike(host, signature) {
+    return util.$$('input, textarea', host).filter(function (node) {
+      return fieldSignature(node) === signature;
+    });
+  }
+
+  function captureFocus(host) {
+    var node = document.activeElement;
+    if (!host || !node || !host.contains(node) || !isTextField(node)) return null;
+    var signature = fieldSignature(node);
+    var memo = { signature: signature, index: fieldsLike(host, signature).indexOf(node), start: null, end: null };
+    try {
+      memo.start = node.selectionStart;
+      memo.end = node.selectionEnd;
+      memo.direction = node.selectionDirection;
+    } catch (err) { /* Feldart ohne Textauswahl (Zahl) */ }
+    return memo;
+  }
+
+  function restoreFocus(host, memo) {
+    if (!memo || memo.index < 0) return;
+    // Hat die neue Ansicht selbst schon ein Feld ausgewählt, hat das Vorrang.
+    var active = document.activeElement;
+    if (active && active !== document.body && active !== host && host.contains(active)) return;
+    var node = fieldsLike(host, memo.signature)[memo.index];
+    if (!node || node.disabled) return;
+    try { node.focus({ preventScroll: true }); } catch (err) { node.focus(); }
+    if (typeof memo.start === 'number' && typeof memo.end === 'number') {
+      var length = node.value.length;
+      try {
+        node.setSelectionRange(Math.min(memo.start, length), Math.min(memo.end, length), memo.direction || 'none');
+      } catch (err) { /* Feldart ohne Textauswahl */ }
+    }
+  }
+
   function renderView() {
     var host = document.getElementById('view');
     var state = BAO.store.getState();
@@ -14587,6 +16677,10 @@ body { position: relative; }
     // Scrollposition je Ansicht merken – hilft beim Hin- und Herspringen.
     var main = document.querySelector('.main');
     if (main) viewScrollTop[current.lastPath || ''] = main.scrollTop;
+
+    // Nur beim Neuaufbau derselben Ansicht – nach einem Wechsel wäre ein
+    // gleich beschriftetes Feld ein anderes.
+    var focusMemo = current.lastPath === current.path ? captureFocus(host) : null;
 
     // Eine Ansicht mit eigener Fläche (Whiteboard) räumt auf, wenn eine andere folgt.
     if (mountedView && mountedView !== view && mountedView.unmount) {
@@ -14619,8 +16713,11 @@ body { position: relative; }
 
     renderRail();
     renderContextSwitcher();
+    renderModeButton();
+    renderBackupState();
     current.lastPath = current.path;
     if (main) main.scrollTop = viewScrollTop[current.path] || 0;
+    restoreFocus(host, focusMemo);
   }
 
   function scheduleRender() {
@@ -14695,11 +16792,13 @@ body { position: relative; }
       var currentState = BAO.store.getState();
       results = query
         ? BAO.search.global(currentState, query, { limit: 30 })
-        : select.recentBanks(currentState, 6).map(function (bank) {
+        : BAO.stock.recentWork(currentState, 8, { banks: !isSimple() }).map(function (entry) {
+          var subject = select.subject(currentState, entry.item.subjectId);
           return {
-            type: 'bank', id: bank.id, title: bank.title,
-            groupId: bank.groupId, subjectId: bank.subjectId,
-            meta: 'Wortbank · ' + bank.scene
+            type: entry.type, id: entry.id, title: entry.item.title,
+            groupId: entry.item.groupId, subjectId: entry.item.subjectId,
+            meta: [subject ? subject.name : '', entry.group.name,
+              (entry.used ? 'zuletzt ' : 'bearbeitet ') + util.relativeDate(entry.at)].filter(Boolean).join(' · ')
           };
         });
       activeIndex = 0;
@@ -14736,10 +16835,57 @@ body { position: relative; }
 
   /* --- Live-Hilfe ------------------------------------------------------------ */
 
+  /**
+   * Läuft gerade eine Tafel, gehört die schnelle Hilfe dorthin: Sie erscheint
+   * als Element auf der Fläche, statt die Tafel auf dem Beamer zu ersetzen.
+   */
+  function openBoardHelp(board) {
+    var textField = ui.textField({ label: 'Text', placeholder: 'z. B. Je me suis bien débrouillé(e).', full: true });
+    var translationField = ui.textField({ label: 'Deutsch (optional)', placeholder: 'z. B. Ich bin gut zurechtgekommen.' });
+
+    return BAO.modal.open({
+      title: 'Schnell etwas auf die Tafel',
+      subtitle: 'Erscheint sofort als Element auf „' + board.title + '“ und bleibt im Bestand der Lerngruppe.',
+      width: '520px',
+      body: h('div.stack', {}, textField, translationField),
+      initialFocus: 'input',
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        {
+          label: 'Auf die Tafel', kind: 'primary',
+          onSelect: function () {
+            var text = textField.input.value.trim();
+            var translation = translationField.input.value.trim();
+            if (!text) { textField.input.focus(); return false; }
+            var created = BAO.board.add(text);
+            if (!created) { BAO.toast.error('Das Element ließ sich nicht anlegen.'); return false; }
+            if (translation && !created.reused) {
+              BAO.store.commit('Deutsch ergänzt', function (draft) {
+                var target = select.board(draft, board.id);
+                var item = target ? target.items.filter(function (i) { return i.id === created[0]; })[0] : null;
+                var lexeme = item && item.kind === 'lex' ? select.lexeme(draft, item.refId) : null;
+                if (!lexeme) return false;
+                lexeme.translation = translation;
+              });
+            }
+            BAO.toast.show(created.reused ? '„' + text + '“ kam aus dem Bestand auf die Tafel.' : '„' + text + '“ steht auf der Tafel.',
+              current.path === 'tafel' ? { timeout: 2600 } : {
+                actionLabel: 'Zur Tafel', onAction: function () { go('tafel/' + board.id); }
+              });
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
   function openLiveHelp() {
     var state = BAO.store.getState();
     var ctx = select.context(state);
     var session = BAO.session.getState();
+
+    var liveBoard = !session.active && BAO.board.isActive() ? BAO.board.getBoard() : null;
+    if (liveBoard) return openBoardHelp(liveBoard);
 
     var typeSelect = ui.selectField({
       label: 'Art', value: 'word',
@@ -14829,6 +16975,13 @@ body { position: relative; }
 
       if (mod && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); return; }
       if (mod && event.key.toLowerCase() === 'l') { event.preventDefault(); openLiveHelp(); return; }
+      if (mod && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 's') {
+        // Strg + S speichert – hier heißt das: die Sicherungsdatei erstellen.
+        // (Der Browser würde sonst anbieten, die Seite selbst zu speichern.)
+        event.preventDefault();
+        if (!document.querySelector('.modal-backdrop')) backupNow();
+        return;
+      }
       if (mod && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         event.preventDefault();
         var label = BAO.store.undo();
@@ -14860,6 +17013,87 @@ body { position: relative; }
     });
   }
 
+  /** Der Knopf „Ansicht“ sagt, welcher Umfang gerade gilt. */
+  function renderModeButton() {
+    var button = document.querySelector('[data-action="toggle-simple"]');
+    if (!button) return;
+    var simple = isSimple();
+    var label = button.querySelector('.btn__label');
+    if (label) label.textContent = simple ? 'Ansicht: einfach' : 'Ansicht: vollständig';
+    button.dataset.mode = simple ? 'simple' : 'full';
+    button.title = simple
+      ? 'Einfache Grundform. Klick: vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion'
+      : 'Vollständige Ansicht. Klick: einfache Grundform mit Tafeln, Whiteboards, Elementen';
+    button.setAttribute('aria-label', 'Ansicht: ' + (simple ? 'einfache Grundform' : 'vollständig') + ' – umschalten');
+  }
+
+  /* --- Sicherungsdatei ---------------------------------------------------------- */
+
+  function backupNow() {
+    return BAO.views.data.exportAll();
+  }
+
+  /** Zeigt in der Fußzeile, wie es um die Sicherungsdatei steht. */
+  function renderBackupState() {
+    var node = document.querySelector('[data-bind="backup-state"]');
+    if (!node) return;
+    var info = BAO.backup.status(BAO.store.getState());
+    var label = BAO.backup.statusLabel(info);
+    if (node.textContent !== label) node.textContent = label;
+    node.dataset.backup = info.due ? 'due' : (info.dirty ? 'open' : 'ok');
+    node.title = (info.due
+      ? 'Seit ' + info.unsavedDays + ' Tagen gibt es Änderungen ohne Sicherungsdatei. '
+      : (info.dirty ? 'Es gibt Änderungen, die noch in keiner Sicherungsdatei stehen. ' : ''))
+      + 'Klick: Sicherungsdatei jetzt erstellen (Strg + S)';
+  }
+
+  /**
+   * Erinnert höchstens einmal am Tag, wenn seit einer Woche Änderungen ohne
+   * Sicherungsdatei aufgelaufen sind. Alles liegt nur in diesem Browser.
+   */
+  function remindBackup() {
+    var state = BAO.store.getState();
+    var info = BAO.backup.status(state);
+    var today = util.nowISO().slice(0, 10);
+    if (!info.due || state.ui.backupHintOn === today) return;
+    BAO.store.commit('Hinweis zur Sicherung', function (draft) { draft.ui.backupHintOn = today; }, { undoable: false });
+    BAO.toast.show(info.never
+      ? 'Es gibt noch keine Sicherungsdatei. Alle Daten liegen nur in diesem Browser.'
+      : 'Seit ' + info.unsavedDays + ' Tagen gibt es Änderungen ohne Sicherungsdatei.',
+      { actionLabel: 'Jetzt sichern', onAction: backupNow, timeout: 14000 });
+  }
+
+  /* --- Dateien ins Fenster ziehen ------------------------------------------------ */
+
+  function carriesFiles(event) {
+    var types = event.dataTransfer && event.dataTransfer.types;
+    return !!types && Array.prototype.indexOf.call(types, 'Files') >= 0;
+  }
+
+  /** Eine Sicherungsdatei oder Wortschatzliste lässt sich überall ablegen. */
+  function bindFileDrop() {
+    document.addEventListener('dragover', function (event) {
+      if (carriesFiles(event)) event.preventDefault();
+    });
+    document.addEventListener('drop', function (event) {
+      if (!carriesFiles(event)) return;
+      // Die Ablagefläche der Datenansicht hat die Datei schon angenommen.
+      var taken = event.defaultPrevented;
+      // Ohne dies öffnete der Browser die Datei und verließe die App.
+      event.preventDefault();
+      if (taken || document.querySelector('.modal-backdrop')) return;
+      var file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (!file) return;
+      if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
+        BAO.views.data.handleCsvFile(file, select.context(BAO.store.getState()));
+      } else if (/\.json$/i.test(file.name) || file.type === 'application/json') {
+        BAO.views.data.handleBackupFile(file);
+      } else {
+        BAO.toast.show('Hier lassen sich Sicherungsdateien (.json) und Wortschatzlisten (.csv) ablegen.');
+      }
+    });
+  }
+
   /* --- Kopfzeile und Fußzeile -------------------------------------------------- */
 
   function applyTheme(theme) {
@@ -14869,6 +17103,7 @@ body { position: relative; }
   function bindChrome() {
     util.on(document, 'click', '[data-action="open-search"]', function () { openSearch(); });
     util.on(document, 'click', '[data-action="open-live"]', function () { openLiveHelp(); });
+    util.on(document, 'click', '[data-action="backup-now"]', function () { backupNow(); });
     util.on(document, 'click', '[data-action="toggle-simple"]', function () {
       var next = !isSimple();
       BAO.store.commit('Ansichtsumfang', function (draft) { draft.settings.simpleMode = next; }, { undoable: false });
@@ -14929,13 +17164,17 @@ body { position: relative; }
           ? ctx.group.name + ' · ' + (ctx.subject ? ctx.subject.name : '') + ' · Jg. ' + ctx.group.grade
           : 'Wortschatz für den Unterricht';
       }
+      renderBackupState();
       if (isQuiet(meta)) return;
       scheduleRender();
     });
 
     bindChrome();
     bindShortcuts();
+    bindFileDrop();
     renderView();
+    renderBackupState();
+    remindBackup();
 
     var storage = BAO.store.storageInfo();
     document.dispatchEvent(new CustomEvent('bao:storage', { detail: storage }));
@@ -14959,6 +17198,7 @@ body { position: relative; }
     projectBank: projectBank,
     projectBoard: projectBoard,
     isSimple: isSimple,
+    backupNow: backupNow,
     applyTheme: applyTheme
   };
 })(window.BAO = window.BAO || {});

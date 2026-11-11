@@ -430,6 +430,12 @@
             });
           }
         }, ui.icon('edit', 15)),
+        h('button.btn.btn--sm.btn--icon', {
+          type: 'button', title: 'Als Bild speichern (PNG)', 'aria-label': 'Als Bild speichern',
+          onclick: function () {
+            BAO.whiteboardImage.savePng(select.whiteboard(BAO.store.getState(), board.id) || board);
+          }
+        }, ui.icon('download', 15)),
         h('button.btn.btn--sm', {
           type: 'button', title: 'Vollbild auf diesem Bildschirm (Taste F)',
           onclick: function () { if (active) active.ctrl.toggleFullscreen(); }

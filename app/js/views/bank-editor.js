@@ -249,57 +249,64 @@
     });
 
     var list = h('div.picker__list');
-    var needle = util.fold(picker.query);
 
-    if (picker.tab === 'lex') {
-      var lexemes = select.lexemesOfGroup(state, ctx.group.id).filter(function (lex) {
-        if (picker.status !== 'all' && lex.status !== picker.status) return false;
-        if (picker.status === 'all' && lex.status === 'archived') return false;
-        if (needle && !BAO.search.matchesLexeme(lex, needle)) return false;
-        return true;
-      }).sort(function (a, b) { return util.fold(a.term).localeCompare(util.fold(b.term), 'de'); });
+    /* Die Trefferliste wird beim Suchen an Ort und Stelle neu gefüllt – das
+       Suchfeld bleibt stehen und behält Fokus und Schreibmarke. */
+    function fillList() {
+      var needle = util.fold(picker.query);
+      util.clear(list);
 
-      if (!lexemes.length) {
-        list.appendChild(h('span.hint', { text: 'Kein passender Eintrag im Bestand.' }));
-      }
-      lexemes.forEach(function (lex) {
-        var used = inBank['lex:' + lex.id];
-        list.appendChild(h('button.picker__item', {
-          type: 'button', dataset: { inBank: used ? 'true' : 'false' },
-          title: used ? 'Bereits in dieser Wortbank' : 'Zum aktiven Abschnitt hinzufügen',
-          onclick: function () { addToActiveSection(bank, 'lex', lex.id, app); }
-        },
-          h('span.plus', { text: used ? '✓' : '+' }),
-          h('span.bitem__label', { title: ui.termLabel(lex) }, ui.termNode(lex),
-            lex.translation ? h('span.bitem__kind', { text: '  ' + lex.translation }) : null),
-          ui.statusChip(lex.status)
-        ));
-      });
-    } else {
-      var starters = select.startersOfGroup(state, ctx.group.id, ctx.subject.id).filter(function (starter) {
-        if (picker.functionId !== 'all' && starter.functionId !== picker.functionId) return false;
-        if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
-        return true;
-      });
-      if (!starters.length) list.appendChild(h('span.hint', { text: 'Kein passender Satzanfang.' }));
-      var byFunction = util.groupBy(starters, function (s) { return s.functionId; });
-      select.functions(state).forEach(function (fn) {
-        var group = byFunction.get(fn.id);
-        if (!group) return;
-        list.appendChild(h('div.palette__group', { text: fn.label }));
-        group.forEach(function (starter) {
-          var used = inBank['starter:' + starter.id];
+      if (picker.tab === 'lex') {
+        var lexemes = select.lexemesOfGroup(state, ctx.group.id).filter(function (lex) {
+          if (picker.status !== 'all' && lex.status !== picker.status) return false;
+          if (picker.status === 'all' && lex.status === 'archived') return false;
+          if (needle && !BAO.search.matchesLexeme(lex, needle)) return false;
+          return true;
+        }).sort(function (a, b) { return util.fold(a.term).localeCompare(util.fold(b.term), 'de'); });
+
+        if (!lexemes.length) {
+          list.appendChild(h('span.hint', { text: 'Kein passender Eintrag im Bestand.' }));
+        }
+        lexemes.forEach(function (lex) {
+          var used = inBank['lex:' + lex.id];
           list.appendChild(h('button.picker__item', {
             type: 'button', dataset: { inBank: used ? 'true' : 'false' },
-            onclick: function () { addToActiveSection(bank, 'starter', starter.id, app); }
+            title: used ? 'Bereits in dieser Wortbank' : 'Zum aktiven Abschnitt hinzufügen',
+            onclick: function () { addToActiveSection(bank, 'lex', lex.id, app); }
           },
             h('span.plus', { text: used ? '✓' : '+' }),
-            h('span.bitem__label', { text: ui.plainStarterText(starter.text) }),
-            ui.variantPips(starter.variant)
+            h('span.bitem__label', { title: ui.termLabel(lex) }, ui.termNode(lex),
+              lex.translation ? h('span.bitem__kind', { text: '  ' + lex.translation }) : null),
+            ui.statusChip(lex.status)
           ));
         });
-      });
+      } else {
+        var starters = select.startersOfGroup(state, ctx.group.id, ctx.subject.id).filter(function (starter) {
+          if (picker.functionId !== 'all' && starter.functionId !== picker.functionId) return false;
+          if (needle && !BAO.search.matchesStarter(starter, needle)) return false;
+          return true;
+        });
+        if (!starters.length) list.appendChild(h('span.hint', { text: 'Kein passender Satzanfang.' }));
+        var byFunction = util.groupBy(starters, function (s) { return s.functionId || ''; });
+        select.functions(state).concat([{ id: '', label: 'ohne Funktion' }]).forEach(function (fn) {
+          var group = byFunction.get(fn.id);
+          if (!group) return;
+          list.appendChild(h('div.palette__group', { text: fn.label }));
+          group.forEach(function (starter) {
+            var used = inBank['starter:' + starter.id];
+            list.appendChild(h('button.picker__item', {
+              type: 'button', dataset: { inBank: used ? 'true' : 'false' },
+              onclick: function () { addToActiveSection(bank, 'starter', starter.id, app); }
+            },
+              h('span.plus', { text: used ? '✓' : '+' }),
+              h('span.bitem__label', { text: ui.plainStarterText(starter.text) }),
+              ui.variantPips(starter.variant)
+            ));
+          });
+        });
+      }
     }
+    fillList();
 
     var activeSection = (bank.sections || []).filter(function (s) {
       return s.id === (activeSectionByBank[bank.id] || (bank.sections[0] && bank.sections[0].id));
@@ -324,7 +331,7 @@
         ),
         h('input', {
           type: 'search', value: picker.query, placeholder: 'Suchen …', 'aria-label': 'Bestand durchsuchen',
-          oninput: function (event) { picker.query = event.target.value; app.scheduleRender(); }
+          oninput: function (event) { picker.query = event.target.value; fillList(); }
         }),
         picker.tab === 'lex'
           ? ui.selectField({
@@ -406,6 +413,16 @@
       ),
       h('div.spacer'),
       h('div.view__actions', {},
+        count ? h('button.btn.btn--sm', {
+          type: 'button', title: 'Als Wortliste oder Vokabeltest drucken',
+          onclick: function () {
+            BAO.print.openWordList({
+              title: bank.title,
+              subtitle: [ctx.subject ? ctx.subject.name : '', ctx.group ? ctx.group.name : ''].filter(Boolean).join(' · '),
+              sections: BAO.stock.sectionsOfBank(BAO.store.getState(), bank)
+            });
+          }
+        }, ui.icon('print', 15), h('span.btn__label', { text: 'Drucken' })) : null,
         h('button.btn.btn--sm', {
           type: 'button', text: 'Duplizieren',
           onclick: function () { BAO.views.banks.duplicate(bank, app); }

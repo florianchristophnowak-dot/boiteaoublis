@@ -1,0 +1,108 @@
+/* ==========================================================================
+   Drucken
+   Das Blatt (Wortliste oder Vokabeltest) sieht in der Vorschau des Dialogs
+   genauso aus wie auf dem Papier: schwarz auf weiß, unabhängig von der
+   gewählten Helligkeit der App.
+   ========================================================================== */
+
+.print-root { display: none; }
+
+.sheet {
+  background: #fff;
+  color: #111;
+  font-family: var(--font-ui);
+  font-size: 12pt;
+  line-height: 1.35;
+}
+
+.sheet__head { margin: 0 0 14pt; }
+.sheet__head h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18pt;
+  font-weight: 650;
+  letter-spacing: 0;
+  color: #111;
+}
+.sheet__sub { margin: 3pt 0 0; font-size: 10pt; color: #555; }
+
+.sheet__name {
+  display: flex;
+  gap: 18pt;
+  margin-top: 14pt;
+  font-size: 11pt;
+  color: #111;
+}
+.sheet__name span {
+  flex: 1 1 0;
+  padding-bottom: 2pt;
+  border-bottom: 0.75pt solid #111;
+  white-space: pre;
+}
+.sheet__name .sheet__points { flex: 0 0 auto; min-width: 96pt; }
+
+.sheet__section { margin: 0 0 14pt; }
+.sheet__section h2 {
+  margin: 0 0 4pt;
+  font-size: 12pt;
+  font-weight: 650;
+  color: #111;
+  break-after: avoid;
+}
+
+.sheet__table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.sheet__table td {
+  padding: 5pt 6pt;
+  border-bottom: 0.5pt solid #b8b8b8;
+  vertical-align: bottom;
+  overflow-wrap: anywhere;
+  color: #111;
+}
+.sheet__table tr { break-inside: avoid; }
+.sheet__no { width: 26pt; color: #666; font-size: 9.5pt; text-align: right; font-variant-numeric: tabular-nums; }
+.sheet__term { font-weight: 600; }
+.sheet__de { color: #111; }
+.sheet__extra { color: #444; font-size: 10.5pt; font-style: italic; }
+
+/* Ein Test braucht Platz zum Schreiben. */
+.sheet[data-mode="recall"] .sheet__table td,
+.sheet[data-mode="recognise"] .sheet__table td { padding-top: 11pt; padding-bottom: 4pt; }
+.sheet[data-mode="recall"] .sheet__term,
+.sheet[data-mode="recognise"] .sheet__term { width: 42%; font-weight: 500; }
+.sheet__blank { border-bottom-color: #111 !important; }
+
+.sheet .gap {
+  display: inline-block;
+  width: 3.2em;
+  border-bottom: 0.9pt solid currentColor;
+  transform: translateY(-1pt);
+}
+
+/* --- Vorschau im Dialog --------------------------------------------------- */
+
+.sheet-preview {
+  max-height: min(44vh, 420px);
+  overflow: auto;
+  padding: var(--sp-4) var(--sp-5);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: inset 0 1px 3px rgba(20, 26, 38, .08);
+}
+.sheet-preview .sheet { font-size: 10.5pt; }
+.sheet-preview .sheet__head h1 { font-size: 14pt; }
+
+/* --- Auf dem Papier -------------------------------------------------------- */
+
+@media print {
+  html.is-printing,
+  html.is-printing body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  html.is-printing body > * { display: none !important; }
+  html.is-printing body > .print-root { display: block !important; }
+  html.is-printing .sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { margin: 16mm 15mm; }
+}

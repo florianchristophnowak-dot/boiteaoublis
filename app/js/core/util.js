@@ -202,8 +202,7 @@
 
   /* --- Dateien ------------------------------------------------------------ */
 
-  function downloadText(filename, text, mime) {
-    var blob = new Blob([text], { type: (mime || 'application/json') + ';charset=utf-8' });
+  function downloadBlob(filename, blob) {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url; a.download = filename;
@@ -211,6 +210,49 @@
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
+  function downloadText(filename, text, mime) {
+    downloadBlob(filename, new Blob([text], { type: (mime || 'application/json') + ';charset=utf-8' }));
+  }
+
+  /** Ein Name, der als Dateiname auf jedem System taugt. */
+  function fileSlug(text, fallback) {
+    var slug = fold(text).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+    return slug || fallback || 'datei';
+  }
+
+  /**
+   * Legt Text in die Zwischenablage. Liefert ein Promise mit true oder false –
+   * auch dort, wo die neue Schnittstelle fehlt (Aufruf als Datei, ältere
+   * Browser): Dann hilft der klassische Weg über ein unsichtbares Textfeld.
+   */
+  function copyText(text) {
+    function legacy() {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.top = '-1000px';
+      area.style.opacity = '0';
+      // Innerhalb eines offenen Dialogs einhängen, sonst hält dieser den Fokus fest.
+      var host = document.querySelector('.modal') || document.body;
+      var previous = document.activeElement;
+      host.appendChild(area);
+      var ok = false;
+      try {
+        area.select();
+        area.setSelectionRange(0, area.value.length);
+        ok = document.execCommand('copy');
+      } catch (err) { ok = false; }
+      host.removeChild(area);
+      if (previous && previous.focus) { try { previous.focus(); } catch (err2) { /* Fokusziel verschwunden */ } }
+      return ok;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext !== false) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return legacy(); });
+    }
+    return Promise.resolve(legacy());
   }
 
   function readFileAsText(file) {
@@ -249,7 +291,8 @@
     plural: plural, formatDate: formatDate, formatDateTime: formatDateTime, relativeDate: relativeDate,
     currentSchoolYear: currentSchoolYear, nextSchoolYear: nextSchoolYear,
     sortBy: sortBy, byOrder: byOrder, groupBy: groupBy, unique: unique, moveInArray: moveInArray,
-    downloadText: downloadText, readFileAsText: readFileAsText, pickFile: pickFile,
+    downloadText: downloadText, downloadBlob: downloadBlob, fileSlug: fileSlug, copyText: copyText,
+    readFileAsText: readFileAsText, pickFile: pickFile,
     prefersReducedMotion: prefersReducedMotion
   };
 })(window.BAO = window.BAO || {});

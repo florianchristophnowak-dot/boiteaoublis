@@ -384,6 +384,12 @@
    * Legt aus einem oder mehreren Textzeilen Elemente an.
    * Jedes Element ist ein gewöhnlicher Eintrag des Bestands und lässt sich
    * später um Artikel, Übersetzung, Beispiel und alles Weitere ergänzen.
+   *
+   * Steht ein Text genau so schon im Bestand der Lerngruppe, wird dieser
+   * Eintrag verwendet. Sonst wüchse der Bestand mit jeder Tafel um Dubletten –
+   * und was am vorhandenen Eintrag ergänzt wurde (Artikel, Übersetzung),
+   * fehlte auf der neuen Tafel. Die Rückgabe trägt in „reused“, wie viele
+   * Elemente auf diese Weise aus dem Bestand kamen.
    */
   function addAt(text, x, y) {
     var lines = String(text || '').split(/\r?\n/).map(function (line) { return line.trim(); })
@@ -391,24 +397,33 @@
     if (!lines.length) return null;
 
     var created = [];
+    var reused = 0;
     var ok = BAO.store.commit(lines.length > 1 ? lines.length + ' Elemente angelegt' : 'Element angelegt', function (draft) {
       var board = select.board(draft, state.boardId);
       if (!board) return false;
       var group = select.group(draft, board.groupId);
       var unit = board.unitId ? select.unit(draft, board.unitId) : select.currentUnit(draft, board.groupId);
       lines.forEach(function (line, index) {
-        var lexeme = schema.makeLexeme({
-          subjectId: board.subjectId,
-          groupId: board.groupId,
-          term: line,
-          status: 'new',
-          introducedUnitId: unit ? unit.id : '',
-          introducedSchoolYear: group ? group.schoolYear : ''
-        });
-        draft.lexemes.push(lexeme);
+        var known = BAO.stock.findEntry(draft, board.groupId, board.subjectId, line);
+        var kind = known ? known.kind : 'lex';
+        var refId = known ? known.ref.id : '';
+        if (known) {
+          reused += 1;
+        } else {
+          var lexeme = schema.makeLexeme({
+            subjectId: board.subjectId,
+            groupId: board.groupId,
+            term: line,
+            status: 'new',
+            introducedUnitId: unit ? unit.id : '',
+            introducedSchoolYear: group ? group.schoolYear : ''
+          });
+          draft.lexemes.push(lexeme);
+          refId = lexeme.id;
+        }
         var item = schema.makeBoardItem({
-          kind: 'lex',
-          refId: lexeme.id,
+          kind: kind,
+          refId: refId,
           // Mehrere Zeilen legen sich versetzt ab, statt sich zu verdecken.
           x: util.clamp(x + index * 0.035, 0.05, 0.95),
           y: util.clamp(y + index * 0.075, 0.06, 0.94)
@@ -419,6 +434,7 @@
       board.updatedAt = util.nowISO();
     });
     if (!ok) return null;
+    created.reused = reused;
     select_(created[created.length - 1] || '');
     emit('added');
     return created;

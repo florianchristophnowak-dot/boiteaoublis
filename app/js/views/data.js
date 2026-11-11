@@ -16,8 +16,73 @@
 
   function exportAll() {
     var payload = BAO.backup.exportToFile(BAO.store.getState());
-    BAO.toast.ok('Sicherung erstellt: ' + payload.counts.lexemes + ' Wortschatzeinträge, '
-      + payload.counts.starters + ' Satzanfänge, ' + payload.counts.banks + ' Wortbanken.');
+    var summary = BAO.stock.describeContent(Object.assign({}, payload.counts, { units: 0 }));
+    BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '')
+      + '. Sie liegt im Download-Ordner – am besten zusätzlich auf einem Stick oder in der Schul-Cloud ablegen.',
+      { timeout: 7000 });
+    return payload;
+  }
+
+  /* --- Stand der Sicherung -------------------------------------------------------- */
+
+  /** Der Hinweis über der Exportschaltfläche: Wie steht es um die Sicherung? */
+  function backupNote(state) {
+    var info = BAO.backup.status(state);
+    if (info.never && !info.dirty) {
+      return h('div.note', { dataset: { backup: 'none' }, text: 'Noch nichts Eigenes zu sichern. Sobald du etwas änderst, lohnt sich eine Sicherungsdatei.' });
+    }
+    if (info.never) {
+      return h('div.note.note--warn', { dataset: { backup: 'never' } },
+        h('strong', { text: 'Es gibt noch keine Sicherungsdatei. ' }),
+        'Alle Daten liegen nur im Speicher dieses Browsers – wird er geleert, sind sie verloren.');
+    }
+    var when = util.formatDateTime(info.last);
+    if (info.due) {
+      return h('div.note.note--warn', { dataset: { backup: 'due' } },
+        h('strong', { text: 'Seit ' + info.unsavedDays + ' Tagen gibt es Änderungen ohne Sicherungsdatei. ' }),
+        'Letzte Sicherungsdatei: ' + when + '.');
+    }
+    if (info.dirty) {
+      return h('div.note', { dataset: { backup: 'open' }, text: 'Letzte Sicherungsdatei: ' + when + '. Seitdem gibt es Änderungen.' });
+    }
+    return h('div.note.note--ok', { dataset: { backup: 'ok' }, text: 'Alles gesichert – Sicherungsdatei vom ' + when + '.' });
+  }
+
+  /** Wie voll ist der Speicher des Browsers? Handschrift braucht am meisten Platz. */
+  function usageNote(storage) {
+    var usage = storage.usage;
+    if (!usage || !storage.available) return null;
+    var percent = Math.round(usage.share * 100);
+    if (usage.share < 0.6) return null;
+    return h('div.note' + (usage.share >= 0.8 ? '.note--warn' : ''), { dataset: { usage: String(percent) } },
+      h('strong', { text: 'Der Speicher des Browsers ist zu etwa ' + percent + ' % gefüllt. ' }),
+      'Am meisten Platz brauchen Whiteboards mit viel Handschrift. Eine Sicherungsdatei erstellen und danach '
+        + 'nicht mehr benötigte Whiteboards löschen schafft Luft.');
+  }
+
+  /* --- Beispieldaten ---------------------------------------------------------------- */
+
+  function removeSamples() {
+    var state = BAO.store.getState();
+    var groups = BAO.stock.sampleGroups(state);
+    if (!groups.length) return Promise.resolve(false);
+    var content = BAO.stock.describeContent(BAO.stock.contentOfGroups(state, groups.map(function (g) { return g.id; })));
+    return BAO.modal.confirm({
+      title: 'Beispieldaten entfernen?',
+      text: 'Entfernt ' + util.plural(groups.length, 'wird die Beispiel-Lerngruppe ', 'werden die Beispiel-Lerngruppen ')
+        + groups.map(function (g) {
+          var subject = select.subject(state, g.subjectId);
+          return g.name + (subject ? ' (' + subject.name + ')' : '');
+        }).join(' und ') + ' mit allem, was dazugehört.',
+      detail: (content ? 'Betroffen: ' + content + '. ' : '')
+        + 'Fächer und eigene Lerngruppen bleiben erhalten. Der Schritt lässt sich mit Strg + Z rückgängig machen.',
+      confirmLabel: 'Beispiele entfernen', danger: true
+    }).then(function (confirmed) {
+      if (!confirmed) return false;
+      BAO.store.commit('Beispieldaten entfernt', function (draft) { BAO.stock.removeSampleData(draft); });
+      BAO.toast.undoable('Die Beispieldaten sind entfernt.');
+      return true;
+    });
   }
 
   function exportCsv(ctx) {
@@ -92,8 +157,10 @@
           label: 'Zusammenführen', kind: 'primary',
           onSelect: function () {
             var merged = BAO.backup.merge(BAO.store.getState(), incoming);
-            BAO.store.replaceState(merged.state, 'Sicherung zusammengeführt');
             var lines = BAO.backup.summariseReport(merged.report);
+            // Der zusammengeführte Bestand steht so in keiner Sicherungsdatei.
+            if (lines.length && !merged.state.meta.unsavedSince) merged.state.meta.unsavedSince = util.nowISO();
+            BAO.store.replaceState(merged.state, 'Sicherung zusammengeführt');
             BAO.toast.undoable(lines.length ? 'Zusammengeführt – ' + lines.join(', ') : 'Nichts Neues gefunden.', { timeout: 12000 });
             return true;
           }
@@ -108,6 +175,10 @@
               confirmLabel: 'Ersetzen', danger: true
             }).then(function (confirmed) {
               if (!confirmed) return false;
+              // Der Bestand entspricht danach genau dieser Datei.
+              if (!incoming.meta.lastBackupAt && result.meta.exportedAt) incoming.meta.lastBackupAt = result.meta.exportedAt;
+              incoming.meta.unsavedSince = '';
+              incoming.meta.changedAt = incoming.meta.changedAt || '';
               BAO.store.replaceState(incoming, 'Sicherung wiederhergestellt');
               BAO.toast.undoable('Bestand aus der Sicherung wiederhergestellt.', { timeout: 12000 });
               return true;
@@ -370,7 +441,7 @@
 
     var dropzone = h('div.dropzone', {},
       h('strong', { text: 'Sicherungsdatei hierher ziehen' }),
-      h('p', { text: 'oder Datei auswählen (.json)' }),
+      h('p', { text: 'oder Datei auswählen (.json) – das Ablegen klappt überall im Fenster' }),
       h('button.btn', {
         type: 'button', text: 'Datei auswählen',
         onclick: function () { util.pickFile('application/json,.json').then(handleBackupFile); }
@@ -396,9 +467,12 @@
       h('div.card', {},
         h('div.card__head', {}, h('h2', { text: 'Sicherung erstellen' })),
         h('div.card__body.stack', {},
+          backupNote(state),
+          usageNote(storage),
           h('p', {
-            text: 'Der Export enthält alle Fächer, Lerngruppen, Reihen, Wortschatzeinträge, Satzanfänge, '
-              + 'Wortbanken, Tafeln und Einstellungen in einer einzigen Datei.'
+            text: 'Die Sicherungsdatei enthält alles in einer einzigen Datei: Fächer, Lerngruppen, Reihen, '
+              + 'Wortschatz, Satzanfänge, Wortbanken, Tafeln, Whiteboards und Einstellungen. '
+              + 'Mit ihr zieht der Bestand auch auf einen anderen Rechner um.'
           }),
           h('dl.kv', {},
             h('dt', { text: 'Fächer' }), h('dd', { text: String(totals.subjects) }),
@@ -406,9 +480,13 @@
             h('dt', { text: 'Wortschatz' }), h('dd', { text: String(totals.lexemes) }),
             h('dt', { text: 'Satzanfänge' }), h('dd', { text: String(totals.starters) }),
             h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) }),
-            h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) })
+            h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) }),
+            h('dt', { text: 'Whiteboards' }), h('dd', { text: String(totals.whiteboards) })
           ),
-          h('button.btn.btn--primary.btn--wide', { type: 'button', text: 'Alle Daten exportieren', onclick: exportAll }),
+          h('button.btn.btn--primary.btn--wide', {
+            type: 'button', title: 'Sicherungsdatei erstellen (Strg + S)', onclick: exportAll
+          }, ui.icon('download', 16), 'Alle Daten exportieren'),
+          h('span.hint', { text: 'Geht von überall mit Strg + S oder einem Klick auf den Sicherungsstand unten in der Fußzeile.' }),
           h('button.btn.btn--wide', {
             type: 'button',
             text: ctx.group ? 'Wortschatz von ' + ctx.group.name + ' als CSV' : 'CSV-Export (Lerngruppe wählen)',
@@ -484,6 +562,7 @@
           h('dt', { text: 'Speicherung' }), h('dd', {
             text: storage.available
               ? 'lokal im Browser (localStorage), etwa ' + Math.round(storage.bytes / 1024) + ' kB'
+                + (storage.usage ? ' – rund ' + Math.max(1, Math.round(storage.usage.share * 100)) + ' % des üblichen Platzes' : '')
               : 'nicht verfügbar – bitte regelmäßig exportieren'
           }),
           h('dt', { text: 'Zuletzt gespeichert' }), h('dd', { text: util.formatDateTime(storage.savedAt) || '–' }),
@@ -492,7 +571,12 @@
           }),
           h('dt', { text: 'Urheber' }), h('dd', { text: '© Florian Nowak' })
         ),
-        h('div.row', { style: { 'margin-top': 'var(--sp-4)' } },
+        h('div.row', { style: { 'margin-top': 'var(--sp-4)', 'flex-wrap': 'wrap' } },
+          BAO.stock.hasSampleData(state) ? h('button.btn.btn--sm', {
+            type: 'button', text: 'Beispieldaten entfernen',
+            title: 'Entfernt die mitgelieferten Beispiel-Lerngruppen – Eigenes bleibt erhalten',
+            onclick: removeSamples
+          }) : null,
           h('button.btn.btn--danger.btn--sm', {
             type: 'button', text: 'Alle lokalen Daten zurücksetzen',
             onclick: function () {
@@ -519,5 +603,8 @@
   }
 
   BAO.views = BAO.views || {};
-  BAO.views.data = { render: render, exportAll: exportAll, handleBackupFile: handleBackupFile };
+  BAO.views.data = {
+    render: render, exportAll: exportAll, removeSamples: removeSamples,
+    handleBackupFile: handleBackupFile, handleCsvFile: handleCsvFile
+  };
 })(window.BAO = window.BAO || {});

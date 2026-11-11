@@ -69,6 +69,32 @@
       label: 'Verwendung (kommunikative Funktion)'
     });
 
+    // Steht derselbe Ausdruck schon im Bestand der Lerngruppe? Dann lieber
+    // den vorhandenen Eintrag ergänzen, als einen zweiten anzulegen.
+    var dialog = null;
+    var twinNote = h('div.note.note--warn.twin-note', { hidden: true, role: 'status' });
+    function checkTwin() {
+      var term = fieldTerm.input.value.trim();
+      var twin = term ? BAO.stock.findLexeme(BAO.store.getState(), data.groupId,
+        ui.termLabel({ term: term, article: fieldArticle.input.value.trim() }), data.id) : null;
+      util.clear(twinNote);
+      twinNote.hidden = !twin;
+      if (!twin) return;
+      twinNote.appendChild(h('span', {
+        text: '„' + ui.termLabel(twin) + '“ steht schon im Bestand dieser Lerngruppe'
+          + (twin.translation ? ' (' + twin.translation + ')' : '') + '.'
+      }));
+      twinNote.appendChild(h('button.btn.btn--sm', {
+        type: 'button', text: 'Vorhandenen Eintrag öffnen',
+        onclick: function () {
+          if (dialog) dialog.close(null);
+          openEditor(select.lexeme(BAO.store.getState(), twin.id));
+        }
+      }));
+    }
+    fieldTerm.input.addEventListener('input', checkTwin);
+    fieldArticle.input.addEventListener('input', checkTwin);
+
     function collect() {
       return {
         term: fieldTerm.input.value.trim(),
@@ -124,6 +150,7 @@
             groupId: data.groupId, subjectId: data.subjectId,
             introducedUnitId: values.introducedUnitId, status: values.status
           });
+          checkTwin();
           fieldTerm.input.focus();
           return false;
         }
@@ -145,15 +172,19 @@
       subtitle: 'Pflichtfeld ist nur das Zielwort. Alles andere ist optional – und wird nur projiziert, wenn es gebraucht wird.',
       width: '720px',
       initialFocus: 'input',
-      body: h('div.stack', {},
-        h('div.grid2.entry-form', {}, fieldTerm, fieldArticle, fieldTranslation, fieldGram,
-          fieldCollocation, fieldChunk, fieldExplanation, fieldExample),
-        h('details.form-more', { open: isNew ? null : true },
-          h('summary', { text: 'Weitere Angaben: Aussprache, Themen, Status, Reihe' }),
-          h('div.grid2.entry-form', {}, fieldCefr, fieldFunction, fieldStatus, fieldUnit,
-            fieldTopics, fieldTags, fieldPronunciation)
-        )
-      ),
+      body: function (api) {
+        dialog = api;
+        return h('div.stack', {},
+          h('div.grid2.entry-form', {}, fieldTerm, fieldArticle, fieldTranslation, fieldGram,
+            fieldCollocation, fieldChunk, fieldExplanation, fieldExample),
+          twinNote,
+          h('details.form-more', { open: isNew ? null : true },
+            h('summary', { text: 'Weitere Angaben: Aussprache, Themen, Status, Reihe' }),
+            h('div.grid2.entry-form', {}, fieldCefr, fieldFunction, fieldStatus, fieldUnit,
+              fieldTopics, fieldTags, fieldPronunciation)
+          )
+        );
+      },
       actions: actions
     });
   }
@@ -173,13 +204,39 @@
     var fieldStatus = ui.selectField({ label: 'Status für alle', value: 'new', options: ui.statusOptions() });
     var fieldUnit = ui.selectField({ label: 'Reihe', value: unitId || '', options: ui.unitOptions(state, groupId) });
 
-    function parsed() { return BAO.csv.parseQuickLines(area.value); }
+    /* Was schon im Bestand steht (oder in den Zeilen doppelt vorkommt), wird
+       nicht noch einmal angelegt – beim Einfügen aus einer Liste passiert
+       das schnell. */
+    function parsed() {
+      var current = BAO.store.getState();
+      var seen = Object.create(null);
+      var result = { fresh: [], known: [] };
+      BAO.csv.parseQuickLines(area.value).forEach(function (row) {
+        var key = BAO.stock.normalize(row.term);
+        if (seen[key] || BAO.stock.findLexeme(current, groupId, row.term)) { result.known.push(row); return; }
+        seen[key] = true;
+        result.fresh.push(row);
+      });
+      return result;
+    }
+
+    function knownNote(known) {
+      return h('span.hint', {
+        dataset: { role: 'known' },
+        text: known.length + ' ' + util.plural(known.length, 'Zeile steht', 'Zeilen stehen')
+          + ' schon im Bestand und ' + util.plural(known.length, 'wird', 'werden') + ' übersprungen: '
+          + known.slice(0, 4).map(function (row) { return row.term; }).join(', ')
+          + (known.length > 4 ? ' …' : '')
+      });
+    }
 
     function refresh() {
-      var rows = parsed();
+      var found = parsed();
+      var rows = found.fresh;
       util.clear(preview);
       if (!rows.length) {
-        preview.appendChild(h('span.hint', { text: 'Noch nichts erkannt.' }));
+        preview.appendChild(h('span.hint', { text: found.known.length ? 'Nichts Neues erkannt.' : 'Noch nichts erkannt.' }));
+        if (found.known.length) preview.appendChild(knownNote(found.known));
         return;
       }
       preview.appendChild(h('strong', { text: rows.length + ' ' + util.plural(rows.length, 'Eintrag', 'Einträge') + ' erkannt:' }));
@@ -191,6 +248,7 @@
         ));
       });
       if (rows.length > 6) preview.appendChild(h('span.hint', { text: '… und ' + (rows.length - 6) + ' weitere.' }));
+      if (found.known.length) preview.appendChild(knownNote(found.known));
     }
 
     area.addEventListener('input', refresh);
@@ -210,12 +268,13 @@
         {
           label: 'Einträge anlegen', kind: 'primary',
           onSelect: function () {
-            var rows = parsed();
-            if (!rows.length) return false;
+            var found = parsed();
+            var rows = found.fresh;
+            if (!rows.length) { area.focus(); return false; }
             var status = util.$('select', fieldStatus).value;
             var selectedUnit = util.$('select', fieldUnit).value;
             var unit = selectedUnit ? select.unit(BAO.store.getState(), selectedUnit) : null;
-            BAO.store.commit(rows.length + ' Einträge angelegt', function (draft) {
+            BAO.store.commit(rows.length + ' ' + util.plural(rows.length, 'Eintrag', 'Einträge') + ' angelegt', function (draft) {
               rows.forEach(function (row) {
                 draft.lexemes.push(schema.makeLexeme({
                   groupId: groupId, subjectId: subjectId,
@@ -225,7 +284,9 @@
                 }));
               });
             });
-            BAO.toast.undoable(rows.length + ' Einträge angelegt.');
+            BAO.toast.undoable(rows.length + ' ' + util.plural(rows.length, 'Eintrag', 'Einträge') + ' angelegt'
+              + (found.known.length ? ', ' + found.known.length + ' schon '
+                + util.plural(found.known.length, 'vorhandener', 'vorhandene') + ' übersprungen.' : '.'));
             return true;
           }
         }
@@ -311,6 +372,98 @@
     });
   }
 
+  /* --- Auf eine Tafel legen ---------------------------------------------------- */
+
+  /**
+   * Legt Einträge aus dem Bestand auf eine Tafel der Lerngruppe – der kurze
+   * Weg von der Vokabelliste zur Stunde.
+   */
+  function openPlaceOnBoard(ids, ctx) {
+    var state = BAO.store.getState();
+    var boards = select.boardsOfGroup(state, ctx.group.id);
+    var boardSelect = ui.selectField({
+      label: 'Tafel',
+      value: boards.length ? boards[0].id : '__new',
+      options: boards.map(function (b) {
+        return { value: b.id, label: b.title + ' (' + (b.items || []).length + ')' };
+      }).concat([{ value: '__new', label: '+ Neue Tafel anlegen' }])
+    });
+    var titleField = ui.textField({ label: 'Titel der neuen Tafel', value: ctx.unit ? ctx.unit.title : 'Neue Tafel' });
+    function refresh() { titleField.hidden = util.$('select', boardSelect).value !== '__new'; }
+    util.$('select', boardSelect).addEventListener('change', refresh);
+    refresh();
+
+    function place(open) {
+      var value = util.$('select', boardSelect).value;
+      var outcome = null;
+      var boardId = '';
+      var title = '';
+      BAO.store.commit('Einträge auf die Tafel gelegt', function (draft) {
+        var board;
+        if (value === '__new') {
+          board = schema.makeBoard({
+            groupId: ctx.group.id, subjectId: ctx.subject.id,
+            unitId: ctx.unit ? ctx.unit.id : '',
+            title: titleField.input.value.trim() || 'Neue Tafel'
+          });
+          draft.boards.push(board);
+        } else {
+          board = select.board(draft, value);
+        }
+        if (!board) return false;
+        outcome = BAO.stock.placeOnBoard(draft, board, ids.map(function (id) { return { kind: 'lex', id: id }; }));
+        boardId = board.id;
+        title = board.title;
+        if (!outcome.added && value !== '__new') return false;
+      });
+      if (!outcome) return false;
+      if (!outcome.added) {
+        BAO.toast.show(util.plural(ids.length, 'Der Eintrag liegt', 'Alle Einträge liegen') + ' schon auf „' + title + '“.');
+        return true;
+      }
+      BAO.toast.undoable(outcome.added + ' ' + util.plural(outcome.added, 'Eintrag', 'Einträge')
+        + ' auf „' + title + '“ gelegt'
+        + (outcome.skipped ? ', ' + outcome.skipped + ' ' + util.plural(outcome.skipped, 'lag', 'lagen') + ' schon dort.' : '.'));
+      clearSelection();
+      if (open) BAO.app.go('tafel/' + boardId); else BAO.app.scheduleRender();
+      return true;
+    }
+
+    return BAO.modal.open({
+      title: ids.length + ' ' + util.plural(ids.length, 'Eintrag', 'Einträge') + ' auf eine Tafel legen',
+      subtitle: 'Die Einträge erscheinen als verschiebbare Elemente. Was schon auf der Tafel liegt, kommt nicht doppelt.',
+      width: '520px',
+      body: h('div.stack', {}, boardSelect, titleField),
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        { label: 'Auflegen', onSelect: function () { return place(false); } },
+        { label: 'Auflegen und Tafel öffnen', kind: 'primary', onSelect: function () { return place(true); } }
+      ]
+    });
+  }
+
+  /* --- Drucken und kopieren ------------------------------------------------------ */
+
+  function printLexemes(lexemes, ctx) {
+    BAO.print.openWordList({
+      title: 'Wortschatz ' + ctx.group.name,
+      subtitle: ctx.subject.name + (ctx.unit ? ' · ' + ctx.unit.title : ''),
+      sections: [{ title: '', rows: BAO.stock.rowsOfLexemes(lexemes) }]
+    });
+  }
+
+  function copyLexemes(lexemes) {
+    var text = BAO.stock.rowsToText([{ title: '', rows: BAO.stock.rowsOfLexemes(lexemes) }]);
+    util.copyText(text).then(function (ok) {
+      if (ok) {
+        BAO.toast.ok(lexemes.length + ' ' + util.plural(lexemes.length, 'Eintrag', 'Einträge')
+          + ' kopiert – einfügen in Textverarbeitung, Tabelle oder Lernplattform.');
+      } else {
+        BAO.toast.error('Der Browser hat das Kopieren nicht erlaubt.');
+      }
+    });
+  }
+
   /* --- Löschen ---------------------------------------------------------------- */
 
   function deleteLexemes(ids) {
@@ -383,7 +536,7 @@
     });
   }
 
-  function lexemeRow(state, lex, ctx, app) {
+  function lexemeRow(state, lex, ctx, onPick) {
     var info = schema.statusInfo(lex.status);
     var unit = lex.introducedUnitId ? select.unit(state, lex.introducedUnitId) : null;
 
@@ -396,7 +549,8 @@
         checked: selection[lex.id] ? true : null,
         onchange: function (event) {
           selection[lex.id] = event.target.checked;
-          BAO.app.scheduleRender();
+          row.dataset.selected = event.target.checked ? 'true' : 'false';
+          onPick();
         }
       }),
       h('div.lex__mid', {},
@@ -417,6 +571,10 @@
       ),
       h('div.lex__actions', {},
         h('button.btn.btn--ghost.btn--sm.btn--icon', {
+          type: 'button', title: 'Auf eine Tafel legen', 'aria-label': 'Auf eine Tafel legen',
+          onclick: function () { openPlaceOnBoard([lex.id], ctx); }
+        }, ui.icon('beamer', 15)),
+        BAO.app.isSimple() ? null : h('button.btn.btn--ghost.btn--sm.btn--icon', {
           type: 'button', title: 'In eine Wortbank übernehmen',
           onclick: function () { openAddToBank([lex.id], 'lex', ctx.group.id, ctx.subject.id); }
         }, ui.icon('grid', 15)),
@@ -457,7 +615,10 @@
 
     var all = select.lexemesOfGroup(state, ctx.group.id);
     var counts = select.statusCounts(state, ctx.group.id);
-    var visible = applyFilters(state, all);
+    var visible = [];
+    var listHost = h('div.lex-host');
+    var bulkHost = h('div.bulk-host');
+    var allBox = null;
 
     // Vorausgewählter Eintrag aus der Schnellsuche
     if (context.params[0]) {
@@ -475,6 +636,10 @@
       ),
       h('div.spacer'),
       h('div.view__actions', {},
+        all.length ? h('button.btn.btn--sm', {
+          type: 'button', title: 'Die angezeigten Einträge als Wortliste oder Vokabeltest drucken',
+          onclick: function () { printLexemes(visible, ctx); }
+        }, ui.icon('print', 15), h('span.btn__label', { text: 'Drucken' })) : null,
         h('button.btn.btn--sm', {
           type: 'button', text: 'Mehrere Zeilen einfügen',
           onclick: function () { openQuickAdd(ctx.group.id, ctx.subject.id, ctx.unit ? ctx.unit.id : ''); }
@@ -495,7 +660,9 @@
     var searchInput = h('input', {
       type: 'search', value: filters.query, placeholder: 'Im Bestand suchen …',
       'aria-label': 'Wortschatz durchsuchen',
-      oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
+      // Nur die Liste wird neu gezeichnet – das Feld selbst bleibt stehen,
+      // behält Fokus und Schreibmarke, und nichts geht beim Tippen verloren.
+      oninput: function (event) { filters.query = event.target.value; drawList(); }
     });
 
     var statusButtons = h('div.filterbar', {});
@@ -543,39 +710,93 @@
     );
     view.appendChild(toolbar);
 
-    /* --- Liste ------------------------------------------------------------- */
-    if (!all.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Der Bestand ist noch leer',
-        text: 'Lege einzelne Einträge an oder füge mehrere Zeilen auf einmal ein. '
-          + 'Ein Eintrag braucht nur ein Zielwort – alles Weitere kann später dazukommen.',
-        actionLabel: 'Ersten Eintrag anlegen',
-        onAction: function () {
-          openEditor(null, { groupId: ctx.group.id, subjectId: ctx.subject.id, unitId: ctx.unit ? ctx.unit.id : '' });
-        },
-        secondaryLabel: 'Mehrere Zeilen einfügen',
-        onSecondary: function () { openQuickAdd(ctx.group.id, ctx.subject.id, ctx.unit ? ctx.unit.id : ''); }
-      }));
-    } else if (!visible.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Kein Treffer',
-        text: 'Zu dieser Kombination aus Suche und Filtern gibt es keinen Eintrag.',
-        actionLabel: 'Filter zurücksetzen',
-        onAction: function () {
-          filters = { query: '', status: 'all', unitId: 'all', topic: 'all', sort: filters.sort };
-          app.scheduleRender();
+    /* --- Liste -------------------------------------------------------------
+       Liste und Sammelleiste werden an Ort und Stelle gezeichnet: Beim Suchen
+       und beim Ankreuzen bleibt der Rest der Ansicht unangetastet. */
+    function syncAllBox() {
+      if (!allBox) return;
+      var picked = visible.filter(function (lex) { return selection[lex.id]; }).length;
+      allBox.checked = !!visible.length && picked === visible.length;
+      allBox.indeterminate = picked > 0 && picked < visible.length;
+    }
+
+    function onPick() { syncAllBox(); drawBulk(); }
+
+    function drawList() {
+      visible = applyFilters(state, all);
+      allBox = null;
+      util.clear(listHost);
+      if (!all.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Der Bestand ist noch leer',
+          text: 'Lege einzelne Einträge an oder füge mehrere Zeilen auf einmal ein. '
+            + 'Ein Eintrag braucht nur ein Zielwort – alles Weitere kann später dazukommen.',
+          actionLabel: 'Ersten Eintrag anlegen',
+          onAction: function () {
+            openEditor(null, { groupId: ctx.group.id, subjectId: ctx.subject.id, unitId: ctx.unit ? ctx.unit.id : '' });
+          },
+          secondaryLabel: 'Mehrere Zeilen einfügen',
+          onSecondary: function () { openQuickAdd(ctx.group.id, ctx.subject.id, ctx.unit ? ctx.unit.id : ''); }
+        }));
+        return;
+      }
+      if (!visible.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Kein Treffer',
+          text: 'Zu dieser Kombination aus Suche und Filtern gibt es keinen Eintrag.',
+          actionLabel: 'Filter zurücksetzen',
+          onAction: function () {
+            filters = { query: '', status: 'all', unitId: 'all', topic: 'all', sort: filters.sort };
+            app.scheduleRender();
+          }
+        }));
+        return;
+      }
+      var allId = util.uid('all');
+      allBox = h('input', {
+        type: 'checkbox', id: allId,
+        onchange: function (event) {
+          var checked = event.target.checked;
+          visible.forEach(function (lex) { selection[lex.id] = checked; });
+          util.$$('.lex', listHost).forEach(function (row) {
+            row.dataset.selected = checked ? 'true' : 'false';
+            util.$('input[type="checkbox"]', row).checked = checked;
+          });
+          onPick();
         }
-      }));
-    } else {
+      });
+      listHost.appendChild(h('div.lex-all', {},
+        allBox,
+        h('label', { for: allId, text: 'Alle angezeigten auswählen' }),
+        h('span.spacer'),
+        h('span.hint', {
+          text: visible.length === all.length
+            ? all.length + ' ' + util.plural(all.length, 'Eintrag', 'Einträge')
+            : visible.length + ' von ' + all.length + ' Einträgen'
+        })
+      ));
       var list = h('div.lex-list');
-      visible.forEach(function (lex) { list.appendChild(lexemeRow(state, lex, ctx, app)); });
-      view.appendChild(list);
+      visible.forEach(function (lex) { list.appendChild(lexemeRow(state, lex, ctx, onPick)); });
+      listHost.appendChild(list);
+      syncAllBox();
     }
 
     /* --- Sammelaktionen ----------------------------------------------------- */
-    var chosen = selectedIds();
-    if (chosen.length) {
-      view.appendChild(h('div.bulkbar', {},
+    function chosenLexemes() {
+      // In der angezeigten Reihenfolge; Ausgewähltes außerhalb des Filters folgt danach.
+      var seen = {};
+      var list = visible.filter(function (lex) { return selection[lex.id]; });
+      list.forEach(function (lex) { seen[lex.id] = true; });
+      all.forEach(function (lex) { if (selection[lex.id] && !seen[lex.id]) list.push(lex); });
+      return list;
+    }
+
+    function drawBulk() {
+      util.clear(bulkHost);
+      var picked = chosenLexemes();
+      var chosen = picked.map(function (lex) { return lex.id; });
+      if (!chosen.length) return;
+      bulkHost.appendChild(h('div.bulkbar', {},
         h('strong', { text: chosen.length + ' ausgewählt' }),
         ui.selectField({
           value: '', ariaLabel: 'Status setzen',
@@ -589,8 +810,23 @@
           }
         }),
         h('button.btn.btn--sm', {
+          type: 'button', text: 'Auf eine Tafel',
+          title: 'Die ausgewählten Einträge auf eine Tafel legen',
+          onclick: function () { openPlaceOnBoard(chosen, ctx); }
+        }),
+        BAO.app.isSimple() ? null : h('button.btn.btn--sm', {
           type: 'button', text: 'In Wortbank',
           onclick: function () { openAddToBank(chosen, 'lex', ctx.group.id, ctx.subject.id); }
+        }),
+        h('button.btn.btn--sm', {
+          type: 'button', text: 'Drucken',
+          title: 'Als Wortliste oder Vokabeltest drucken',
+          onclick: function () { printLexemes(picked, ctx); }
+        }),
+        h('button.btn.btn--sm', {
+          type: 'button', text: 'Kopieren',
+          title: 'Als Text in die Zwischenablage – für Arbeitsblatt oder Lernplattform',
+          onclick: function () { copyLexemes(picked); }
         }),
         h('button.btn.btn--sm', {
           type: 'button', text: 'Löschen',
@@ -604,6 +840,11 @@
       ));
     }
 
+    drawList();
+    drawBulk();
+    view.appendChild(listHost);
+    view.appendChild(bulkHost);
+
     host.appendChild(view);
   }
 
@@ -612,6 +853,7 @@
     render: render,
     openEditor: openEditor,
     openQuickAdd: openQuickAdd,
-    openAddToBank: openAddToBank
+    openAddToBank: openAddToBank,
+    openPlaceOnBoard: openPlaceOnBoard
   };
 })(window.BAO = window.BAO || {});
