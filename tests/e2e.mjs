@@ -1952,6 +1952,542 @@ async function run() {
   });
   check('Suche ist akzentunempfindlich („experience“ findet „l’expérience“)', foldSearch);
 
+  /* --- 14b. Lehreralltag ---------------------------------------------------- */
+  section('14b. Lehreralltag: suchen, sichern, weitergeben');
+  // Eigener Block: Die Namen hier stoßen mit keiner anderen Prüfung zusammen.
+  {
+    // Ein frischer, bekannter Bestand – unabhängig von allem, was davor geschah.
+    await page.evaluate(() => {
+      const fresh = BAO.schema.emptyState();
+      BAO.seed.fill(fresh);
+      fresh.settings.simpleMode = false;
+      BAO.store.replaceState(fresh, 'Test: frischer Bestand');
+      BAO.app.setContext('sub_fr', 'grp_fr9b');
+      BAO.app.go('wortschatz');
+    });
+    await page.waitForTimeout(300);
+    const clearToasts = () => page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()));
+    const focusLabel = () => page.evaluate(() => document.activeElement && document.activeElement.getAttribute('aria-label'));
+
+    // Suchfelder: Zeichen für Zeichen tippen, ohne dass der Fokus verloren geht
+    const allRows = await page.locator('.lex').count();
+    await page.click('input[aria-label="Wortschatz durchsuchen"]');
+    await page.keyboard.type('stage', { delay: 25 });
+    await page.waitForTimeout(150);
+    check('Wortschatz: Suchfeld nimmt das ganze Wort an',
+      (await page.inputValue('input[aria-label="Wortschatz durchsuchen"]')) === 'stage');
+    check('Wortschatz: Suchfeld behält den Fokus', (await focusLabel()) === 'Wortschatz durchsuchen', String(await focusLabel()));
+    const foundRows = await page.locator('.lex').count();
+    check('Wortschatz: Liste wird beim Tippen gefiltert', foundRows >= 1 && foundRows < allRows, foundRows + ' von ' + allRows);
+
+    // Sicherheitsnetz: Ein Neuaufbau der Ansicht nimmt dem Textfeld weder Fokus noch Schreibmarke.
+    await page.evaluate(() => BAO.store.commit('Test: Neuaufbau', (d) => { d.lexemes[0].updatedAt = BAO.util.nowISO(); }));
+    await page.waitForTimeout(200);
+    const kept = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { label: el.getAttribute('aria-label'), value: el.value, caret: el.selectionStart };
+    });
+    check('Neuaufbau der Ansicht lässt Fokus und Schreibmarke im Textfeld',
+      kept.label === 'Wortschatz durchsuchen' && kept.value === 'stage' && kept.caret === 5, JSON.stringify(kept));
+    await page.fill('input[aria-label="Wortschatz durchsuchen"]', '');
+    await page.waitForTimeout(120);
+
+    for (const [route, label, word] of [
+      ['satzanfaenge', 'Satzanfänge durchsuchen', 'avis'],
+      ['wortbanken', 'Wortbanken durchsuchen', 'stage'],
+      ['wortbank/bnk_fr_stage', 'Bestand durchsuchen', 'entre'],
+      ['tafel/brd_fr_stage', 'Im Bestand suchen', 'stage']
+    ]) {
+      await page.evaluate((r) => BAO.app.go(r), route);
+      await page.waitForTimeout(350);
+      await page.click('input[aria-label="' + label + '"]');
+      await page.keyboard.type(word, { delay: 25 });
+      await page.waitForTimeout(150);
+      const typed = await page.inputValue('input[aria-label="' + label + '"]');
+      check('Suchfeld „' + label + '“ bleibt beim Tippen stehen (' + route.split('/')[0] + ')',
+        typed === word && (await focusLabel()) === label, typed);
+      await page.fill('input[aria-label="' + label + '"]', '');
+    }
+
+    // Enter bestätigt Dialoge
+    await page.click('button[title="Titel ändern"]');
+    await page.waitForSelector('.modal input');
+    await page.fill('.modal input', 'Umbenannt per Enter');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(250);
+    check('Enter bestätigt eine einfache Eingabe',
+      await page.evaluate(() => BAO.store.getState().boards.find((b) => b.id === 'brd_fr_stage').title === 'Umbenannt per Enter')
+      && (await page.locator('.modal').count()) === 0);
+
+    await page.evaluate(() => BAO.app.go('wortschatz'));
+    await page.waitForTimeout(250);
+    await page.click('button:has-text("Neuer Eintrag")');
+    await page.waitForSelector('.modal');
+    await page.fill('.modal input >> nth=0', 'le test d’entrée');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(250);
+    check('Enter speichert einen neuen Eintrag',
+      await page.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'le test d’entrée'))
+      && (await page.locator('.modal').count()) === 0);
+
+    // Dubletten: Hinweis im Formular, Überspringen beim Einfügen, Wiederverwenden auf der Tafel
+    await clearToasts();
+    await page.click('button:has-text("Neuer Eintrag")');
+    await page.waitForSelector('.modal');
+    await page.fill('.modal input >> nth=0', 'stage');
+    await page.waitForTimeout(120);
+    const twin = await page.evaluate(() => {
+      const note = document.querySelector('.modal .twin-note');
+      return note && !note.hidden ? note.textContent : '';
+    });
+    check('Formular weist auf den vorhandenen Eintrag hin', twin.includes('le stage'), twin);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+
+    const stageCount = () => page.evaluate(() => BAO.store.getState().lexemes
+      .filter((l) => l.groupId === 'grp_fr9b' && BAO.ui.termLabel(l) === 'le stage').length);
+    await page.click('button:has-text("Mehrere Zeilen einfügen")');
+    await page.waitForSelector('.modal textarea');
+    await page.fill('.modal textarea', 'le stage = das Praktikum\nle test unique = der Einzeltest');
+    await page.waitForTimeout(120);
+    check('Mehrere Zeilen: Vorhandenes wird angekündigt',
+      (await page.locator('.modal [data-role="known"]').count()) === 1);
+    await page.click('.modal button:has-text("Einträge anlegen")');
+    await page.waitForTimeout(250);
+    check('Mehrere Zeilen: Vorhandenes wird übersprungen, Neues angelegt',
+      (await stageCount()) === 1
+      && await page.evaluate(() => BAO.store.getState().lexemes.some((l) => l.term === 'le test unique')),
+      String(await stageCount()));
+
+    const noTwin = await page.evaluate(() => {
+      const before = BAO.store.getState().lexemes.length;
+      BAO.board.start('brd_fr_stage');
+      const created = BAO.board.add('le stage');
+      return { grown: BAO.store.getState().lexemes.length - before, reused: created ? created.reused : -1 };
+    });
+    check('Tafel: Ein getipptes Wort aus dem Bestand erzeugt keine Dublette',
+      noTwin.grown === 0 && noTwin.reused === 1, JSON.stringify(noTwin));
+
+    // Lerngruppe löschen nimmt Tafeln und Whiteboards mit
+    const removal = await page.evaluate(() => {
+      BAO.store.commit('Test: Gruppe mit Inhalt', (d) => {
+        d.groups.push(BAO.schema.makeGroup({ id: 'grp_test_weg', subjectId: 'sub_fr', name: '8x', grade: 8 }));
+        d.boards.push(BAO.schema.makeBoard({ id: 'brd_test_weg', subjectId: 'sub_fr', groupId: 'grp_test_weg', title: 'weg' }));
+        d.whiteboards.push(BAO.schema.makeWhiteboard({ id: 'wbd_test_weg', subjectId: 'sub_fr', groupId: 'grp_test_weg', title: 'weg' }));
+      });
+      const text = BAO.stock.describeContent(BAO.stock.contentOfGroups(BAO.store.getState(), ['grp_test_weg']));
+      BAO.store.commit('Test: Gruppe gelöscht', (d) => { BAO.stock.removeGroups(d, ['grp_test_weg']); });
+      const s = BAO.store.getState();
+      return {
+        text,
+        orphans: s.boards.filter((b) => b.groupId === 'grp_test_weg').length
+          + s.whiteboards.filter((w) => w.groupId === 'grp_test_weg').length
+      };
+    });
+    check('Rückfrage vor dem Löschen nennt Tafeln und Whiteboards',
+      removal.text.includes('1 Tafel') && removal.text.includes('1 Whiteboard'), removal.text);
+    check('Gelöschte Lerngruppe hinterlässt keine verwaisten Tafeln oder Whiteboards', removal.orphans === 0);
+
+    // Sicherung: Stand in der Fußzeile, Strg + S, Vermerk in der Datei
+    await page.evaluate(() => BAO.app.go('wortschatz'));
+    await page.waitForTimeout(200);
+    check('Fußzeile zeigt ungesicherte Änderungen',
+      (await page.getAttribute('[data-bind="backup-state"]', 'data-backup')) === 'open');
+    const [backupFile] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Control+s')]);
+    const backupJson = JSON.parse(await readFile(await backupFile.path(), 'utf8'));
+    check('Strg + S erstellt die Sicherungsdatei', /\.json$/.test(backupFile.suggestedFilename()), backupFile.suggestedFilename());
+    check('Sicherungsdatei enthält Tafeln und Whiteboards und ihren Zeitpunkt',
+      backupJson.data.boards.length >= 1 && backupJson.data.whiteboards.length >= 1 && !!backupJson.data.meta.lastBackupAt);
+    await page.waitForTimeout(200);
+    check('Fußzeile meldet danach: gesichert',
+      (await page.getAttribute('[data-bind="backup-state"]', 'data-backup')) === 'ok'
+      && (await page.textContent('[data-bind="backup-state"]')).startsWith('Sicherungsdatei'),
+      await page.textContent('[data-bind="backup-state"]'));
+    await page.evaluate(() => BAO.app.go('daten'));
+    await page.waitForTimeout(250);
+    check('Datenansicht bestätigt den Stand der Sicherung',
+      (await page.locator('.card .note[data-backup="ok"]').count()) === 1);
+    check('Datenansicht zählt auch die Whiteboards',
+      (await page.textContent('.data-grid')).includes('Whiteboards'));
+
+    const due = await page.evaluate(() => {
+      const day = 864e5;
+      const at = (days) => new Date(Date.now() - days * day).toISOString();
+      return {
+        fresh: BAO.backup.status({ meta: { lastBackupAt: at(30), unsavedSince: at(2) } }).due,
+        old: BAO.backup.status({ meta: { lastBackupAt: at(30), unsavedSince: at(8) } }).due,
+        clean: BAO.backup.status({ meta: { lastBackupAt: at(30), unsavedSince: '' } }).due
+      };
+    });
+    check('Erinnerung erst nach einer Woche ungesicherter Änderungen', !due.fresh && due.old && !due.clean, JSON.stringify(due));
+
+    const track = await page.evaluate(() => {
+      BAO.store.commit('Test: vor der Sicherung', (d) => { d.lexemes[0].gram = 'pl. test'; });
+      BAO.backup.markBackedUp('2030-01-01T10:00:00.000Z');
+      BAO.store.undo();
+      const info = BAO.backup.status(BAO.store.getState());
+      return { last: info.last, dirty: info.dirty };
+    });
+    check('Rückgängig nach dem Sichern: Datei bleibt die jüngste, Bestand gilt als geändert',
+      track.last === '2030-01-01T10:00:00.000Z' && track.dirty, JSON.stringify(track));
+
+    // Erinnerung beim Start – einmal am Tag
+    await page.evaluate(() => {
+      BAO.store.commit('Test: alte Änderungen', (d) => {
+        d.meta.lastBackupAt = new Date(Date.now() - 30 * 864e5).toISOString();
+        d.meta.unsavedSince = new Date(Date.now() - 9 * 864e5).toISOString();
+      }, { undoable: false });
+      BAO.store.flush();
+    });
+    await page.reload();
+    await page.waitForFunction(() => window.BAO && window.BAO.store && window.BAO.store.getState());
+    await page.waitForTimeout(350);
+    const reminder = await page.evaluate(() => Array.from(document.querySelectorAll('.toast')).map((t) => t.textContent).join(' | '));
+    check('Beim Start erinnert die App an die fällige Sicherung',
+      reminder.includes('ohne Sicherungsdatei') && reminder.includes('Jetzt sichern'), reminder);
+    check('Fußzeile hebt die fällige Sicherung hervor',
+      (await page.getAttribute('[data-bind="backup-state"]', 'data-backup')) === 'due');
+    await page.evaluate(() => BAO.store.flush());
+    await page.reload();
+    await page.waitForFunction(() => window.BAO && window.BAO.store && window.BAO.store.getState());
+    await page.waitForTimeout(350);
+    check('Die Erinnerung kommt nur einmal am Tag',
+      (await page.evaluate(() => Array.from(document.querySelectorAll('.toast')).filter((t) => t.textContent.includes('Sicherungsdatei')).length)) === 0);
+    await page.evaluate(() => BAO.backup.markBackedUp());
+
+    // Eine Sicherungsdatei lässt sich überall ins Fenster ziehen
+    await page.evaluate(() => BAO.app.go('wortschatz'));
+    await page.waitForTimeout(250);
+    await page.evaluate(() => {
+      const json = JSON.stringify(BAO.backup.buildExport(BAO.store.getState()));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([json], 'sicherung.json', { type: 'application/json' }));
+      document.querySelector('#view').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    });
+    await page.waitForSelector('.modal', { timeout: 5000 });
+    check('Abgelegte Sicherungsdatei öffnet den Import – auch außerhalb der Datenansicht',
+      (await page.textContent('.modal')).includes('Zusammenführen'));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(['Zielwort;Deutsch\nle dossier;die Akte\n'], 'liste.csv', { type: 'text/csv' }));
+      document.querySelector('#view').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    });
+    await page.waitForSelector('.modal', { timeout: 5000 });
+    check('Abgelegte CSV-Liste öffnet den Wortschatz-Import',
+      (await page.textContent('.modal')).includes('le dossier'));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+
+    // Auswählen, drucken, kopieren
+    await clearToasts();
+    await page.check('.lex-all input');
+    await page.waitForTimeout(120);
+    const listed = await page.locator('.lex').count();
+    check('„Alle angezeigten auswählen“ wählt die ganze Liste',
+      (await page.textContent('.bulkbar strong')).trim() === listed + ' ausgewählt', await page.textContent('.bulkbar strong'));
+    await page.evaluate(() => {
+      window.__printed = 0;
+      window.print = () => {
+        window.__printed += 1;
+        window.__printRows = document.querySelectorAll('#print-root .sheet__table tr').length;
+        window.__printing = document.documentElement.classList.contains('is-printing');
+      };
+    });
+    await page.click('.bulkbar button:has-text("Drucken")');
+    await page.waitForSelector('.modal .sheet');
+    check('Druckvorschau zeigt die ausgewählten Einträge',
+      (await page.locator('.modal .sheet__table tr').count()) === listed);
+    await page.selectOption('.modal select >> nth=0', 'recall');
+    await page.waitForTimeout(120);
+    const blanks = await page.locator('.modal .sheet__blank').count();
+    const withGerman = await page.evaluate(() => {
+      const ids = Array.from(document.querySelectorAll('.lex')).map((n) => n.dataset.id);
+      return BAO.store.getState().lexemes.filter((l) => ids.includes(l.id) && l.translation).length;
+    });
+    check('Vokabeltest: eine leere Zeile je Eintrag mit deutscher Entsprechung',
+      blanks === withGerman && blanks > 0 && (await page.locator('.modal .sheet__name').count()) === 1, blanks + ' / ' + withGerman);
+    await page.click('.modal button:text-is("Drucken")');
+    await page.waitForTimeout(250);
+    const printed = await page.evaluate(() => ({ n: window.__printed, rows: window.__printRows, on: window.__printing }));
+    check('Drucken übergibt genau das Blatt an den Druckdialog',
+      printed.n === 1 && printed.rows === blanks && printed.on === true, JSON.stringify(printed));
+    await page.keyboard.press('Shift');
+    await page.waitForTimeout(120);
+    check('Nach dem Drucken ist die App wieder wie zuvor',
+      await page.evaluate(() => !document.documentElement.classList.contains('is-printing')
+        && document.getElementById('print-root').childElementCount === 0
+        && document.title === 'Boîte à Oublis'));
+    const asText = await page.evaluate(async () => {
+      const stage = BAO.store.getState().lexemes.find((l) => l.groupId === 'grp_fr9b' && BAO.ui.termLabel(l) === 'le stage');
+      return {
+        line: BAO.stock.rowsToText([{ title: '', rows: BAO.stock.rowsOfLexemes([stage]) }]),
+        copied: typeof (await BAO.util.copyText('probe'))
+      };
+    });
+    check('Wortliste als Text: Zielwort und Deutsch mit Tabulator getrennt',
+      asText.line === 'le stage\tdas Praktikum' && asText.copied === 'boolean', JSON.stringify(asText));
+    const orders = await page.evaluate(() => {
+      const rows = BAO.stock.rowsOfLexemes(BAO.store.getState().lexemes.filter((l) => l.groupId === 'grp_fr9b'));
+      const list = (options) => BAO.print.prepare([{ title: '', rows }], options).sections[0].rows;
+      const mixed = (seed) => list({ order: 'shuffle', seed }).map((row) => row.term).join('|');
+      const keys = list({ order: 'alpha' }).map((row) => row.sortKey);
+      return {
+        same: mixed(7) === mixed(7),
+        other: mixed(7) !== mixed(8),
+        complete: mixed(7).split('|').sort().join('|') === rows.map((row) => row.term).sort().join('|'),
+        alpha: keys.every((key, i) => i === 0 || keys[i - 1].localeCompare(key, 'de') <= 0),
+        stageUnderS: keys.includes('stage')
+      };
+    });
+    check('„Gemischt“ zeigt in Vorschau und Druck dieselbe Reihenfolge',
+      orders.same && orders.other && orders.complete, JSON.stringify(orders));
+    check('„Alphabetisch“ ordnet nach dem Wort, nicht nach dem Artikel', orders.alpha && orders.stageUnderS, JSON.stringify(orders));
+
+    // Auf eine Tafel legen
+    await page.click('.bulkbar button:has-text("Auswahl aufheben")');
+    await page.waitForTimeout(200);
+    for (let i = 0; i < 3; i++) await page.locator('.lex input[type="checkbox"]').nth(i).check();
+    await clearToasts();
+    await page.click('.bulkbar button:has-text("Auf eine Tafel")');
+    await page.waitForSelector('.modal');
+    await page.selectOption('.modal select', '__new');
+    await page.fill('.modal input[type="text"]', 'Prüf-Tafel');
+    await page.click('.modal button:text-is("Auflegen")');
+    await page.waitForTimeout(300);
+    const placed = await page.evaluate(() => {
+      const board = BAO.store.getState().boards.find((b) => b.title === 'Prüf-Tafel');
+      return board ? { id: board.id, items: board.items.length, spread: new Set(board.items.map((i) => i.x + '/' + i.y)).size } : null;
+    });
+    check('Ausgewählte Einträge liegen auf der neuen Tafel – nebeneinander, nicht übereinander',
+      !!placed && placed.items === 3 && placed.spread === 3, JSON.stringify(placed));
+    for (let i = 0; i < 3; i++) await page.locator('.lex input[type="checkbox"]').nth(i).check();
+    await clearToasts();
+    await page.click('.bulkbar button:has-text("Auf eine Tafel")');
+    await page.waitForSelector('.modal');
+    await page.selectOption('.modal select', placed.id);
+    await page.click('.modal button:text-is("Auflegen")');
+    await page.waitForTimeout(300);
+    check('Was schon auf der Tafel liegt, kommt nicht doppelt',
+      await page.evaluate((id) => BAO.store.getState().boards.find((b) => b.id === id).items.length, placed.id) === 3);
+
+    // Kopie für die Parallelklasse
+    await page.evaluate(() => {
+      BAO.store.commit('Test: Parallelklasse', (d) => {
+        d.groups.push(BAO.schema.makeGroup({ id: 'grp_test_9a', subjectId: 'sub_fr', name: '9a', grade: 9 }));
+      });
+      BAO.app.setContext('sub_fr', 'grp_fr9b');
+      BAO.app.go('tafeln');
+    });
+    await page.waitForTimeout(300);
+    await clearToasts();
+    await page.click('.tile:has-text("Umbenannt per Enter") button[title="Für eine andere Lerngruppe kopieren"]');
+    await page.waitForSelector('.modal');
+    await page.click('.modal button:has-text("Kopie anlegen")');
+    await page.waitForTimeout(300);
+    const parallel = () => page.evaluate(() => {
+      const s = BAO.store.getState();
+      const source = s.boards.find((b) => b.id === 'brd_fr_stage');
+      const copies = s.boards.filter((b) => b.groupId === 'grp_test_9a');
+      const own = (list) => list.filter((x) => x.groupId === 'grp_test_9a');
+      return {
+        copies: copies.length,
+        sameSize: copies.length > 0 && copies.every((c) => c.items.length === source.items.length),
+        resolved: copies.every((c) => BAO.select.boardEntries(s, c).length === c.items.length
+          && BAO.select.boardEntries(s, c).every((e) => BAO.select.belongsToBoard(e.ref, c))),
+        entries: own(s.lexemes).length + own(s.starters).length,
+        allNew: own(s.lexemes).every((l) => l.status === 'new'),
+        sourceUntouched: source.groupId === 'grp_fr9b'
+      };
+    });
+    const firstCopy = await parallel();
+    check('Tafel für die Parallelklasse kopiert – mit eigenem Bestand',
+      firstCopy.copies === 1 && firstCopy.sameSize && firstCopy.resolved && firstCopy.entries > 0
+      && firstCopy.allNew && firstCopy.sourceUntouched, JSON.stringify(firstCopy));
+    await clearToasts();
+    await page.click('.tile:has-text("Umbenannt per Enter") button[title="Für eine andere Lerngruppe kopieren"]');
+    await page.waitForSelector('.modal');
+    await page.click('.modal button:has-text("Kopie anlegen")');
+    await page.waitForTimeout(300);
+    const secondCopy = await parallel();
+    check('Eine zweite Kopie verwendet die vorhandenen Einträge wieder',
+      secondCopy.copies === 2 && secondCopy.entries === firstCopy.entries && secondCopy.resolved, JSON.stringify(secondCopy));
+
+    const otherCopies = await page.evaluate(() => {
+      let wb = null;
+      let bank = null;
+      BAO.store.commit('Test: Whiteboard und Wortbank kopiert', (d) => {
+        wb = BAO.stock.copyWhiteboardTo(d, 'wbd_fr_notes', 'grp_test_9a');
+        bank = BAO.stock.copyBankTo(d, 'bnk_fr_stage', 'grp_test_9a');
+      });
+      const s = BAO.store.getState();
+      const source = s.whiteboards.find((w) => w.id === 'wbd_fr_notes');
+      const copy = s.whiteboards.find((w) => w.id === wb.id);
+      const bankCopy = s.banks.find((b) => b.id === bank.id);
+      const sourceIds = new Set(source.strokes.map((st) => st.id));
+      return {
+        strokes: copy.strokes.length === source.strokes.length && copy.strokes.every((st) => !sourceIds.has(st.id)),
+        group: copy.groupId === 'grp_test_9a' && bankCopy.groupId === 'grp_test_9a',
+        bankItems: BAO.select.bankItemCount(bankCopy) === BAO.select.bankItemCount(s.banks.find((b) => b.id === 'bnk_fr_stage')),
+        bankRefs: bankCopy.sections.every((sec) => sec.items.every((item) => {
+          const hit = BAO.select.resolveItem(s, item);
+          return hit && (hit.ref.groupId === 'grp_test_9a' || !hit.ref.groupId);
+        }))
+      };
+    });
+    check('Whiteboard und Wortbank lassen sich ebenso kopieren',
+      otherCopies.strokes && otherCopies.group && otherCopies.bankItems && otherCopies.bankRefs, JSON.stringify(otherCopies));
+
+    // Whiteboard als Bild – immer hell
+    const picture = await page.evaluate(() => {
+      BAO.app.applyTheme('dark');
+      const board = BAO.store.getState().whiteboards.find((w) => w.id === 'wbd_fr_notes');
+      const canvas = BAO.whiteboardImage.toCanvas(board);
+      const corner = Array.from(canvas.getContext('2d').getImageData(1, 1, 1, 1).data);
+      const themeKept = document.documentElement.dataset.theme === 'dark';
+      BAO.app.applyTheme(BAO.store.getState().settings.theme);
+      const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      let inked = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] < 140 || data[i + 1] < 140 || data[i + 2] < 140) inked += 1;
+      }
+      return {
+        width: canvas.width, height: canvas.height, corner, themeKept, inked,
+        empty: BAO.whiteboardImage.toCanvas({ strokes: [] })
+      };
+    });
+    check('Whiteboard wird vollständig als Bild gezeichnet',
+      picture.width > 200 && picture.height > 100 && picture.inked > 200, JSON.stringify(picture));
+    check('Das Bild ist hell wie Papier – auch bei dunkler Darstellung',
+      picture.corner[0] > 225 && picture.corner[1] > 225 && picture.corner[2] > 215 && picture.themeKept, JSON.stringify(picture.corner));
+    check('Ein leeres Whiteboard ergibt kein Bild', picture.empty === null);
+    await page.evaluate(() => { BAO.app.setContext('sub_fr', 'grp_fr9b'); BAO.app.go('whiteboards'); });
+    await page.waitForTimeout(350);
+    await clearToasts();
+    const [pngFile] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('.tile[data-whiteboard-id="wbd_fr_notes"] button[title^="Als Bild speichern"]')
+    ]);
+    check('„Als Bild speichern“ liefert eine PNG-Datei', /^whiteboard_.+\.png$/.test(pngFile.suggestedFilename()), pngFile.suggestedFilename());
+
+    // Schneller in die Stunde
+    const switcher = await page.evaluate(() => Array.from(document.querySelectorAll('select[aria-label="Lerngruppe wählen"] optgroup'))
+      .map((group) => group.label));
+    check('Lerngruppen aller Fächer stehen in einer Auswahl',
+      switcher.includes('Französisch') && switcher.includes('Englisch'), switcher.join(', '));
+    await page.selectOption('select[aria-label="Lerngruppe wählen"]', 'grp_en10a');
+    await page.waitForTimeout(250);
+    check('Ein Griff wechselt Fach und Lerngruppe zugleich',
+      await page.evaluate(() => BAO.store.getState().ui.subjectId === 'sub_en' && BAO.store.getState().ui.groupId === 'grp_en10a'));
+    await page.evaluate(() => BAO.app.setContext('sub_fr', 'grp_fr9b'));
+    await page.waitForTimeout(200);
+
+    await page.keyboard.press('Control+k');
+    await page.waitForSelector('.palette__input');
+    await page.waitForTimeout(150);
+    const recents = await page.evaluate(() => Array.from(document.querySelectorAll('.palette__item .chip')).map((n) => n.textContent));
+    check('Leere Schnellsuche bietet zuletzt verwendete Tafeln und Whiteboards an',
+      recents.includes('Tafel') && recents.includes('Whiteboard'), recents.join(', '));
+    await page.keyboard.press('Escape');
+
+    await page.evaluate(() => BAO.app.go('start'));
+    await page.waitForTimeout(300);
+    check('Startseite führt zur zuletzt verwendeten Tafel oder zum Whiteboard zurück',
+      (await page.locator('.dash .tile[data-work]').count()) >= 1
+      && (await page.textContent('.dash__heroActions')).includes('Weiter mit'));
+    check('Der Knopf „Ansicht“ nennt den geltenden Umfang',
+      (await page.textContent('[data-action="toggle-simple"]')).includes('Ansicht: vollständig'));
+
+    // Live-Hilfe bei laufender Tafel: Element auf die Tafel, statt sie zu verdrängen
+    await page.evaluate(() => BAO.app.go('tafel/brd_fr_stage'));
+    await page.waitForTimeout(450);
+    const itemsBefore = await page.evaluate(() => BAO.store.getState().boards.find((b) => b.id === 'brd_fr_stage').items.length);
+    await page.evaluate(() => { BAO.app.openLiveHelp(); });
+    await page.waitForSelector('.modal');
+    const liveTitle = await page.textContent('.modal h2');
+    await page.fill('.modal input >> nth=0', 'tenir le coup');
+    await page.fill('.modal input >> nth=1', 'durchhalten');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(350);
+    const liveBoard = await page.evaluate(() => {
+      const s = BAO.store.getState();
+      const entry = s.lexemes.find((l) => l.term === 'tenir le coup');
+      return {
+        items: s.boards.find((b) => b.id === 'brd_fr_stage').items.length,
+        translation: entry ? entry.translation : '',
+        boardActive: BAO.board.isActive(),
+        sessionActive: BAO.session.getState().active,
+        hash: window.location.hash
+      };
+    });
+    check('Live-Hilfe legt bei laufender Tafel ein Element auf die Tafel',
+      liveTitle.includes('auf die Tafel') && liveBoard.items === itemsBefore + 1 && liveBoard.translation === 'durchhalten',
+      JSON.stringify(liveBoard));
+    check('Die Tafel bleibt dabei auf dem Beamer',
+      liveBoard.boardActive && !liveBoard.sessionActive && liveBoard.hash.indexOf('#/tafel/') === 0, JSON.stringify(liveBoard));
+
+    // Beispieldaten entfernen – Eigenes bleibt
+    await page.evaluate(() => BAO.app.go('tafeln'));
+    await page.waitForTimeout(300);
+    check('Hinweis auf die Beispieldaten erscheint in der Beispiel-Lerngruppe',
+      (await page.locator('.sample-note').count()) === 1);
+    await clearToasts();
+    await page.click('.sample-note button:has-text("Beispiele entfernen")');
+    await page.waitForSelector('.modal');
+    const sampleQuestion = await page.textContent('.modal');
+    await page.click('.modal button:has-text("Beispiele entfernen")');
+    await page.waitForTimeout(350);
+    const cleaned = await page.evaluate(() => {
+      const s = BAO.store.getState();
+      const gone = ['grp_fr9b', 'grp_en10a'];
+      const left = (list) => list.filter((x) => gone.includes(x.groupId)).length;
+      return {
+        groups: s.groups.map((g) => g.id),
+        subjects: s.subjects.length,
+        orphans: left(s.lexemes) + left(s.starters) + left(s.banks) + left(s.boards) + left(s.whiteboards) + left(s.units),
+        own: s.boards.filter((b) => b.groupId === 'grp_test_9a').length,
+        context: s.ui.groupId,
+        sample: BAO.stock.hasSampleData(s)
+      };
+    });
+    check('Rückfrage nennt die Beispiel-Lerngruppen und was dazugehört',
+      sampleQuestion.includes('9b') && sampleQuestion.includes('10a') && sampleQuestion.includes('Betroffen'), sampleQuestion.slice(0, 160));
+    check('Beispieldaten sind restlos entfernt',
+      !cleaned.groups.includes('grp_fr9b') && !cleaned.groups.includes('grp_en10a') && cleaned.orphans === 0 && !cleaned.sample,
+      JSON.stringify(cleaned));
+    check('Eigene Lerngruppe, ihre Tafeln und die Fächer bleiben erhalten',
+      cleaned.groups.includes('grp_test_9a') && cleaned.own === 2 && cleaned.subjects === 2 && cleaned.context === 'grp_test_9a',
+      JSON.stringify(cleaned));
+    await page.evaluate(() => BAO.store.undo());
+    await page.waitForTimeout(250);
+    check('Das Entfernen lässt sich rückgängig machen',
+      await page.evaluate(() => BAO.store.getState().groups.some((g) => g.id === 'grp_fr9b') && BAO.stock.hasSampleData(BAO.store.getState())));
+
+    // Schmale Bildschirme: Tablet hochkant und Handy
+    await page.evaluate(() => { BAO.app.setContext('sub_fr', 'grp_fr9b'); });
+    for (const [name, width, height] of [['Tablet hochkant', 768, 1024], ['Handy', 390, 800]]) {
+      await page.setViewportSize({ width, height });
+      let worst = 0;
+      for (const route of ['tafeln', 'wortschatz', 'daten']) {
+        await page.evaluate((r) => BAO.app.go(r), route);
+        await page.waitForTimeout(250);
+        worst = Math.max(worst, await page.evaluate(() => Math.max(
+          document.documentElement.scrollWidth - window.innerWidth,
+          document.querySelector('.main').scrollWidth - document.querySelector('.main').clientWidth,
+          document.querySelector('.topbar').scrollWidth - document.querySelector('.topbar').clientWidth)));
+      }
+      const railWidth = await page.evaluate(() => document.querySelector('.rail').getBoundingClientRect().width);
+      check(name + ': nichts läuft seitlich aus dem Bild, die Leiste ist schmal', worst <= 1 && railWidth <= 64,
+        'Überstand ' + worst + ' px, Leiste ' + railWidth + ' px');
+      await page.screenshot({ path: join(shotDir, 'schmal-' + width + '.png') });
+    }
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await page.evaluate(() => BAO.app.go('wortschatz'));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: join(shotDir, 'wortschatz-auswahl.png') });
+  }
+
   /* --- 15. Portable Einzeldatei -------------------------------------------- */
   section('15. Portable Einzeldatei (dist/boite-a-oublis.html)');
   const portable = await browser.newContext({ viewport: { width: 1400, height: 900 } });

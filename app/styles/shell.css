@@ -91,6 +91,34 @@
 .shell[data-rail="collapsed"] .rail__title { display: none; }
 .shell[data-rail="collapsed"] .rail__item { justify-content: center; padding: 9px 0; }
 
+/* Auf schmalen Bildschirmen (Tablet hochkant, halbes Fenster) gehört die
+   Breite dem Inhalt: Die Leiste zeigt von selbst nur ihre Symbole. */
+@media (max-width: 900px) {
+  .shell { --rail-w: 58px; }
+  .brand__text { display: none; }
+  .rail { padding: var(--sp-2) 6px; }
+  .rail__label, .rail__count, .rail__title { display: none; }
+  .rail__item { justify-content: center; padding: 10px 0; }
+  .rail__item--toggle { display: none; }
+}
+
+/* Handy und sehr schmale Fenster: Kopf- und Fußzeile beschränken sich aufs
+   Nötige, damit nichts aus dem Bild läuft. */
+@media (max-width: 640px) {
+  .topbar { gap: var(--sp-2); padding: 0 var(--sp-2); }
+  .topbar__context { gap: var(--sp-1); overflow: hidden; }
+  .topbar__context .chip { display: none; }
+  .ctx-select { padding-left: var(--sp-2); }
+  .ctx-select select { max-width: 12ch; }
+  .topbar__actions .btn { padding: 0 var(--sp-2); min-width: var(--hit); }
+  .appfoot { padding: 0 var(--sp-2); }
+  .appfoot__left { display: none; }
+  .appfoot__side { flex: 1 1 auto; justify-content: space-between; gap: var(--sp-2); }
+  .appfoot:not([data-storage="error"]) .appfoot__right { font-size: 0; gap: 0; }
+  .view__head { margin-bottom: var(--sp-4); }
+  .bulkbar { border-radius: var(--r-lg); }
+}
+
 /* --- Inhaltsbereich ----------------------------------------------------- */
 .main { grid-area: main; overflow: auto; scroll-behavior: smooth; }
 .view { padding: var(--sp-5) var(--sp-6) var(--sp-7); max-width: 1400px; margin: 0 auto; }
@@ -118,6 +146,21 @@
 .appfoot__right::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
 }
+/* Stand der Sicherungsdatei – ein Klick erstellt sie. */
+.appfoot__left { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appfoot__side { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; }
+.appfoot__backup {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  min-height: 22px; padding: 0 var(--sp-2);
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap;
+}
+.appfoot__backup:hover { border-color: var(--line-strong); color: var(--ink); }
+.appfoot__backup[data-backup="open"] { color: var(--ink-2); }
+.appfoot__backup[data-backup="due"] {
+  color: var(--st-revisit); background: var(--st-revisit-soft); border-color: var(--st-revisit); font-weight: 600;
+}
+.appfoot__right { white-space: nowrap; }
 .appfoot[data-storage="error"] .appfoot__right { color: var(--danger); }
 .appfoot[data-storage="error"] .appfoot__right::before { background: var(--danger); }
 

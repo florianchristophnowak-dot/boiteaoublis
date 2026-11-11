@@ -135,14 +135,37 @@
     if (!ctx.groups.length) {
       groupSelect.appendChild(h('option', { value: '', text: 'keine Lerngruppe' }));
     }
-    ctx.groups.forEach(function (group) {
-      groupSelect.appendChild(h('option', {
+    function groupOption(group) {
+      return h('option', {
         value: group.id,
         text: group.name + ' · Jg. ' + group.grade + (group.favorite ? ' ★' : ''),
         selected: ctx.group && group.id === ctx.group.id ? true : null
-      }));
+      });
+    }
+    // Der Wechsel zwischen zwei Stunden ist oft ein Wechsel des Fachs: Die
+    // Lerngruppen der anderen Fächer stehen deshalb in derselben Auswahl,
+    // und ein Griff stellt Fach und Lerngruppe zugleich um.
+    var elsewhere = ctx.subjects.filter(function (subject) { return subject.id !== ctx.subject.id; })
+      .map(function (subject) { return { subject: subject, groups: select.groupsOfSubject(state, subject.id) }; })
+      .filter(function (entry) { return entry.groups.length; });
+    if (!elsewhere.length) {
+      ctx.groups.forEach(function (group) { groupSelect.appendChild(groupOption(group)); });
+    } else {
+      if (ctx.groups.length) {
+        var own = h('optgroup', { label: ctx.subject.name });
+        ctx.groups.forEach(function (group) { own.appendChild(groupOption(group)); });
+        groupSelect.appendChild(own);
+      }
+      elsewhere.forEach(function (entry) {
+        var other = h('optgroup', { label: entry.subject.name });
+        entry.groups.forEach(function (group) { other.appendChild(groupOption(group)); });
+        groupSelect.appendChild(other);
+      });
+    }
+    groupSelect.addEventListener('change', function () {
+      var chosen = select.group(BAO.store.getState(), groupSelect.value);
+      setContext(chosen ? chosen.subjectId : ctx.subject.id, groupSelect.value);
     });
-    groupSelect.addEventListener('change', function () { setContext(ctx.subject.id, groupSelect.value); });
 
     host.appendChild(h('div.ctx-select', {},
       h('span.ctx-select__label', { text: 'Lerngruppe' }),
@@ -202,7 +225,7 @@
     });
 
     rail.appendChild(h('div.spacer'));
-    rail.appendChild(h('button.rail__item', {
+    rail.appendChild(h('button.rail__item.rail__item--toggle', {
       type: 'button',
       title: 'Navigationsleiste schmal/breit',
       onclick: function () {
@@ -221,6 +244,63 @@
 
   /* --- Ansicht --------------------------------------------------------------- */
 
+  /* Eine Ansicht wird nach jeder Änderung vollständig neu aufgebaut. Wer
+     gerade in einem Textfeld schreibt, darf davon nichts merken: Fokus und
+     Cursor ziehen in das entsprechende Feld der neuen Ansicht um. Erkannt
+     wird es an Art, Beschriftung und Platzhalter – und an seiner Stelle
+     unter gleichartigen Feldern.
+     Bewusst nur Textfelder: Ein Kontrollkästchen oder eine Auswahlliste, die
+     den Fokus behielte, würde die Tastenkürzel der Projektion und des
+     Whiteboards verschlucken. */
+  var TEXT_TYPES = ['text', 'search', 'number', 'email', 'url', 'tel', 'password'];
+
+  function isTextField(node) {
+    if (!node || !node.tagName) return false;
+    if (node.tagName === 'TEXTAREA') return true;
+    if (node.tagName !== 'INPUT') return false;
+    return TEXT_TYPES.indexOf((node.getAttribute('type') || 'text').toLowerCase()) >= 0;
+  }
+
+  function fieldSignature(node) {
+    return [node.tagName, node.getAttribute('type') || '', node.getAttribute('aria-label') || '',
+      node.getAttribute('placeholder') || '', node.getAttribute('name') || ''].join('|');
+  }
+
+  function fieldsLike(host, signature) {
+    return util.$$('input, textarea', host).filter(function (node) {
+      return fieldSignature(node) === signature;
+    });
+  }
+
+  function captureFocus(host) {
+    var node = document.activeElement;
+    if (!host || !node || !host.contains(node) || !isTextField(node)) return null;
+    var signature = fieldSignature(node);
+    var memo = { signature: signature, index: fieldsLike(host, signature).indexOf(node), start: null, end: null };
+    try {
+      memo.start = node.selectionStart;
+      memo.end = node.selectionEnd;
+      memo.direction = node.selectionDirection;
+    } catch (err) { /* Feldart ohne Textauswahl (Zahl) */ }
+    return memo;
+  }
+
+  function restoreFocus(host, memo) {
+    if (!memo || memo.index < 0) return;
+    // Hat die neue Ansicht selbst schon ein Feld ausgewählt, hat das Vorrang.
+    var active = document.activeElement;
+    if (active && active !== document.body && active !== host && host.contains(active)) return;
+    var node = fieldsLike(host, memo.signature)[memo.index];
+    if (!node || node.disabled) return;
+    try { node.focus({ preventScroll: true }); } catch (err) { node.focus(); }
+    if (typeof memo.start === 'number' && typeof memo.end === 'number') {
+      var length = node.value.length;
+      try {
+        node.setSelectionRange(Math.min(memo.start, length), Math.min(memo.end, length), memo.direction || 'none');
+      } catch (err) { /* Feldart ohne Textauswahl */ }
+    }
+  }
+
   function renderView() {
     var host = document.getElementById('view');
     var state = BAO.store.getState();
@@ -230,6 +310,10 @@
     // Scrollposition je Ansicht merken – hilft beim Hin- und Herspringen.
     var main = document.querySelector('.main');
     if (main) viewScrollTop[current.lastPath || ''] = main.scrollTop;
+
+    // Nur beim Neuaufbau derselben Ansicht – nach einem Wechsel wäre ein
+    // gleich beschriftetes Feld ein anderes.
+    var focusMemo = current.lastPath === current.path ? captureFocus(host) : null;
 
     // Eine Ansicht mit eigener Fläche (Whiteboard) räumt auf, wenn eine andere folgt.
     if (mountedView && mountedView !== view && mountedView.unmount) {
@@ -262,8 +346,11 @@
 
     renderRail();
     renderContextSwitcher();
+    renderModeButton();
+    renderBackupState();
     current.lastPath = current.path;
     if (main) main.scrollTop = viewScrollTop[current.path] || 0;
+    restoreFocus(host, focusMemo);
   }
 
   function scheduleRender() {
@@ -338,11 +425,13 @@
       var currentState = BAO.store.getState();
       results = query
         ? BAO.search.global(currentState, query, { limit: 30 })
-        : select.recentBanks(currentState, 6).map(function (bank) {
+        : BAO.stock.recentWork(currentState, 8, { banks: !isSimple() }).map(function (entry) {
+          var subject = select.subject(currentState, entry.item.subjectId);
           return {
-            type: 'bank', id: bank.id, title: bank.title,
-            groupId: bank.groupId, subjectId: bank.subjectId,
-            meta: 'Wortbank · ' + bank.scene
+            type: entry.type, id: entry.id, title: entry.item.title,
+            groupId: entry.item.groupId, subjectId: entry.item.subjectId,
+            meta: [subject ? subject.name : '', entry.group.name,
+              (entry.used ? 'zuletzt ' : 'bearbeitet ') + util.relativeDate(entry.at)].filter(Boolean).join(' · ')
           };
         });
       activeIndex = 0;
@@ -379,10 +468,57 @@
 
   /* --- Live-Hilfe ------------------------------------------------------------ */
 
+  /**
+   * Läuft gerade eine Tafel, gehört die schnelle Hilfe dorthin: Sie erscheint
+   * als Element auf der Fläche, statt die Tafel auf dem Beamer zu ersetzen.
+   */
+  function openBoardHelp(board) {
+    var textField = ui.textField({ label: 'Text', placeholder: 'z. B. Je me suis bien débrouillé(e).', full: true });
+    var translationField = ui.textField({ label: 'Deutsch (optional)', placeholder: 'z. B. Ich bin gut zurechtgekommen.' });
+
+    return BAO.modal.open({
+      title: 'Schnell etwas auf die Tafel',
+      subtitle: 'Erscheint sofort als Element auf „' + board.title + '“ und bleibt im Bestand der Lerngruppe.',
+      width: '520px',
+      body: h('div.stack', {}, textField, translationField),
+      initialFocus: 'input',
+      actions: [
+        { label: 'Abbrechen', value: null, kind: 'ghost' },
+        {
+          label: 'Auf die Tafel', kind: 'primary',
+          onSelect: function () {
+            var text = textField.input.value.trim();
+            var translation = translationField.input.value.trim();
+            if (!text) { textField.input.focus(); return false; }
+            var created = BAO.board.add(text);
+            if (!created) { BAO.toast.error('Das Element ließ sich nicht anlegen.'); return false; }
+            if (translation && !created.reused) {
+              BAO.store.commit('Deutsch ergänzt', function (draft) {
+                var target = select.board(draft, board.id);
+                var item = target ? target.items.filter(function (i) { return i.id === created[0]; })[0] : null;
+                var lexeme = item && item.kind === 'lex' ? select.lexeme(draft, item.refId) : null;
+                if (!lexeme) return false;
+                lexeme.translation = translation;
+              });
+            }
+            BAO.toast.show(created.reused ? '„' + text + '“ kam aus dem Bestand auf die Tafel.' : '„' + text + '“ steht auf der Tafel.',
+              current.path === 'tafel' ? { timeout: 2600 } : {
+                actionLabel: 'Zur Tafel', onAction: function () { go('tafel/' + board.id); }
+              });
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
   function openLiveHelp() {
     var state = BAO.store.getState();
     var ctx = select.context(state);
     var session = BAO.session.getState();
+
+    var liveBoard = !session.active && BAO.board.isActive() ? BAO.board.getBoard() : null;
+    if (liveBoard) return openBoardHelp(liveBoard);
 
     var typeSelect = ui.selectField({
       label: 'Art', value: 'word',
@@ -472,6 +608,13 @@
 
       if (mod && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); return; }
       if (mod && event.key.toLowerCase() === 'l') { event.preventDefault(); openLiveHelp(); return; }
+      if (mod && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 's') {
+        // Strg + S speichert – hier heißt das: die Sicherungsdatei erstellen.
+        // (Der Browser würde sonst anbieten, die Seite selbst zu speichern.)
+        event.preventDefault();
+        if (!document.querySelector('.modal-backdrop')) backupNow();
+        return;
+      }
       if (mod && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         event.preventDefault();
         var label = BAO.store.undo();
@@ -503,6 +646,87 @@
     });
   }
 
+  /** Der Knopf „Ansicht“ sagt, welcher Umfang gerade gilt. */
+  function renderModeButton() {
+    var button = document.querySelector('[data-action="toggle-simple"]');
+    if (!button) return;
+    var simple = isSimple();
+    var label = button.querySelector('.btn__label');
+    if (label) label.textContent = simple ? 'Ansicht: einfach' : 'Ansicht: vollständig';
+    button.dataset.mode = simple ? 'simple' : 'full';
+    button.title = simple
+      ? 'Einfache Grundform. Klick: vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion'
+      : 'Vollständige Ansicht. Klick: einfache Grundform mit Tafeln, Whiteboards, Elementen';
+    button.setAttribute('aria-label', 'Ansicht: ' + (simple ? 'einfache Grundform' : 'vollständig') + ' – umschalten');
+  }
+
+  /* --- Sicherungsdatei ---------------------------------------------------------- */
+
+  function backupNow() {
+    return BAO.views.data.exportAll();
+  }
+
+  /** Zeigt in der Fußzeile, wie es um die Sicherungsdatei steht. */
+  function renderBackupState() {
+    var node = document.querySelector('[data-bind="backup-state"]');
+    if (!node) return;
+    var info = BAO.backup.status(BAO.store.getState());
+    var label = BAO.backup.statusLabel(info);
+    if (node.textContent !== label) node.textContent = label;
+    node.dataset.backup = info.due ? 'due' : (info.dirty ? 'open' : 'ok');
+    node.title = (info.due
+      ? 'Seit ' + info.unsavedDays + ' Tagen gibt es Änderungen ohne Sicherungsdatei. '
+      : (info.dirty ? 'Es gibt Änderungen, die noch in keiner Sicherungsdatei stehen. ' : ''))
+      + 'Klick: Sicherungsdatei jetzt erstellen (Strg + S)';
+  }
+
+  /**
+   * Erinnert höchstens einmal am Tag, wenn seit einer Woche Änderungen ohne
+   * Sicherungsdatei aufgelaufen sind. Alles liegt nur in diesem Browser.
+   */
+  function remindBackup() {
+    var state = BAO.store.getState();
+    var info = BAO.backup.status(state);
+    var today = util.nowISO().slice(0, 10);
+    if (!info.due || state.ui.backupHintOn === today) return;
+    BAO.store.commit('Hinweis zur Sicherung', function (draft) { draft.ui.backupHintOn = today; }, { undoable: false });
+    BAO.toast.show(info.never
+      ? 'Es gibt noch keine Sicherungsdatei. Alle Daten liegen nur in diesem Browser.'
+      : 'Seit ' + info.unsavedDays + ' Tagen gibt es Änderungen ohne Sicherungsdatei.',
+      { actionLabel: 'Jetzt sichern', onAction: backupNow, timeout: 14000 });
+  }
+
+  /* --- Dateien ins Fenster ziehen ------------------------------------------------ */
+
+  function carriesFiles(event) {
+    var types = event.dataTransfer && event.dataTransfer.types;
+    return !!types && Array.prototype.indexOf.call(types, 'Files') >= 0;
+  }
+
+  /** Eine Sicherungsdatei oder Wortschatzliste lässt sich überall ablegen. */
+  function bindFileDrop() {
+    document.addEventListener('dragover', function (event) {
+      if (carriesFiles(event)) event.preventDefault();
+    });
+    document.addEventListener('drop', function (event) {
+      if (!carriesFiles(event)) return;
+      // Die Ablagefläche der Datenansicht hat die Datei schon angenommen.
+      var taken = event.defaultPrevented;
+      // Ohne dies öffnete der Browser die Datei und verließe die App.
+      event.preventDefault();
+      if (taken || document.querySelector('.modal-backdrop')) return;
+      var file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (!file) return;
+      if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
+        BAO.views.data.handleCsvFile(file, select.context(BAO.store.getState()));
+      } else if (/\.json$/i.test(file.name) || file.type === 'application/json') {
+        BAO.views.data.handleBackupFile(file);
+      } else {
+        BAO.toast.show('Hier lassen sich Sicherungsdateien (.json) und Wortschatzlisten (.csv) ablegen.');
+      }
+    });
+  }
+
   /* --- Kopfzeile und Fußzeile -------------------------------------------------- */
 
   function applyTheme(theme) {
@@ -512,6 +736,7 @@
   function bindChrome() {
     util.on(document, 'click', '[data-action="open-search"]', function () { openSearch(); });
     util.on(document, 'click', '[data-action="open-live"]', function () { openLiveHelp(); });
+    util.on(document, 'click', '[data-action="backup-now"]', function () { backupNow(); });
     util.on(document, 'click', '[data-action="toggle-simple"]', function () {
       var next = !isSimple();
       BAO.store.commit('Ansichtsumfang', function (draft) { draft.settings.simpleMode = next; }, { undoable: false });
@@ -572,13 +797,17 @@
           ? ctx.group.name + ' · ' + (ctx.subject ? ctx.subject.name : '') + ' · Jg. ' + ctx.group.grade
           : 'Wortschatz für den Unterricht';
       }
+      renderBackupState();
       if (isQuiet(meta)) return;
       scheduleRender();
     });
 
     bindChrome();
     bindShortcuts();
+    bindFileDrop();
     renderView();
+    renderBackupState();
+    remindBackup();
 
     var storage = BAO.store.storageInfo();
     document.dispatchEvent(new CustomEvent('bao:storage', { detail: storage }));
@@ -602,6 +831,7 @@
     projectBank: projectBank,
     projectBoard: projectBoard,
     isSimple: isSimple,
+    backupNow: backupNow,
     applyTheme: applyTheme
   };
 })(window.BAO = window.BAO || {});

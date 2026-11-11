@@ -140,6 +140,7 @@
           type: 'button', title: 'Duplizieren',
           onclick: function (event) { event.stopPropagation(); duplicate(bank, app); }
         }, ui.icon('copy', 15)),
+        BAO.handover.copyButton('bank', bank, state, app),
         h('button.btn.btn--sm.btn--icon', {
           type: 'button', title: 'Löschen',
           onclick: function (event) { event.stopPropagation(); remove(bank); }
@@ -165,13 +166,17 @@
     }
 
     var all = select.banksOfGroup(state, ctx.group.id);
-    var needle = util.fold(filters.query);
-    var visible = all.filter(function (bank) {
-      if (filters.scene !== 'all' && bank.scene !== filters.scene) return false;
-      if (filters.unitId !== 'all' && bank.unitId !== filters.unitId) return false;
-      if (needle && util.fold(bank.title + ' ' + bank.scene + ' ' + (bank.note || '')).indexOf(needle) < 0) return false;
-      return true;
-    });
+    var listHost = h('div.result-host');
+
+    function visibleBanks() {
+      var needle = util.fold(filters.query);
+      return all.filter(function (bank) {
+        if (filters.scene !== 'all' && bank.scene !== filters.scene) return false;
+        if (filters.unitId !== 'all' && bank.unitId !== filters.unitId) return false;
+        if (needle && util.fold(bank.title + ' ' + bank.scene + ' ' + (bank.note || '')).indexOf(needle) < 0) return false;
+        return true;
+      });
+    }
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -194,7 +199,8 @@
         h('input', {
           type: 'search', value: filters.query, placeholder: 'Wortbanken durchsuchen …',
           'aria-label': 'Wortbanken durchsuchen',
-          oninput: function (event) { filters.query = event.target.value; app.scheduleRender(); }
+          // Nur die Kacheln werden neu gezeichnet; das Feld behält den Fokus.
+          oninput: function (event) { filters.query = event.target.value; drawList(); }
         }),
         ui.selectField({
           value: filters.scene, ariaLabel: 'Nach Szene filtern',
@@ -211,30 +217,36 @@
       ));
     }
 
-    if (!all.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Noch keine Wortbank',
-        text: 'Eine Wortbank ist eine kleine, gezielte Auswahl aus dem Gesamtbestand – '
-          + 'für ein Partnergespräch, eine Diskussion oder eine Schreibphase.',
-        actionLabel: 'Erste Wortbank anlegen',
-        onAction: function () { createBank(ctx, app); }
-      }));
-    } else if (!visible.length) {
-      view.appendChild(ui.emptyState({
-        title: 'Kein Treffer',
-        text: 'Mit diesen Filtern gibt es keine Wortbank.',
-        actionLabel: 'Filter zurücksetzen',
-        onAction: function () { filters = { query: '', scene: 'all', unitId: 'all' }; app.scheduleRender(); }
-      }));
-    } else {
-      var tiles = h('div.tiles.tiles--wide');
-      visible.forEach(function (bank) { tiles.appendChild(bankTile(state, bank, app)); });
-      tiles.appendChild(h('button.tile.tile--add', {
-        type: 'button', onclick: function () { createBank(ctx, app); }
-      }, ui.icon('plus', 22), h('span', { text: 'Neue Wortbank' })));
-      view.appendChild(tiles);
+    function drawList() {
+      var visible = visibleBanks();
+      util.clear(listHost);
+      if (!all.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Noch keine Wortbank',
+          text: 'Eine Wortbank ist eine kleine, gezielte Auswahl aus dem Gesamtbestand – '
+            + 'für ein Partnergespräch, eine Diskussion oder eine Schreibphase.',
+          actionLabel: 'Erste Wortbank anlegen',
+          onAction: function () { createBank(ctx, app); }
+        }));
+      } else if (!visible.length) {
+        listHost.appendChild(ui.emptyState({
+          title: 'Kein Treffer',
+          text: 'Mit diesen Filtern gibt es keine Wortbank.',
+          actionLabel: 'Filter zurücksetzen',
+          onAction: function () { filters = { query: '', scene: 'all', unitId: 'all' }; app.scheduleRender(); }
+        }));
+      } else {
+        var tiles = h('div.tiles.tiles--wide');
+        visible.forEach(function (bank) { tiles.appendChild(bankTile(state, bank, app)); });
+        tiles.appendChild(h('button.tile.tile--add', {
+          type: 'button', onclick: function () { createBank(ctx, app); }
+        }, ui.icon('plus', 22), h('span', { text: 'Neue Wortbank' })));
+        listHost.appendChild(tiles);
+      }
     }
 
+    drawList();
+    view.appendChild(listHost);
     host.appendChild(view);
   }
 

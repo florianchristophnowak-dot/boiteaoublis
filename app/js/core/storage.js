@@ -88,6 +88,38 @@
     return raw ? raw.length : 0;
   }
 
+  /** Entfernt die Sicherheitskopie, um Platz zu schaffen. true, wenn es eine gab. */
+  function dropSafetyCopy() {
+    var had = read(SAFETY_KEY) !== null;
+    if (had) remove(SAFETY_KEY);
+    return had;
+  }
+
+  /* Browser gewähren dem lokalen Speicher rund fünf Millionen Zeichen je
+     Herkunft. Genau abfragen lässt sich die Grenze nicht – als Richtwert für
+     die Anzeige „so viel ist belegt“ genügt sie. */
+  var QUOTA_ESTIMATE = 5 * 1024 * 1024;
+
+  /**
+   * Belegung durch alles, was diese App abgelegt hat (Bestand,
+   * Sicherheitskopie, beiseitegelegte beschädigte Stände).
+   * @returns {{used: number, quota: number, share: number}}
+   */
+  function usage() {
+    var used = 0;
+    if (probe()) {
+      try {
+        for (var i = 0; i < window.localStorage.length; i++) {
+          var key = window.localStorage.key(i);
+          if (key && key.indexOf('bao.') === 0) used += key.length + (window.localStorage.getItem(key) || '').length;
+        }
+      } catch (err) { lastError = err; }
+    } else {
+      Object.keys(memory).forEach(function (key) { used += key.length + String(memory[key]).length; });
+    }
+    return { used: used, quota: QUOTA_ESTIMATE, share: Math.min(1, used / QUOTA_ESTIMATE) };
+  }
+
   BAO.storage = {
     KEY: KEY,
     isAvailable: probe,
@@ -97,6 +129,8 @@
     saveSafetyCopy: saveSafetyCopy,
     loadSafetyCopy: loadSafetyCopy,
     approximateSize: approximateSize,
+    usage: usage,
+    dropSafetyCopy: dropSafetyCopy,
     clearAll: function () { remove(KEY); remove(SAFETY_KEY); }
   };
 })(window.BAO = window.BAO || {});
