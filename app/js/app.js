@@ -19,6 +19,7 @@
     { path: 'start',        view: 'dashboard',   label: 'Start',        icon: 'home',       key: '1' },
     { path: 'tafeln',       view: 'boards',      label: 'Tafeln',       icon: 'beamer',     key: '2', simple: true },
     { path: 'whiteboards',  view: 'whiteboards', label: 'Whiteboards',  icon: 'whiteboard', key: '3', simple: true },
+    { path: 'soundboard',   view: 'soundboard',  label: 'Soundboard',   icon: 'sound',      key: '0', simple: true },
     { path: 'wortschatz',   view: 'vocab',       label: 'Wortschatz',   icon: 'list',       key: '4',
       simple: true, simpleLabel: 'Elemente' },
     { path: 'satzanfaenge', view: 'starters',    label: 'Satzanfänge',  icon: 'quote',      key: '5' },

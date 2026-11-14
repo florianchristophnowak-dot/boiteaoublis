@@ -33,6 +33,7 @@
     });
   }
 
+  /** Gründe: 'play', 'stop' (eine Münze), 'timer-sound' (Klang am Ende des Timers beginnt oder endet). */
   function subscribe(fn) {
     listeners.push(fn);
     return function () {
@@ -258,6 +259,7 @@
     if (!timerAudio) return;
     release(timerAudio);
     timerAudio = null;
+    emit('timer-sound');
   }
 
   /** @returns {boolean} true, wenn ein Klang gestartet wurde */
@@ -276,7 +278,8 @@
         if (err && err.name === 'AbortError') return;
         console.warn('Der Klang am Ende des Timers ließ sich nicht abspielen:', err);
       });
-    } catch (err) { return false; }
+    } catch (err) { timerAudio = null; return false; }
+    emit('timer-sound');
     return true;
   }
 
