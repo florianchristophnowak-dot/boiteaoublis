@@ -19,14 +19,15 @@
       starters: (state.starters || []).length,
       banks: (state.banks || []).length,
       boards: (state.boards || []).length,
-      whiteboards: (state.whiteboards || []).length
+      whiteboards: (state.whiteboards || []).length,
+      presets: (state.presets || []).length
     };
   }
 
   var COUNT_LABELS = {
     subjects: 'Fächer', groups: 'Lerngruppen', units: 'Unterrichtsreihen',
     lexemes: 'Wortschatzeinträge', starters: 'Satzanfänge', banks: 'Wortbanken',
-    boards: 'Tafeln', whiteboards: 'Whiteboards'
+    boards: 'Tafeln', whiteboards: 'Whiteboards', presets: 'Phasen-Presets'
   };
 
   function buildExport(state) {
@@ -47,6 +48,18 @@
     return 'boite-a-oublis_' + stamp + '_' + time + '.json';
   }
 
+  /**
+   * Erstellt die Sicherungsdatei und übergibt sie dem Browser zum Speichern.
+   *
+   * Die Klang- und Bilddateien des Soundboards reisen mit: Sie liegen nicht
+   * im Bestand, sondern in der Medienablage, und stehen in der Datei als
+   * eigener Abschnitt „media“ neben „data“. Ohne solche Dateien entsteht die
+   * Datei sofort – mit ihnen erst, nachdem sie gelesen sind.
+   *
+   * @returns {object} der Inhalt der Datei (ohne die Mediendaten). payload.done
+   *   ist ein Versprechen, das sich erfüllt, sobald die Datei übergeben ist:
+   *   { files, bytes, skipped: [Namen zu großer Dateien] }.
+   */
   function exportToFile(state) {
     var payload = buildExport(state);
     // Die Datei trägt ihren Zeitpunkt in sich: Wer sie später
@@ -54,8 +67,37 @@
     payload.data.meta = Object.assign({}, payload.data.meta, {
       lastBackupAt: payload.exportedAt, unsavedSince: ''
     });
-    util.downloadText(suggestFilename(state), JSON.stringify(payload, null, 2), 'application/json');
-    if (BAO.store && BAO.store.getState() === state) markBackedUp(payload.exportedAt);
+    var filename = suggestFilename(state);
+    var current = !!BAO.store && BAO.store.getState() === state;
+    var plan = BAO.media ? BAO.media.planExport(BAO.classroomModel.mediaIds(state)) : { included: [], skipped: [], bytes: 0 };
+    var summary = {
+      files: plan.included.length, bytes: plan.bytes,
+      skipped: plan.skipped.map(function (entry) { return entry.name; })
+    };
+    var done;
+
+    if (!plan.included.length) {
+      util.downloadText(filename, JSON.stringify(payload, null, 2), 'application/json');
+      if (current) markBackedUp(payload.exportedAt);
+      done = Promise.resolve(summary);
+    } else {
+      // Stück für Stück zusammensetzen: Eine einzige Zeichenkette mit allen
+      // Dateien wäre für den Browser unnötig schwer.
+      var head = JSON.stringify(payload, null, 2);
+      var parts = [head.slice(0, head.lastIndexOf('}')).replace(/\s+$/, '') + ',\n  "media": [\n'];
+      done = plan.included.reduce(function (chain, entry, index) {
+        return chain.then(function () { return BAO.media.exportEntry(entry.id); }).then(function (item) {
+          if (item) parts.push((index ? ',\n' : '') + '    ' + JSON.stringify(item));
+        });
+      }, Promise.resolve()).then(function () {
+        parts.push('\n  ]\n}\n');
+        util.downloadBlob(filename, new Blob(parts, { type: 'application/json;charset=utf-8' }));
+        if (current && BAO.store.getState().meta) markBackedUp(payload.exportedAt);
+        return summary;
+      });
+    }
+    // Nicht aufzählbar: gehört nicht in die Datei.
+    Object.defineProperty(payload, 'done', { value: done, enumerable: false });
     return payload;
   }
 
@@ -109,7 +151,8 @@
 
   /**
    * Liest und prüft eine Sicherungsdatei.
-   * @returns {{ok:boolean, errors:string[], warnings:string[], incoming:object|null, meta:object}}
+   * @returns {{ok:boolean, errors:string[], warnings:string[], incoming:object|null, meta:object, media:object[]}}
+   *          media = die mitgesicherten Klang- und Bilddateien des Soundboards
    */
   function analyse(text, currentState) {
     var parsed;
@@ -121,9 +164,11 @@
 
     var payload = parsed;
     var meta = {};
+    var media = [];
 
     if (parsed && parsed.kind === schema.EXPORT_KIND && parsed.data) {
       payload = parsed.data;
+      if (Array.isArray(parsed.media)) media = parsed.media;
       meta = {
         exportedAt: parsed.exportedAt || '',
         appVersion: parsed.appVersion || '',
@@ -157,12 +202,22 @@
     meta.migrations = migrated.applied;
     meta.counts = counts(checked.state);
     meta.currentCounts = counts(currentState);
-    return { ok: true, errors: [], warnings: checked.warnings, incoming: checked.state, meta: meta };
+    return { ok: true, errors: [], warnings: checked.warnings, incoming: checked.state, meta: meta, media: media };
+  }
+
+  /**
+   * Übernimmt aus einer eingelesenen Sicherung die Dateien, die der neue
+   * Bestand braucht – nicht mehr. Was schon in der Medienablage liegt, bleibt.
+   * @returns {Promise<{added: number, failed: number}>}
+   */
+  function restoreMedia(media, state) {
+    if (!BAO.media || !media || !media.length) return Promise.resolve({ added: 0, failed: 0 });
+    return BAO.media.importEntries(media, BAO.classroomModel.mediaIds(state));
   }
 
   /* --- Zusammenführen ------------------------------------------------------ */
 
-  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
+  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'presets', 'functions'];
 
   function newerThan(a, b) {
     var ta = (a && (a.updatedAt || a.createdAt)) || '';
@@ -175,7 +230,8 @@
    * Regeln:
    *  - unbekannte Kennung  -> wird hinzugefügt
    *  - bekannte Kennung    -> der jüngere Datensatz gewinnt
-   *  - Einstellungen bleiben lokal erhalten
+   *  - Einstellungen bleiben lokal erhalten – auch die des Soundboards
+   *    (Klangtasten, Symbole, Leiste); nur seine Phasen-Presets kommen hinzu
    */
   function merge(currentState, incoming) {
     var result = util.clone(currentState);
@@ -233,6 +289,7 @@
     REMIND_AFTER_DAYS: REMIND_AFTER_DAYS,
     suggestFilename: suggestFilename,
     analyse: analyse,
+    restoreMedia: restoreMedia,
     merge: merge,
     counts: counts,
     COUNT_LABELS: COUNT_LABELS,

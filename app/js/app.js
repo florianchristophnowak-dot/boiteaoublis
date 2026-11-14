@@ -12,8 +12,9 @@
   var select = BAO.select;
 
   /* Der einfache Modus zeigt nur, was für die Grundform gebraucht wird:
-     Tafeln, Elemente, Lerngruppen, Daten. Erreichbar bleibt alles – die
-     Adressen ändern sich nicht, nur die Navigationsleiste wird kürzer. */
+     Tafeln, Whiteboards, Soundboard, Elemente, Lerngruppen, Daten. Erreichbar
+     bleibt alles – die Adressen ändern sich nicht, nur die Navigationsleiste
+     wird kürzer. */
   var ROUTES = [
     { path: 'start',        view: 'dashboard',   label: 'Start',        icon: 'home',       key: '1' },
     { path: 'tafeln',       view: 'boards',      label: 'Tafeln',       icon: 'beamer',     key: '2', simple: true },
@@ -39,7 +40,9 @@
     'Whiteboard geöffnet': 'always', 'Whiteboard-Ansicht': 'always', 'Werkzeug gewählt': 'always',
     'Strich gezeichnet': 'always', 'Striche geändert': 'always', 'Radiert': 'always',
     'Strich gelöscht': 'always', 'Striche gelöscht': 'always', 'Strichfarbe geändert': 'always',
-    'Striche verschoben': 'always', 'Whiteboard geleert': 'always'
+    'Striche verschoben': 'always', 'Whiteboard geleert': 'always',
+    // Die Unterrichtsleiste stellt sich selbst um (Lage, Dauer, Bausteine).
+    'Unterrichtsleiste': true
   };
 
   function isQuiet(meta) {
@@ -632,7 +635,7 @@
         if (BAO.output.isWindowOpen()) BAO.output.closeWindow(); else ensureOutput();
         return;
       }
-      if (event.altKey && !mod && /^[1-9]$/.test(event.key)) {
+      if (event.altKey && !mod && /^[0-9]$/.test(event.key)) {
         var route = ROUTES.filter(function (r) { return r.key === event.key; })[0];
         if (route) { event.preventDefault(); go(route.path); }
         return;
@@ -656,7 +659,7 @@
     button.dataset.mode = simple ? 'simple' : 'full';
     button.title = simple
       ? 'Einfache Grundform. Klick: vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion'
-      : 'Vollständige Ansicht. Klick: einfache Grundform mit Tafeln, Whiteboards, Elementen';
+      : 'Vollständige Ansicht. Klick: einfache Grundform mit Tafeln, Whiteboards, Soundboard, Elementen';
     button.setAttribute('aria-label', 'Ansicht: ' + (simple ? 'einfache Grundform' : 'vollständig') + ' – umschalten');
   }
 
@@ -745,7 +748,7 @@
       var route = ROUTES.filter(function (r) { return r.path === current.path; })[0];
       if (next && route && !route.simple && route.path !== 'tafel' && route.path !== 'whiteboard') go('tafeln'); else renderView();
       BAO.toast.show(next
-        ? 'Einfache Grundform: Tafeln, Whiteboards, Elemente, Lerngruppen, Daten.'
+        ? 'Einfache Grundform: Tafeln, Whiteboards, Soundboard, Elemente, Lerngruppen, Daten.'
         : 'Vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion.', { timeout: 3200 });
     });
     util.on(document, 'click', '[data-action="toggle-theme"]', function () {
@@ -800,6 +803,12 @@
       renderBackupState();
       if (isQuiet(meta)) return;
       scheduleRender();
+    });
+
+    // Klänge und Bilder des Soundboards liegen neben dem Bestand; die
+    // Datenansicht nennt ihren Umfang und zeichnet sich neu, wenn er sich ändert.
+    BAO.media.subscribe(function () {
+      if (current.path === 'daten') scheduleRender();
     });
 
     bindChrome();

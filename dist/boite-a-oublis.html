@@ -1,6 +1,6 @@
 <!--
   Boîte à Oublis 1.3.0 – © Florian Nowak
-  Erzeugt am 2026-11-14T05:16:52.348Z aus app/index.html.
+  Erzeugt am 2026-11-14T05:32:23.649Z aus app/index.html.
   Diese Datei ist vollständig eigenständig: einfach im Browser öffnen.
 -->
 <!doctype html>
@@ -4075,7 +4075,8 @@ body[data-projecting="true"] .toast-root { display: none; }
       starters: state.starters.length,
       banks: state.banks.length,
       boards: (state.boards || []).length,
-      whiteboards: (state.whiteboards || []).length
+      whiteboards: (state.whiteboards || []).length,
+      presets: (state.presets || []).length
     };
   }
 
@@ -4484,14 +4485,15 @@ body[data-projecting="true"] .toast-root { display: none; }
       starters: (state.starters || []).length,
       banks: (state.banks || []).length,
       boards: (state.boards || []).length,
-      whiteboards: (state.whiteboards || []).length
+      whiteboards: (state.whiteboards || []).length,
+      presets: (state.presets || []).length
     };
   }
 
   var COUNT_LABELS = {
     subjects: 'Fächer', groups: 'Lerngruppen', units: 'Unterrichtsreihen',
     lexemes: 'Wortschatzeinträge', starters: 'Satzanfänge', banks: 'Wortbanken',
-    boards: 'Tafeln', whiteboards: 'Whiteboards'
+    boards: 'Tafeln', whiteboards: 'Whiteboards', presets: 'Phasen-Presets'
   };
 
   function buildExport(state) {
@@ -4512,6 +4514,18 @@ body[data-projecting="true"] .toast-root { display: none; }
     return 'boite-a-oublis_' + stamp + '_' + time + '.json';
   }
 
+  /**
+   * Erstellt die Sicherungsdatei und übergibt sie dem Browser zum Speichern.
+   *
+   * Die Klang- und Bilddateien des Soundboards reisen mit: Sie liegen nicht
+   * im Bestand, sondern in der Medienablage, und stehen in der Datei als
+   * eigener Abschnitt „media“ neben „data“. Ohne solche Dateien entsteht die
+   * Datei sofort – mit ihnen erst, nachdem sie gelesen sind.
+   *
+   * @returns {object} der Inhalt der Datei (ohne die Mediendaten). payload.done
+   *   ist ein Versprechen, das sich erfüllt, sobald die Datei übergeben ist:
+   *   { files, bytes, skipped: [Namen zu großer Dateien] }.
+   */
   function exportToFile(state) {
     var payload = buildExport(state);
     // Die Datei trägt ihren Zeitpunkt in sich: Wer sie später
@@ -4519,8 +4533,37 @@ body[data-projecting="true"] .toast-root { display: none; }
     payload.data.meta = Object.assign({}, payload.data.meta, {
       lastBackupAt: payload.exportedAt, unsavedSince: ''
     });
-    util.downloadText(suggestFilename(state), JSON.stringify(payload, null, 2), 'application/json');
-    if (BAO.store && BAO.store.getState() === state) markBackedUp(payload.exportedAt);
+    var filename = suggestFilename(state);
+    var current = !!BAO.store && BAO.store.getState() === state;
+    var plan = BAO.media ? BAO.media.planExport(BAO.classroomModel.mediaIds(state)) : { included: [], skipped: [], bytes: 0 };
+    var summary = {
+      files: plan.included.length, bytes: plan.bytes,
+      skipped: plan.skipped.map(function (entry) { return entry.name; })
+    };
+    var done;
+
+    if (!plan.included.length) {
+      util.downloadText(filename, JSON.stringify(payload, null, 2), 'application/json');
+      if (current) markBackedUp(payload.exportedAt);
+      done = Promise.resolve(summary);
+    } else {
+      // Stück für Stück zusammensetzen: Eine einzige Zeichenkette mit allen
+      // Dateien wäre für den Browser unnötig schwer.
+      var head = JSON.stringify(payload, null, 2);
+      var parts = [head.slice(0, head.lastIndexOf('}')).replace(/\s+$/, '') + ',\n  "media": [\n'];
+      done = plan.included.reduce(function (chain, entry, index) {
+        return chain.then(function () { return BAO.media.exportEntry(entry.id); }).then(function (item) {
+          if (item) parts.push((index ? ',\n' : '') + '    ' + JSON.stringify(item));
+        });
+      }, Promise.resolve()).then(function () {
+        parts.push('\n  ]\n}\n');
+        util.downloadBlob(filename, new Blob(parts, { type: 'application/json;charset=utf-8' }));
+        if (current && BAO.store.getState().meta) markBackedUp(payload.exportedAt);
+        return summary;
+      });
+    }
+    // Nicht aufzählbar: gehört nicht in die Datei.
+    Object.defineProperty(payload, 'done', { value: done, enumerable: false });
     return payload;
   }
 
@@ -4574,7 +4617,8 @@ body[data-projecting="true"] .toast-root { display: none; }
 
   /**
    * Liest und prüft eine Sicherungsdatei.
-   * @returns {{ok:boolean, errors:string[], warnings:string[], incoming:object|null, meta:object}}
+   * @returns {{ok:boolean, errors:string[], warnings:string[], incoming:object|null, meta:object, media:object[]}}
+   *          media = die mitgesicherten Klang- und Bilddateien des Soundboards
    */
   function analyse(text, currentState) {
     var parsed;
@@ -4586,9 +4630,11 @@ body[data-projecting="true"] .toast-root { display: none; }
 
     var payload = parsed;
     var meta = {};
+    var media = [];
 
     if (parsed && parsed.kind === schema.EXPORT_KIND && parsed.data) {
       payload = parsed.data;
+      if (Array.isArray(parsed.media)) media = parsed.media;
       meta = {
         exportedAt: parsed.exportedAt || '',
         appVersion: parsed.appVersion || '',
@@ -4622,12 +4668,22 @@ body[data-projecting="true"] .toast-root { display: none; }
     meta.migrations = migrated.applied;
     meta.counts = counts(checked.state);
     meta.currentCounts = counts(currentState);
-    return { ok: true, errors: [], warnings: checked.warnings, incoming: checked.state, meta: meta };
+    return { ok: true, errors: [], warnings: checked.warnings, incoming: checked.state, meta: meta, media: media };
+  }
+
+  /**
+   * Übernimmt aus einer eingelesenen Sicherung die Dateien, die der neue
+   * Bestand braucht – nicht mehr. Was schon in der Medienablage liegt, bleibt.
+   * @returns {Promise<{added: number, failed: number}>}
+   */
+  function restoreMedia(media, state) {
+    if (!BAO.media || !media || !media.length) return Promise.resolve({ added: 0, failed: 0 });
+    return BAO.media.importEntries(media, BAO.classroomModel.mediaIds(state));
   }
 
   /* --- Zusammenführen ------------------------------------------------------ */
 
-  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
+  var MERGE_COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'presets', 'functions'];
 
   function newerThan(a, b) {
     var ta = (a && (a.updatedAt || a.createdAt)) || '';
@@ -4640,7 +4696,8 @@ body[data-projecting="true"] .toast-root { display: none; }
    * Regeln:
    *  - unbekannte Kennung  -> wird hinzugefügt
    *  - bekannte Kennung    -> der jüngere Datensatz gewinnt
-   *  - Einstellungen bleiben lokal erhalten
+   *  - Einstellungen bleiben lokal erhalten – auch die des Soundboards
+   *    (Klangtasten, Symbole, Leiste); nur seine Phasen-Presets kommen hinzu
    */
   function merge(currentState, incoming) {
     var result = util.clone(currentState);
@@ -4698,6 +4755,7 @@ body[data-projecting="true"] .toast-root { display: none; }
     REMIND_AFTER_DAYS: REMIND_AFTER_DAYS,
     suggestFilename: suggestFilename,
     analyse: analyse,
+    restoreMedia: restoreMedia,
     merge: merge,
     counts: counts,
     COUNT_LABELS: COUNT_LABELS,
@@ -5604,7 +5662,15 @@ body[data-projecting="true"] .toast-root { display: none; }
     hand: 'M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V12M14 11.5V6a1.5 1.5 0 0 1 3 0v7.5M17 13V9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-5-2.7L5 13.5a1.5 1.5 0 0 1 2.5-1.6L8 13',
     undo: 'M9 14 4 9l5-5M4 9h9.5a5.5 5.5 0 0 1 0 11H10',
     redo: 'm15 14 5-5-5-5M20 9h-9.5a5.5 5.5 0 0 0 0 11H14',
-    fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z'
+    fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z',
+    // Soundboard
+    sound: 'M4 9.5h3.5L12.5 5v14l-5-4.5H4zM16 9a4.2 4.2 0 0 1 0 6M18.6 6.4a8 8 0 0 1 0 11.2',
+    stop: 'M7 7h10v10H7z',
+    pause: 'M8.5 6v12M15.5 6v12',
+    up: 'M12 19V5M6 11l6-6 6 6',
+    down: 'M12 5v14M6 13l6 6 6-6',
+    image: 'M4 5h16v14H4zM4 16l4.5-4.5 3.5 3.5 3-3 5 5M15.5 9.5h.01',
+    clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5V12l3 2'
   };
 
   function icon(name, size) {
@@ -7241,6 +7307,186 @@ body { position: relative; }
 
   </script>
   <script>
+/* js/classroom/panel-style.js */
+/* ==========================================================================
+   Gestaltung der Unterrichtsleiste
+   Die Leiste des Soundboards liegt am rechten Rand jeder Leinwand – auch im
+   eigenständigen Beamerfenster. Ihre Regeln hängen deshalb an BAO.stageStyle
+   und werden mit der Projektionsansicht in jedes Dokument injiziert (siehe
+   stage-style.js).
+
+   Grundsätze, übernommen aus dem Teacher Soundboard:
+   - keine Schrift: nur Symbole, lesbar bis in die letzte Reihe
+   - keine Karte, kein Rahmen: Gruppen trennt allein der Abstand
+   - alles rechtsbündig, zur Kante hin, an der die Leiste klebt
+   - eine einzige Grundeinheit (--cu); das Skript setzt sie aus der Höhe der
+     Fläche, damit die Vorschau dieselben Verhältnisse zeigt wie der Beamer
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  BAO.stageStyle += `
+/* --- Unterrichtsleiste (Soundboard) ---------------------------------------- */
+
+/* Die Leinwand räumt der Leiste eine eigene Spalte ein – nichts wird verdeckt. */
+.bao-stage { padding-right: var(--cr-reserve, 0px); }
+
+/* Auch auf geleerter Leinwand bleibt die Leiste stehen: Der Timer läuft weiter. */
+.bao-stage[data-blank="true"] > .cr-panel,
+.bao-stage[data-blank="true"] > .cr-pop { visibility: visible; }
+
+.cr-panel {
+  --cu: 48px;
+  position: absolute; right: 0; top: 0; z-index: 4;
+  display: flex; flex-direction: column; align-items: flex-end;
+  padding: calc(var(--cu) * .14);
+  line-height: 0;
+  pointer-events: none;            /* nur die Zeichen selbst nehmen Klicks an */
+  -webkit-user-select: none; user-select: none;
+}
+.cr-panel[hidden] { display: none; }
+.cr-panel *, .cr-pop * { box-sizing: border-box; }
+
+:where(.cr-panel, .cr-pop) button {
+  -webkit-appearance: none; appearance: none;
+  position: relative; display: block; flex: none;
+  margin: 0; padding: 0; border: 0; min-height: 0;
+  background: none; color: inherit; font: inherit; line-height: inherit;
+  cursor: pointer; pointer-events: auto;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.cr-panel button:focus-visible, .cr-pop button:focus-visible {
+  outline: 3px solid #7cc4ff; outline-offset: 2px;
+}
+
+/* Griff: die Leiste lässt sich senkrecht verschieben. */
+.cr-panel .cr-grip {
+  width: calc(var(--cu) * .62); height: calc(var(--cu) * .24);
+  cursor: grab; touch-action: none;
+}
+.cr-grip::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 30%;
+  height: max(3px, calc(var(--cu) * .07)); border-radius: 99px;
+  background: rgba(125, 134, 146, .75);
+}
+.cr-panel[data-dragging="true"] .cr-grip { cursor: grabbing; }
+
+.cr-groups { display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--cu) * .38); }
+.cr-group { display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--cu) * .13); }
+.cr-row {
+  display: flex; flex-wrap: wrap; justify-content: flex-end;
+  gap: calc(var(--cu) * .13); max-width: calc(var(--cu) * 2.13);
+}
+
+/* Kachel: weißes Motiv auf farbigem Grund. */
+.cr-tile {
+  width: var(--cu); height: var(--cu); border-radius: 22%;
+  background: var(--tile, #475569); color: #fff; overflow: hidden;
+}
+.cr-panel .cr-tile--big { width: calc(var(--cu) * 1.5); height: calc(var(--cu) * 1.5); }
+.cr-glyph { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+/* Eigene Bilder bekommen Abstand zum Rand; die mitgelieferten Zeichen tragen ihn in sich. */
+.cr-tile__image { position: absolute; left: 10%; top: 10%; width: 80%; height: 80%; object-fit: contain; }
+.cr-tile[data-state="blank"] { box-shadow: inset 0 0 0 max(2px, calc(var(--cu) * .06)) #1d9a6c; }
+
+/* Münze: die Klangtaste. */
+.cr-coin { width: var(--cu); height: var(--cu); border-radius: 50%; }
+.cr-coin__face, .cr-coin__image {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; border-radius: 50%;
+}
+.cr-coin__image { object-fit: cover; }
+.cr-coin[data-empty="true"] { opacity: .45; }
+.cr-coin[data-playing="true"] { box-shadow: 0 0 0 max(3px, calc(var(--cu) * .07)) rgba(0, 200, 255, .78); }
+
+/* Timer: Scheibe und drei runde Schaltflächen. */
+.cr-dial { width: calc(var(--cu) * 1.9); height: calc(var(--cu) * 1.9); border-radius: 50%; }
+.cr-dial__svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+.cr-timer__row { display: flex; align-items: center; gap: calc(var(--cu) * .16); }
+.cr-round {
+  width: calc(var(--cu) * .62); height: calc(var(--cu) * .62); border-radius: 50%;
+  background: #5d6874; color: #fff;
+}
+.cr-panel .cr-round--main { width: calc(var(--cu) * .86); height: calc(var(--cu) * .86); }
+.cr-action { position: absolute; left: 14%; top: 14%; width: 72%; height: 72%; display: block; overflow: visible; }
+
+/* Dünner heller Ring unter dem Zeiger, breiter Ring um die Auswahl. */
+.cr-tile::after, .cr-coin::after, .cr-round::after, .cr-dial::after {
+  content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  border-radius: inherit; pointer-events: none;
+}
+@media (hover: hover) {
+  .cr-tile:hover::after, .cr-coin:hover::after, .cr-round:hover::after, .cr-dial:hover::after {
+    box-shadow: inset 0 0 0 max(1.6px, calc(var(--cu) * .035)) rgba(255, 255, 255, .8);
+  }
+}
+.cr-tile[data-selected="true"]::after { box-shadow: inset 0 0 0 max(2.5px, calc(var(--cu) * .06)) #fff; }
+
+/* --- Auswahlfelder der Leiste -------------------------------------------------
+   Sie erscheinen links neben der Leiste, in derselben Fläche – also auch im
+   Beamerfenster. Hier darf Schrift stehen: Sie richten sich an die Lehrkraft. */
+.cr-pop {
+  --pu: 56px;
+  --cu: var(--pu);
+  position: absolute; z-index: 6;
+  display: flex; flex-direction: column; gap: calc(var(--pu) * .14);
+  max-width: calc(100% - 12px); max-height: calc(100% - 12px); overflow: auto;
+  padding: calc(var(--pu) * .16);
+  background: #20252b; color: #fff; border: 1px solid #59616b; border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .38);
+  font: 600 calc(var(--pu) * .25)/1.3 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+  text-align: left;
+  -webkit-user-select: none; user-select: none;
+}
+.cr-pop__grid { display: grid; grid-template-columns: repeat(var(--cols, 5), var(--pu)); gap: calc(var(--pu) * .1); }
+.cr-pop__row { display: flex; align-items: center; gap: calc(var(--pu) * .1); }
+.cr-pop__row--wrap { flex-wrap: wrap; }
+.cr-pop__head { font-size: 1.15em; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-pop__detail, .cr-pop__label { color: #aab4c0; font-weight: 500; }
+.cr-pop__label { margin-top: calc(var(--pu) * .06); }
+.cr-pop__sep { height: 1px; background: #3d454f; margin: calc(var(--pu) * .02) 0; }
+.cr-pop__value {
+  min-width: calc(var(--pu) * 1.5); text-align: center;
+  font-size: calc(var(--pu) * .44); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.cr-pop__value small { display: block; font-size: .42em; font-weight: 500; color: #aab4c0; }
+.cr-pop__list { display: flex; flex-direction: column; gap: calc(var(--pu) * .08); }
+
+/* Taste eines Auswahlfelds: Zeichen oder kurze Beschriftung. */
+.cr-pop .cr-key {
+  display: grid; place-items: center;
+  min-width: var(--pu); height: calc(var(--pu) * .82); padding: 0 calc(var(--pu) * .22);
+  border-radius: 7px; background: #353c44; color: #fff; font-weight: 700; white-space: nowrap;
+}
+.cr-pop .cr-key--wide { justify-items: start; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.cr-key .cr-action { position: static; width: calc(var(--pu) * .62); height: calc(var(--pu) * .62); }
+.cr-key[aria-pressed="true"] { background: #1d9a6c; }
+.cr-key[data-warn="true"] { color: #ffd591; }
+.cr-pop .cr-key:disabled { opacity: .38; cursor: default; }
+@media (hover: hover) {
+  .cr-key:not(:disabled):not([aria-pressed="true"]):hover { background: #46505c; }
+}
+
+/* --- Video einer Klangtaste ------------------------------------------------------ */
+.snd-video {
+  position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 75;
+  display: grid; place-items: center; pointer-events: none;
+}
+.snd-video__box {
+  width: min(75vw, 1280px, calc(75vh * 16 / 9)); aspect-ratio: 16 / 9;
+  background: #000; border-radius: 10px; overflow: hidden; cursor: pointer; pointer-events: auto;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .5);
+}
+.snd-video[data-mode="full"] { background: #000; pointer-events: auto; }
+.snd-video[data-mode="full"] .snd-video__box {
+  width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; box-shadow: none;
+}
+.snd-video__film { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+`;
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
 /* js/projection/deck.js */
 /* ==========================================================================
    Vorlage für die Projektion ("Deck")
@@ -7974,6 +8220,7 @@ body { position: relative; }
   var surfaces = [];              // { kind, stage, doc, win }
   var keyHandlers = [];
   var changeHandlers = [];
+  var surfaceHandlers = [];
   var beamerWindow = null;
   var overlayNode = null;
   var watchTimer = null;
@@ -7989,6 +8236,9 @@ body { position: relative; }
   function addSurface(kind, stage, doc, win) {
     var surface = { kind: kind, stage: stage, doc: doc, win: win || null };
     surfaces.push(surface);
+    // Wer an jeder Fläche etwas anbringt – die Unterrichtsleiste des
+    // Soundboards –, erfährt hier von der neuen.
+    surfaceHandlers.forEach(function (fn) { fn(surface); });
     return surface;
   }
 
@@ -8220,6 +8470,7 @@ body { position: relative; }
 
   function onKey(handler) { keyHandlers.push(handler); }
   function onChange(handler) { changeHandlers.push(handler); }
+  function onSurface(handler) { surfaceHandlers.push(handler); }
 
   document.addEventListener('fullscreenchange', function () { notifyChange('fullscreen'); });
   window.addEventListener('beforeunload', function () {
@@ -8245,7 +8496,8 @@ body { position: relative; }
     getSurface: getSurface,
     showHint: showHint,
     onKey: onKey,
-    onChange: onChange
+    onChange: onChange,
+    onSurface: onSurface
   };
 })(window.BAO = window.BAO || {});
 
@@ -13764,6 +14016,753 @@ body { position: relative; }
 })(window.BAO = window.BAO || {});
 
   </script>
+  <script>
+/* js/classroom/panel.js */
+/* ==========================================================================
+   Unterrichtsleiste
+   Die textfreie Leiste des Soundboards am rechten Rand der Leinwand: Münzen,
+   Projektion, Sozialform, Material, Timer. Sie hängt an jeder Ausgabefläche
+   (Beamerfenster, Vollbild, Vorschau) und am Whiteboard – überall dieselbe
+   Leiste mit demselben Stand.
+
+   Bedienung wie im Teacher Soundboard:
+     Münze        spielt ihren Klang, ein zweiter Klick stoppt
+     Projektion   blendet die Sprachhilfe aus und ein; der kleine Knopf
+                  daneben öffnet Blättern, Stufen und die Phasen-Presets
+     Sozialform   öffnet die Auswahl (eine)
+     Material     öffnet die Auswahl (mehrere)
+     Scheibe      öffnet die Zeitwahl; darunter Minus, Start/Pause, Plus
+     Griff        verschiebt die Leiste senkrecht
+
+   Die Leiste nimmt der Tastatur nichts weg: Ein Klick verschiebt den Fokus
+   nicht, damit Projektion, Tafel und Whiteboard ihre Tasten behalten.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var icons = BAO.classroomIcons;
+  var classroom = BAO.classroom;
+  var sounds = BAO.sounds;
+
+  var panels = [];
+  var reflowScheduled = false;
+
+  /** h() für ein bestimmtes Dokument – die Leiste entsteht auch im Beamerfenster. */
+  function builder(doc) {
+    return function (tag, props) {
+      var args = [tag, Object.assign({ ownerDocument: doc }, props || {})];
+      for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
+      return util.h.apply(null, args);
+    };
+  }
+
+  /* --- Bausteine (auch für die Ansicht „Soundboard“) ----------------------------- */
+
+  /** Kachel einer Sozialform oder eines Materials: eigenes Bild oder Symbol. */
+  function tileNode(doc, item, options) {
+    options = options || {};
+    var h = builder(doc);
+    var node = h('button.cr-tile' + (options.big ? '.cr-tile--big' : ''), {
+      type: 'button', title: options.title || item.name || null, 'aria-label': options.label || item.name || null
+    });
+    node.style.setProperty('--tile', icons.tileColor(item.icon));
+    if (item.imageId && BAO.media.has(item.imageId)) {
+      var image = h('img.cr-tile__image', { alt: '', draggable: 'false' });
+      image.src = BAO.media.url(item.imageId);
+      node.appendChild(image);
+    } else {
+      node.appendChild(icons.glyph(doc, item.icon));
+    }
+    if (options.selected) node.dataset.selected = 'true';
+    return node;
+  }
+
+  /** Münze einer Klangtaste: eigenes Bild oder nummerierte Münze. */
+  function coinNode(doc, index, button, options) {
+    options = options || {};
+    var h = builder(doc);
+    var number = index + 1;
+    var name = button && button.mediaId ? (button.name || 'Klang') : 'noch kein Klang';
+    var node = h('button.cr-coin', {
+      type: 'button', title: options.title || ('Münze ' + number + ': ' + name),
+      'aria-label': 'Münze ' + number + ': ' + name, dataset: { index: String(index) }
+    });
+    if (button && button.imageId && BAO.media.has(button.imageId)) {
+      var image = h('img.cr-coin__image', { alt: '', draggable: 'false' });
+      image.src = BAO.media.url(button.imageId);
+      node.appendChild(image);
+    } else {
+      node.appendChild(icons.coin(doc, number));
+    }
+    if (!button || !button.mediaId) node.dataset.empty = 'true';
+    if (sounds.playingIndex() === index) node.dataset.playing = 'true';
+    return node;
+  }
+
+  /* --- Stand der Projektion ---------------------------------------------------------- */
+
+  function projectionStatus() {
+    var store = BAO.store.getState();
+    var session = BAO.session.getState();
+    if (session.active) {
+      var bank = session.bankId ? BAO.select.bank(store, session.bankId) : null;
+      var bankGroup = bank ? BAO.select.group(store, bank.groupId) : null;
+      return {
+        kind: 'bank', active: true, blank: !!session.blank, level: session.level,
+        title: bank ? bank.title : 'Live-Hilfe', group: bankGroup ? bankGroup.name : '',
+        page: session.index + 1, pages: BAO.session.totalSlides()
+      };
+    }
+    if (BAO.board.isActive()) {
+      var board = BAO.board.getBoard();
+      var boardGroup = board ? BAO.select.group(store, board.groupId) : null;
+      return {
+        kind: 'board', active: true, blank: !!BAO.board.getState().blank, level: 0,
+        title: board ? board.title : 'Tafel', group: boardGroup ? boardGroup.name : '',
+        page: 0, pages: 0
+      };
+    }
+    return { kind: '', active: false, blank: false, level: 0, title: '', group: '', page: 0, pages: 0 };
+  }
+
+  function projectionSignature(status) {
+    return [status.kind, status.active, status.blank, status.level, status.title, status.group, status.page, status.pages].join('|');
+  }
+
+  function toggleProjectionBlank() {
+    if (BAO.session.getState().active) BAO.session.toggleBlank();
+    else if (BAO.board.isActive()) BAO.board.toggleBlank();
+  }
+
+  function stopProjection() {
+    if (BAO.session.getState().active) BAO.session.stop();
+    if (BAO.board.isActive()) BAO.board.stop();
+    BAO.output.closeOverlay();
+    if (BAO.app) BAO.app.scheduleRender();
+  }
+
+  /* --- Leinwand neu einteilen ------------------------------------------------------------
+     Ändert sich die Breite der Leiste, hat der Inhalt mehr oder weniger Platz.
+     Wortbank und Tafel teilen ihre Fläche dann neu ein. */
+
+  function scheduleReflow() {
+    if (reflowScheduled) return;
+    reflowScheduled = true;
+    window.requestAnimationFrame(function () {
+      reflowScheduled = false;
+      if (BAO.session.getState().active) BAO.session.renderAll({ reason: 'resize' });
+      else if (BAO.board.isActive()) BAO.board.renderAll('resize');
+    });
+  }
+
+  /* --- Die Leiste ---------------------------------------------------------------------------- */
+
+  /**
+   * Hängt eine Leiste in eine Fläche.
+   * @param {HTMLElement} host  Leinwand (.bao-stage) oder Zeichenfläche (.wb)
+   * @param {{kind: 'stage'|'whiteboard', surface?: object}} options
+   */
+  function mount(host, options) {
+    options = options || {};
+    var kind = options.kind || 'stage';
+    var doc = host.ownerDocument;
+    var win = doc.defaultView || window;
+    var h = builder(doc);
+
+    BAO.render.ensureStyle(doc, false);
+    sounds.bindDocument(doc);
+
+    // Die Leiste hängt nur in der Fläche, solange sie etwas zeigt: Ohne
+    // eingeschalteten Baustein bleibt die Projektion frei von Bedienelementen.
+    var node = h('div.cr-panel', { dataset: { host: kind }, hidden: true });
+    var groups = h('div.cr-groups');
+    var grip = h('button.cr-grip', {
+      type: 'button', title: 'Leiste verschieben', 'aria-label': 'Unterrichtsleiste senkrecht verschieben'
+    });
+    node.appendChild(grip);
+    node.appendChild(groups);
+
+    var destroyed = false;
+    var dial = null;
+    var toggleButton = null;
+    var lastTimerPhase = '';
+    var lastProjection = '';
+    var popup = null;
+    var ownTicker = null;
+    var reserve = -1;
+    var dragging = false;
+    var anchors = {};
+
+    /* Ein Klick auf die Leiste darf den Fokus nicht verschieben – sonst
+       gehörten Leertaste und Eingabetaste plötzlich der Leiste. */
+    function keepFocus(event) {
+      if (event.target.closest && event.target.closest('button')) event.preventDefault();
+    }
+    function ownKeys(event) {
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') event.stopPropagation();
+    }
+    node.addEventListener('mousedown', keepFocus);
+    node.addEventListener('keydown', ownKeys);
+
+    /* --- Aufbau ------------------------------------------------------------------------ */
+
+    function buildCoins(settings) {
+      var row = h('div.cr-row');
+      for (var i = 0; i < settings.sounds.visible; i++) {
+        (function (index) {
+          var coin = coinNode(doc, index, settings.sounds.buttons[index]);
+          coin.addEventListener('click', function () { sounds.triggerWithFeedback(index); });
+          row.appendChild(coin);
+        })(i);
+      }
+      return h('div.cr-group', { dataset: { module: 'sounds' } }, row);
+    }
+
+    function buildProjection() {
+      var status = projectionStatus();
+      lastProjection = projectionSignature(status);
+      var state = !status.active ? 'ready' : (status.blank ? 'blank' : 'live');
+      var label = !status.active ? 'Projektion: nichts läuft – Steuerung öffnen'
+        : (status.blank ? 'Sprachhilfe wieder einblenden' : 'Sprachhilfe ausblenden');
+      var tile = h('button.cr-tile.cr-tile--big', {
+        type: 'button', title: label, 'aria-label': label, dataset: { state: state },
+        onclick: function () {
+          if (projectionStatus().active) toggleProjectionBlank(); else openPopup('projection', tile);
+        },
+        oncontextmenu: function (event) { event.preventDefault(); openPopup('projection', tile); }
+      }, icons.boite(doc, state, status.level));
+      tile.style.setProperty('--tile', icons.BOITE_COLORS[state]);
+      var menu = h('button.cr-round', {
+        type: 'button', title: 'Projektion steuern und Phasen-Presets starten',
+        'aria-label': 'Projektion steuern und Phasen-Presets starten',
+        onclick: function () { openPopup('projection', tile); }
+      }, icons.action(doc, 'menu'));
+      anchors.projection = tile;
+      return h('div.cr-group', { dataset: { module: 'projection' } },
+        h('div.cr-timer__row', {}, menu, tile));
+    }
+
+    function buildPhase() {
+      var item = classroom.phaseItem();
+      var tile = tileNode(doc, item || { name: 'Sozialform wählen', icon: 'phase-placeholder' }, {
+        big: true, title: item ? item.name + ' – ändern' : 'Sozialform oder Methode wählen'
+      });
+      tile.addEventListener('click', function () { openPopup('phase', tile); });
+      anchors.phase = tile;
+      return h('div.cr-group', { dataset: { module: 'phase' } }, tile);
+    }
+
+    function buildMaterials() {
+      var items = classroom.materialItems();
+      var row = h('div.cr-row');
+      if (!items.length) items = [{ name: 'Material wählen', icon: 'material-placeholder' }];
+      items.forEach(function (item) {
+        var tile = tileNode(doc, item, { title: item.id ? item.name + ' – Material ändern' : 'Material wählen' });
+        tile.addEventListener('click', function () { openPopup('materials', row); });
+        row.appendChild(tile);
+      });
+      anchors.materials = row;
+      return h('div.cr-group', { dataset: { module: 'materials' } }, row);
+    }
+
+    function buildTimer() {
+      dial = icons.dial(doc);
+      var face = h('button.cr-dial', {
+        type: 'button', title: 'Zeit wählen', 'aria-label': 'Timer: Zeit wählen',
+        onclick: function () { openPopup('timer', face); }
+      }, dial.node);
+      toggleButton = h('button.cr-round.cr-round--main', {
+        type: 'button', onclick: function () { classroom.toggleTimer(); }
+      });
+      anchors.timer = face;
+      lastTimerPhase = '';
+      return h('div.cr-group', { dataset: { module: 'timer' } },
+        face,
+        h('div.cr-timer__row', {},
+          h('button.cr-round', {
+            type: 'button', title: 'Eine Minute weniger', 'aria-label': 'Eine Minute weniger',
+            onclick: function () { classroom.adjustTimer(-1); }
+          }, icons.action(doc, 'minus')),
+          toggleButton,
+          h('button.cr-round', {
+            type: 'button', title: 'Eine Minute mehr', 'aria-label': 'Eine Minute mehr',
+            onclick: function () { classroom.adjustTimer(1); }
+          }, icons.action(doc, 'plus'))
+        ));
+    }
+
+    function updateTimer() {
+      if (!dial) return;
+      var view = classroom.timerView();
+      dial.set(view.progress, view.phase);
+      if (view.phase === lastTimerPhase) return;
+      lastTimerPhase = view.phase;
+      var running = view.phase === 'running';
+      var label = running ? 'Timer anhalten'
+        : view.phase === 'paused' ? 'Timer fortsetzen'
+        : view.phase === 'done' ? 'Timer von vorn beginnen'
+        : 'Timer starten (' + view.defaultMinutes + ' Minuten)';
+      util.clear(toggleButton);
+      toggleButton.appendChild(icons.action(doc, running ? 'pause' : 'play'));
+      toggleButton.title = label;
+      toggleButton.setAttribute('aria-label', label);
+      node.dataset.timer = view.phase;
+    }
+
+    function render() {
+      if (destroyed) return;
+      var settings = classroom.settings();
+      var show = settings.show;
+      util.clear(groups);
+      dial = null;
+      toggleButton = null;
+      anchors = {};
+
+      if (show.sounds) groups.appendChild(buildCoins(settings));
+      if (show.projection) groups.appendChild(buildProjection());
+      if (show.phase) groups.appendChild(buildPhase());
+      if (show.materials) groups.appendChild(buildMaterials());
+      if (show.timer) groups.appendChild(buildTimer());
+
+      var visible = !!groups.firstChild;
+      node.hidden = !visible;
+      if (visible && node.parentNode !== host) host.appendChild(node);
+      else if (!visible && node.parentNode) node.parentNode.removeChild(node);
+      updateTimer();
+      syncTicker();
+      layout();
+      if (popup) {
+        // Der Baustein eines offenen Auswahlfelds ist verschwunden? Dann schließen.
+        if (!show[popup.module] || node.hidden) closePopup(); else popup.render();
+      }
+    }
+
+    function updateCoins() {
+      var playing = sounds.playingIndex();
+      util.$$('.cr-coin', groups).forEach(function (coin) {
+        if (Number(coin.dataset.index) === playing) coin.dataset.playing = 'true';
+        else delete coin.dataset.playing;
+      });
+    }
+
+    /* --- Größe und Lage -------------------------------------------------------------------
+       Grundeinheit aus der Höhe der Fläche (wie im Soundboard: 6,2 %). Passt
+       die Leiste nicht, schrumpft sie in Schritten, bis sie passt. */
+
+    function freeSpan() {
+      var height = host.clientHeight;
+      var top = 0;
+      var bottom = 0;
+      if (kind === 'whiteboard') {
+        // Werkzeugleisten der Zeichenfläche freihalten, soweit sie am rechten Rand liegen.
+        var box = host.getBoundingClientRect();
+        var left = box.right - node.offsetWidth - 8;
+        var options_ = host.querySelector('.wb-options');
+        var zoom = host.querySelector('.wb-zoom');
+        if (options_) {
+          var o = options_.getBoundingClientRect();
+          if (o.right > left) top = Math.max(top, o.bottom - box.top + 6);
+        }
+        if (zoom) {
+          var z = zoom.getBoundingClientRect();
+          if (z.right > left) bottom = Math.max(bottom, box.bottom - z.top + 6);
+        }
+      }
+      return { top: top, bottom: bottom, height: Math.max(0, height - top - bottom) };
+    }
+
+    function layout() {
+      if (destroyed) return;
+      if (node.hidden) { setReserve(0); return; }
+      var height = host.clientHeight;
+      if (!height) return;                       // noch nicht im Dokument – der Beobachter meldet sich
+
+      var unit = util.clamp(height * 0.062, 14, 96);
+      node.style.setProperty('--cu', unit.toFixed(2) + 'px');
+      var span = freeSpan();
+      var guard = 0;
+      while (node.offsetHeight > span.height && unit > 9 && guard < 24) {
+        unit *= 0.92;
+        node.style.setProperty('--cu', unit.toFixed(2) + 'px');
+        guard += 1;
+      }
+      if (kind === 'whiteboard' && guard) span = freeSpan();
+
+      if (!dragging) {
+        var room = Math.max(0, span.height - node.offsetHeight);
+        node.style.top = Math.round(span.top + room * classroom.settings().panelY) + 'px';
+      }
+      setReserve(node.offsetWidth);
+      if (popup) popup.place();
+    }
+
+    function setReserve(width) {
+      if (kind !== 'stage' || width === reserve) return;
+      reserve = width;
+      if (width) host.style.setProperty('--cr-reserve', width + 'px');
+      else host.style.removeProperty('--cr-reserve');
+      scheduleReflow();
+    }
+
+    /* --- Verschieben ---------------------------------------------------------------------- */
+
+    grip.addEventListener('pointerdown', function (event) {
+      if (event.button !== undefined && event.button !== 0) return;
+      var span = freeSpan();
+      var room = Math.max(0, span.height - node.offsetHeight);
+      var startTop = parseFloat(node.style.top) || span.top;
+      var startY = event.clientY;
+      dragging = true;
+      node.dataset.dragging = 'true';
+      closePopup();
+      try { grip.setPointerCapture(event.pointerId); } catch (err) { /* ältere Browser */ }
+      event.preventDefault();
+
+      function move(moveEvent) {
+        var top = util.clamp(startTop + moveEvent.clientY - startY, span.top, span.top + room);
+        node.style.top = Math.round(top) + 'px';
+      }
+      function end() {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', end);
+        grip.removeEventListener('pointercancel', end);
+        dragging = false;
+        delete node.dataset.dragging;
+        var top = parseFloat(node.style.top) || span.top;
+        classroom.setPanelY(room > 0 ? (top - span.top) / room : 0);
+        layout();
+      }
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', end);
+      grip.addEventListener('pointercancel', end);
+    });
+
+    /* --- Auswahlfelder ---------------------------------------------------------------------- */
+
+    function closePopup() {
+      if (!popup) return;
+      var closing = popup;
+      popup = null;
+      doc.removeEventListener('pointerdown', closing.onOutside, true);
+      doc.removeEventListener('keydown', closing.onKey, true);
+      if (closing.node.parentNode) closing.node.parentNode.removeChild(closing.node);
+    }
+
+    function openPopup(module, anchor) {
+      if (popup && popup.module === module) { closePopup(); return; }
+      closePopup();
+      var box = h('div.cr-pop', { role: 'dialog', dataset: { module: module } });
+      box.addEventListener('mousedown', keepFocus);
+      box.addEventListener('keydown', ownKeys);
+      var local = {};                           // Zwischenstand eines Felds (z. B. gewählte Minuten)
+
+      var current = {
+        module: module,
+        node: box,
+        render: function () {
+          util.clear(box);
+          POPUPS[module](box, local);
+          current.place();
+        },
+        place: function () {
+          var area = host.getBoundingClientRect();
+          var unit = util.clamp(area.height * 0.11, 30, 66);
+          box.style.setProperty('--pu', unit.toFixed(1) + 'px');
+          var target = (anchors[module] && anchors[module].isConnected ? anchors[module] : anchor);
+          var at = target && target.isConnected ? target.getBoundingClientRect() : node.getBoundingClientRect();
+          var panelBox = node.getBoundingClientRect();
+          var gap = Math.round(unit * 0.18);
+          var right = Math.max(6, area.right - panelBox.left + gap);
+          right = Math.min(right, Math.max(6, area.width - box.offsetWidth - 6));
+          var top = util.clamp(at.top - area.top, 6, Math.max(6, area.height - box.offsetHeight - 6));
+          box.style.right = Math.round(right) + 'px';
+          box.style.top = Math.round(top) + 'px';
+        },
+        onOutside: function (event) {
+          var target = event.target;
+          if (box.contains(target) || node.contains(target)) return;
+          closePopup();
+        },
+        onKey: function (event) {
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          closePopup();
+        }
+      };
+      popup = current;
+      host.appendChild(box);
+      doc.addEventListener('pointerdown', current.onOutside, true);
+      doc.addEventListener('keydown', current.onKey, true);
+      current.render();
+    }
+
+    function key(label, title, onClick, extra) {
+      var button = h('button.cr-key', Object.assign({ type: 'button', title: title, 'aria-label': title }, extra || {}));
+      if (typeof label === 'string') button.textContent = label; else button.appendChild(label);
+      button.addEventListener('click', onClick);
+      return button;
+    }
+
+    var POPUPS = {
+      /* Sozialform: genau eine. Die Wahl schließt das Feld. */
+      phase: function (box) {
+        var grid = h('div.cr-pop__grid');
+        var selected = classroom.live().phaseId;
+        classroom.catalog('phases').forEach(function (item) {
+          var tile = tileNode(doc, item, { selected: item.id === selected });
+          tile.addEventListener('click', function () { classroom.setPhase(item.id); closePopup(); });
+          grid.appendChild(tile);
+        });
+        var clear = tileNode(doc, { name: 'Auswahl löschen', icon: 'clear' });
+        clear.addEventListener('click', function () { classroom.setPhase(''); closePopup(); });
+        grid.appendChild(clear);
+        box.appendChild(grid);
+      },
+
+      /* Material: mehrere. Das Feld bleibt offen, bis daneben geklickt wird. */
+      materials: function (box) {
+        var grid = h('div.cr-pop__grid');
+        var selected = classroom.live().materialIds;
+        classroom.catalog('materials').forEach(function (item) {
+          var tile = tileNode(doc, item, { selected: selected.indexOf(item.id) >= 0 });
+          tile.addEventListener('click', function () { classroom.toggleMaterial(item.id); });
+          grid.appendChild(tile);
+        });
+        var clear = tileNode(doc, { name: 'Auswahl löschen', icon: 'clear' });
+        clear.addEventListener('click', function () { classroom.clearMaterials(); });
+        grid.appendChild(clear);
+        box.appendChild(grid);
+      },
+
+      /* Timer: Schnellwahl, eigene Dauer, von vorn, löschen. */
+      timer: function (box, local) {
+        var settings = classroom.settings();
+        var view = classroom.timerView();
+        if (!local.minutes) local.minutes = view.totalMinutes || settings.timerMinutes;
+
+        var presets = h('div.cr-pop__row.cr-pop__row--wrap');
+        settings.timerPresets.forEach(function (minutes) {
+          presets.appendChild(key(String(minutes), minutes + ' Minuten starten', function () {
+            classroom.startTimer(minutes);
+            closePopup();
+          }));
+        });
+        box.appendChild(presets);
+
+        var value = h('div.cr-pop__value', {}, String(local.minutes), h('small', { text: 'Minuten' }));
+        function step(delta) {
+          return function () {
+            local.minutes = util.clamp(local.minutes + delta, 1, 999);
+            popup.render();
+          };
+        }
+        box.appendChild(h('div.cr-pop__row', {},
+          key('−5', 'Fünf Minuten weniger', step(-5)),
+          key(icons.action(doc, 'minus'), 'Eine Minute weniger', step(-1)),
+          value,
+          key(icons.action(doc, 'plus'), 'Eine Minute mehr', step(1)),
+          key('+5', 'Fünf Minuten mehr', step(5)),
+          key(icons.action(doc, 'play'), 'Mit dieser Dauer starten', function () {
+            classroom.startTimer(local.minutes);
+            closePopup();
+          }, { 'aria-pressed': 'true' })
+        ));
+
+        box.appendChild(h('div.cr-pop__row', {},
+          key(icons.action(doc, 'reset'), 'Von vorn beginnen', function () {
+            classroom.resetTimer();
+            closePopup();
+          }, { disabled: !view.hasValue }),
+          key(icons.action(doc, 'stop'), 'Timer löschen', function () {
+            classroom.clearTimer();
+            closePopup();
+          }, { disabled: !view.hasValue })
+        ));
+      },
+
+      /* Projektion: ausblenden, blättern, Stufe, beenden – und die Phasen-Presets. */
+      projection: function (box) {
+        var status = projectionStatus();
+        var detail = [];
+        if (status.group) detail.push(status.group);
+        if (status.kind === 'bank' && status.pages) detail.push('Seite ' + status.page + ' von ' + status.pages);
+        if (status.blank) detail.push('ausgeblendet');
+        box.appendChild(h('div', {},
+          h('div.cr-pop__head', { text: status.active ? status.title : 'Keine Projektion' }),
+          h('div.cr-pop__detail', { text: status.active ? detail.join(' · ') : 'Wortbank oder Tafel öffnen – oder ein Preset starten.' })
+        ));
+
+        var paging = status.kind === 'bank' && status.pages > 1;
+        box.appendChild(h('div.cr-pop__row', {},
+          key(icons.action(doc, 'prev'), 'Vorherige Seite', function () { BAO.session.prev(); }, { disabled: !paging }),
+          key(icons.action(doc, status.blank ? 'eye-off' : 'eye'),
+            status.blank ? 'Sprachhilfe wieder einblenden' : 'Sprachhilfe ausblenden',
+            toggleProjectionBlank, { disabled: !status.active }),
+          key(icons.action(doc, 'next'), 'Nächste Seite', function () { BAO.session.next(false); }, { disabled: !paging })
+        ));
+
+        var levels = h('div.cr-pop__row');
+        [1, 2, 3].forEach(function (level) {
+          levels.appendChild(key(icons.action(doc, 'level' + level), 'Unterstützungsstufe ' + level,
+            function () { BAO.session.setLevel(level); },
+            { disabled: status.kind !== 'bank', 'aria-pressed': status.kind === 'bank' && status.level === level ? 'true' : 'false' }));
+        });
+        box.appendChild(levels);
+
+        box.appendChild(h('div.cr-pop__row', {},
+          key(icons.action(doc, 'live'), 'Live-Hilfe einblenden', function () {
+            closePopup();
+            // Der Dialog steht in der Lehreransicht – im Vollbild wäre er unsichtbar.
+            if (document.fullscreenElement && document.exitFullscreen) {
+              var leaving = document.exitFullscreen();
+              if (leaving && leaving.catch) leaving.catch(function () {});
+            }
+            BAO.app.openLiveHelp();
+          }),
+          key(icons.action(doc, 'stop'), 'Projektion beenden', function () {
+            closePopup();
+            stopProjection();
+          }, { disabled: !status.active })
+        ));
+
+        var list = classroom.presets();
+        box.appendChild(h('div.cr-pop__sep'));
+        box.appendChild(h('div.cr-pop__label', { text: 'Gemeinsam starten' }));
+        if (!list.length) {
+          box.appendChild(h('div.cr-pop__detail', { text: 'Noch kein Phasen-Preset angelegt.' }));
+        } else {
+          var presetList = h('div.cr-pop__list');
+          list.forEach(function (item) {
+            var info = classroom.presetStatus(item);
+            var label = (info.missing ? '⚠ ' : '') + BAO.classroomModel.presetLabel(item);
+            presetList.appendChild(key(label, info.missing
+              ? 'Das Ziel ist nicht mehr vorhanden – Sozialform, Material und Timer werden trotzdem eingestellt.'
+              : 'Projektion, Sozialform, Material und Timer gemeinsam starten',
+              function () { closePopup(); startPreset(item.id); },
+              { 'class': 'cr-key--wide', dataset: { warn: info.missing ? 'true' : null } }));
+          });
+          box.appendChild(presetList);
+        }
+        box.appendChild(key('Presets verwalten …', 'Zur Ansicht „Soundboard“', function () {
+          closePopup();
+          BAO.app.go('soundboard');
+        }, { 'class': 'cr-key--wide' }));
+      }
+    };
+
+    /* --- Beobachten ------------------------------------------------------------------------- */
+
+    /* Im Beamerfenster tickt die Uhr zusätzlich im eigenen Fenster: Browser
+       bremsen ein verdecktes Hauptfenster aus, das sichtbare Beamerfenster nicht. */
+    function syncTicker() {
+      var needed = !destroyed && win !== window && classroom.live().timer.running;
+      if (needed && !ownTicker) {
+        ownTicker = win.setInterval(function () { classroom.tick(); }, classroom.TICK_MS);
+      } else if (!needed && ownTicker) {
+        win.clearInterval(ownTicker);
+        ownTicker = null;
+      }
+    }
+
+    function onProjection() {
+      if (destroyed || !classroom.settings().show.projection) return;
+      if (projectionSignature(projectionStatus()) === lastProjection) return;
+      render();
+    }
+
+    var unsubscribe = [
+      classroom.subscribe(function (reason) {
+        if (destroyed) return;
+        if (reason === 'tick') { updateTimer(); return; }
+        render();
+      }),
+      sounds.subscribe(function () { if (!destroyed) updateCoins(); }),
+      BAO.session.subscribe(onProjection),
+      BAO.board.subscribe(onProjection)
+    ];
+
+    var observer = null;
+    if (win.ResizeObserver) {
+      observer = new win.ResizeObserver(function () { layout(); });
+      observer.observe(host, { box: 'border-box' });
+    } else {
+      win.addEventListener('resize', layout);
+    }
+
+    var controller = {
+      kind: kind,
+      host: host,
+      node: node,
+      surface: options.surface || null,
+      render: render,
+      layout: layout,
+      isAlive: function () { return !destroyed; },
+      destroy: function () {
+        if (destroyed) return;
+        destroyed = true;
+        closePopup();
+        unsubscribe.forEach(function (off) { if (off) off(); });
+        if (observer) observer.disconnect(); else win.removeEventListener('resize', layout);
+        try { if (ownTicker) win.clearInterval(ownTicker); } catch (err) { /* Fenster ist schon zu */ }
+        ownTicker = null;
+        if (node.parentNode) node.parentNode.removeChild(node);
+        try { host.style.removeProperty('--cr-reserve'); } catch (err) { /* Fenster ist schon zu */ }
+        var index = panels.indexOf(controller);
+        if (index >= 0) panels.splice(index, 1);
+      }
+    };
+    panels.push(controller);
+    render();
+    return controller;
+  }
+
+  /** Startet ein Preset und meldet ein fehlendes Ziel in Worten. */
+  function startPreset(id) {
+    var item = classroom.preset(id);
+    var result = classroom.startPreset(id);
+    if (result.ok && result.missing && item) {
+      BAO.toast.show('„' + BAO.classroomModel.presetLabel(item) + '“: Das Ziel ist nicht mehr vorhanden. '
+        + 'Sozialform, Material und Timer sind eingestellt.', { timeout: 6000 });
+    }
+    return result;
+  }
+
+  /* --- An die Ausgabeflächen hängen -------------------------------------------------------------- */
+
+  /** Entfernt Leisten, deren Fläche es nicht mehr gibt (Vorschau neu gebaut, Fenster zu). */
+  function prune() {
+    var alive = BAO.output.surfaces();
+    panels.slice().forEach(function (panel) {
+      if (panel.kind === 'stage' && alive.indexOf(panel.surface) < 0) panel.destroy();
+    });
+  }
+
+  BAO.output.onSurface(function (surface) {
+    prune();
+    try {
+      mount(surface.stage.root, { kind: 'stage', surface: surface });
+    } catch (err) {
+      console.error('Die Unterrichtsleiste konnte nicht aufgebaut werden:', err);
+    }
+  });
+  BAO.output.onChange(function (reason) {
+    if (reason === 'window-closed' || reason === 'overlay-closed') prune();
+  });
+
+  BAO.classroomPanel = {
+    mount: mount,
+    tileNode: tileNode,
+    coinNode: coinNode,
+    projectionStatus: projectionStatus,
+    startPreset: startPreset,
+    /** Für Prüfungen: alle gerade hängenden Leisten. */
+    panels: function () { return panels.slice(); }
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
 <!-- Ansichten -->
   <script>
 /* js/views/dashboard.js */
@@ -17015,6 +18014,7 @@ body { position: relative; }
 
   function teardown() {
     if (!active) return;
+    if (active.panel) active.panel.destroy();
     active.ctrl.destroy();
     active = null;
   }
@@ -17475,6 +18475,8 @@ body { position: relative; }
     var ctrl = wb.mount(stage, { whiteboardId: board.id });
     active = { id: board.id, ctrl: ctrl, refs: refs };
     buildChrome(ctrl, refs).forEach(function (node) { stage.appendChild(node); });
+    // Die Unterrichtsleiste des Soundboards liegt wie die Werkzeugleisten über der Fläche.
+    active.panel = BAO.classroomPanel.mount(stage, { kind: 'whiteboard' });
   }
 
   BAO.views = BAO.views || {};
@@ -18710,9 +19712,23 @@ body { position: relative; }
   function exportAll() {
     var payload = BAO.backup.exportToFile(BAO.store.getState());
     var summary = BAO.stock.describeContent(Object.assign({}, payload.counts, { units: 0 }));
-    BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '')
-      + '. Sie liegt im Download-Ordner – am besten zusätzlich auf einem Stick oder in der Schul-Cloud ablegen.',
-      { timeout: 7000 });
+    var advice = '. Sie liegt im Download-Ordner – am besten zusätzlich auf einem Stick oder in der Schul-Cloud ablegen.';
+    // Ohne Dateien des Soundboards ist die Sicherung sofort fertig.
+    if (!BAO.media.planExport(BAO.classroomModel.mediaIds(BAO.store.getState())).included.length) {
+      BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '') + advice, { timeout: 7000 });
+      return payload;
+    }
+    payload.done.then(function (media) {
+      BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '') + ', dazu '
+        + media.files + ' ' + util.plural(media.files, 'Datei', 'Dateien') + ' des Soundboards ('
+        + BAO.media.formatBytes(media.bytes) + ')' + advice, { timeout: 7000 });
+      if (media.skipped.length) {
+        BAO.toast.error('Nicht in der Sicherungsdatei, weil zusammen zu groß: ' + media.skipped.join(', ')
+          + '. Diese Dateien bitte gesondert aufbewahren.', { timeout: 14000 });
+      }
+    }, function (err) {
+      BAO.toast.error('Die Sicherungsdatei konnte nicht erstellt werden: ' + (err && err.message ? err.message : err));
+    });
     return payload;
   }
 
@@ -18805,6 +19821,17 @@ body { position: relative; }
     var incoming = result.incoming;
     var before = BAO.backup.counts(state);
     var after = BAO.backup.counts(incoming);
+    var mediaCount = (result.media || []).length;
+
+    /** Holt die Klänge und Bilder des Soundboards nach, die der neue Bestand braucht. */
+    function restoreMedia(nextState) {
+      BAO.backup.restoreMedia(result.media, nextState).then(function (report) {
+        if (report.failed) {
+          BAO.toast.error(report.failed + ' ' + util.plural(report.failed, 'Datei', 'Dateien')
+            + ' des Soundboards ließen sich nicht aus der Sicherung lesen.');
+        }
+      });
+    }
 
     var table = h('table.mini', {},
       h('thead', {}, h('tr', {},
@@ -18835,6 +19862,14 @@ body { position: relative; }
           ? h('div.note.note--warn', {}, h('strong', { text: 'Hinweise beim Prüfen:' }),
             h('ul', {}, result.warnings.slice(0, 6).map(function (w) { return h('li', { text: w }); })))
           : null,
+        mediaCount
+          ? h('div.note', {
+            dataset: { media: String(mediaCount) },
+            text: 'Die Datei enthält außerdem ' + mediaCount + ' ' + util.plural(mediaCount, 'Klang- oder Bilddatei', 'Klang- und Bilddateien')
+              + ' des Soundboards. Sie kommen beim Wiederherstellen mit; beim Zusammenführen bleiben '
+              + 'Klangtasten und Symbole dieses Rechners, wie sie sind.'
+          })
+          : null,
         h('div.stack.stack--tight', {},
           h('strong', { text: 'Wie sollen die Daten übernommen werden?' }),
           h('div.note', {
@@ -18854,6 +19889,7 @@ body { position: relative; }
             // Der zusammengeführte Bestand steht so in keiner Sicherungsdatei.
             if (lines.length && !merged.state.meta.unsavedSince) merged.state.meta.unsavedSince = util.nowISO();
             BAO.store.replaceState(merged.state, 'Sicherung zusammengeführt');
+            restoreMedia(merged.state);
             BAO.toast.undoable(lines.length ? 'Zusammengeführt – ' + lines.join(', ') : 'Nichts Neues gefunden.', { timeout: 12000 });
             return true;
           }
@@ -18873,6 +19909,7 @@ body { position: relative; }
               incoming.meta.unsavedSince = '';
               incoming.meta.changedAt = incoming.meta.changedAt || '';
               BAO.store.replaceState(incoming, 'Sicherung wiederhergestellt');
+              restoreMedia(incoming);
               BAO.toast.undoable('Bestand aus der Sicherung wiederhergestellt.', { timeout: 12000 });
               return true;
             });
@@ -19124,6 +20161,7 @@ body { position: relative; }
     var storage = BAO.store.storageInfo();
     var totals = select.totals(state);
     var safety = BAO.storage.loadSafetyCopy();
+    var media = BAO.media.planExport(BAO.classroomModel.mediaIds(state));
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -19164,8 +20202,8 @@ body { position: relative; }
           usageNote(storage),
           h('p', {
             text: 'Die Sicherungsdatei enthält alles in einer einzigen Datei: Fächer, Lerngruppen, Reihen, '
-              + 'Wortschatz, Satzanfänge, Wortbanken, Tafeln, Whiteboards und Einstellungen. '
-              + 'Mit ihr zieht der Bestand auch auf einen anderen Rechner um.'
+              + 'Wortschatz, Satzanfänge, Wortbanken, Tafeln, Whiteboards, das Soundboard mit seinen Klängen '
+              + 'und Bildern sowie die Einstellungen. Mit ihr zieht der Bestand auch auf einen anderen Rechner um.'
           }),
           h('dl.kv', {},
             h('dt', { text: 'Fächer' }), h('dd', { text: String(totals.subjects) }),
@@ -19174,8 +20212,22 @@ body { position: relative; }
             h('dt', { text: 'Satzanfänge' }), h('dd', { text: String(totals.starters) }),
             h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) }),
             h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) }),
-            h('dt', { text: 'Whiteboards' }), h('dd', { text: String(totals.whiteboards) })
+            h('dt', { text: 'Whiteboards' }), h('dd', { text: String(totals.whiteboards) }),
+            h('dt', { text: 'Phasen-Presets' }), h('dd', { text: String(totals.presets) }),
+            h('dt', { text: 'Klänge und Bilder' }), h('dd', {
+              dataset: { bind: 'media-total' },
+              text: media.included.length + media.skipped.length
+                ? (media.included.length + media.skipped.length) + ' ('
+                  + BAO.media.formatBytes(media.bytes + media.skipped.reduce(function (sum, entry) { return sum + entry.size; }, 0)) + ')'
+                : '0'
+            })
           ),
+          media.skipped.length
+            ? h('div.note.note--warn', {
+              text: 'Zusammen sind die Dateien des Soundboards zu groß für die Sicherungsdatei. Nicht enthalten: '
+                + media.skipped.map(function (entry) { return entry.name; }).join(', ') + '.'
+            })
+            : null,
           h('button.btn.btn--primary.btn--wide', {
             type: 'button', title: 'Sicherungsdatei erstellen (Strg + S)', onclick: exportAll
           }, ui.icon('download', 16), 'Alle Daten exportieren'),
@@ -19258,6 +20310,12 @@ body { position: relative; }
                 + (storage.usage ? ' – rund ' + Math.max(1, Math.round(storage.usage.share * 100)) + ' % des üblichen Platzes' : '')
               : 'nicht verfügbar – bitte regelmäßig exportieren'
           }),
+          h('dt', { text: 'Klänge und Bilder' }), h('dd', {
+            text: !BAO.media.isReady() ? 'Ablage wird geöffnet …'
+              : BAO.media.isPersistent()
+                ? 'lokal im Browser (IndexedDB), ' + BAO.media.formatBytes(BAO.media.usage().bytes)
+                : 'nur für diese Sitzung – der Browser erlaubt hier keine IndexedDB'
+          }),
           h('dt', { text: 'Zuletzt gespeichert' }), h('dd', { text: util.formatDateTime(storage.savedAt) || '–' }),
           h('dt', { text: 'Datenschutz' }), h('dd', {
             text: 'Keine Konten, keine Server, keine Übertragung. Alles bleibt auf diesem Rechner.'
@@ -19320,8 +20378,9 @@ body { position: relative; }
   var select = BAO.select;
 
   /* Der einfache Modus zeigt nur, was für die Grundform gebraucht wird:
-     Tafeln, Elemente, Lerngruppen, Daten. Erreichbar bleibt alles – die
-     Adressen ändern sich nicht, nur die Navigationsleiste wird kürzer. */
+     Tafeln, Whiteboards, Soundboard, Elemente, Lerngruppen, Daten. Erreichbar
+     bleibt alles – die Adressen ändern sich nicht, nur die Navigationsleiste
+     wird kürzer. */
   var ROUTES = [
     { path: 'start',        view: 'dashboard',   label: 'Start',        icon: 'home',       key: '1' },
     { path: 'tafeln',       view: 'boards',      label: 'Tafeln',       icon: 'beamer',     key: '2', simple: true },
@@ -19347,7 +20406,9 @@ body { position: relative; }
     'Whiteboard geöffnet': 'always', 'Whiteboard-Ansicht': 'always', 'Werkzeug gewählt': 'always',
     'Strich gezeichnet': 'always', 'Striche geändert': 'always', 'Radiert': 'always',
     'Strich gelöscht': 'always', 'Striche gelöscht': 'always', 'Strichfarbe geändert': 'always',
-    'Striche verschoben': 'always', 'Whiteboard geleert': 'always'
+    'Striche verschoben': 'always', 'Whiteboard geleert': 'always',
+    // Die Unterrichtsleiste stellt sich selbst um (Lage, Dauer, Bausteine).
+    'Unterrichtsleiste': true
   };
 
   function isQuiet(meta) {
@@ -19940,7 +21001,7 @@ body { position: relative; }
         if (BAO.output.isWindowOpen()) BAO.output.closeWindow(); else ensureOutput();
         return;
       }
-      if (event.altKey && !mod && /^[1-9]$/.test(event.key)) {
+      if (event.altKey && !mod && /^[0-9]$/.test(event.key)) {
         var route = ROUTES.filter(function (r) { return r.key === event.key; })[0];
         if (route) { event.preventDefault(); go(route.path); }
         return;
@@ -19964,7 +21025,7 @@ body { position: relative; }
     button.dataset.mode = simple ? 'simple' : 'full';
     button.title = simple
       ? 'Einfache Grundform. Klick: vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion'
-      : 'Vollständige Ansicht. Klick: einfache Grundform mit Tafeln, Whiteboards, Elementen';
+      : 'Vollständige Ansicht. Klick: einfache Grundform mit Tafeln, Whiteboards, Soundboard, Elementen';
     button.setAttribute('aria-label', 'Ansicht: ' + (simple ? 'einfache Grundform' : 'vollständig') + ' – umschalten');
   }
 
@@ -20053,7 +21114,7 @@ body { position: relative; }
       var route = ROUTES.filter(function (r) { return r.path === current.path; })[0];
       if (next && route && !route.simple && route.path !== 'tafel' && route.path !== 'whiteboard') go('tafeln'); else renderView();
       BAO.toast.show(next
-        ? 'Einfache Grundform: Tafeln, Whiteboards, Elemente, Lerngruppen, Daten.'
+        ? 'Einfache Grundform: Tafeln, Whiteboards, Soundboard, Elemente, Lerngruppen, Daten.'
         : 'Vollständige Ansicht mit Satzanfängen, Wortbanken und Projektion.', { timeout: 3200 });
     });
     util.on(document, 'click', '[data-action="toggle-theme"]', function () {
@@ -20108,6 +21169,12 @@ body { position: relative; }
       renderBackupState();
       if (isQuiet(meta)) return;
       scheduleRender();
+    });
+
+    // Klänge und Bilder des Soundboards liegen neben dem Bestand; die
+    // Datenansicht nennt ihren Umfang und zeichnet sich neu, wenn er sich ändert.
+    BAO.media.subscribe(function () {
+      if (current.path === 'daten') scheduleRender();
     });
 
     bindChrome();

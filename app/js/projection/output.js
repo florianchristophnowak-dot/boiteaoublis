@@ -19,6 +19,7 @@
   var surfaces = [];              // { kind, stage, doc, win }
   var keyHandlers = [];
   var changeHandlers = [];
+  var surfaceHandlers = [];
   var beamerWindow = null;
   var overlayNode = null;
   var watchTimer = null;
@@ -34,6 +35,9 @@
   function addSurface(kind, stage, doc, win) {
     var surface = { kind: kind, stage: stage, doc: doc, win: win || null };
     surfaces.push(surface);
+    // Wer an jeder Fläche etwas anbringt – die Unterrichtsleiste des
+    // Soundboards –, erfährt hier von der neuen.
+    surfaceHandlers.forEach(function (fn) { fn(surface); });
     return surface;
   }
 
@@ -265,6 +269,7 @@
 
   function onKey(handler) { keyHandlers.push(handler); }
   function onChange(handler) { changeHandlers.push(handler); }
+  function onSurface(handler) { surfaceHandlers.push(handler); }
 
   document.addEventListener('fullscreenchange', function () { notifyChange('fullscreen'); });
   window.addEventListener('beforeunload', function () {
@@ -290,6 +295,7 @@
     getSurface: getSurface,
     showHint: showHint,
     onKey: onKey,
-    onChange: onChange
+    onChange: onChange,
+    onSurface: onSurface
   };
 })(window.BAO = window.BAO || {});

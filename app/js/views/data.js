@@ -17,9 +17,23 @@
   function exportAll() {
     var payload = BAO.backup.exportToFile(BAO.store.getState());
     var summary = BAO.stock.describeContent(Object.assign({}, payload.counts, { units: 0 }));
-    BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '')
-      + '. Sie liegt im Download-Ordner – am besten zusätzlich auf einem Stick oder in der Schul-Cloud ablegen.',
-      { timeout: 7000 });
+    var advice = '. Sie liegt im Download-Ordner – am besten zusätzlich auf einem Stick oder in der Schul-Cloud ablegen.';
+    // Ohne Dateien des Soundboards ist die Sicherung sofort fertig.
+    if (!BAO.media.planExport(BAO.classroomModel.mediaIds(BAO.store.getState())).included.length) {
+      BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '') + advice, { timeout: 7000 });
+      return payload;
+    }
+    payload.done.then(function (media) {
+      BAO.toast.ok('Sicherungsdatei erstellt' + (summary ? ': ' + summary : '') + ', dazu '
+        + media.files + ' ' + util.plural(media.files, 'Datei', 'Dateien') + ' des Soundboards ('
+        + BAO.media.formatBytes(media.bytes) + ')' + advice, { timeout: 7000 });
+      if (media.skipped.length) {
+        BAO.toast.error('Nicht in der Sicherungsdatei, weil zusammen zu groß: ' + media.skipped.join(', ')
+          + '. Diese Dateien bitte gesondert aufbewahren.', { timeout: 14000 });
+      }
+    }, function (err) {
+      BAO.toast.error('Die Sicherungsdatei konnte nicht erstellt werden: ' + (err && err.message ? err.message : err));
+    });
     return payload;
   }
 
@@ -112,6 +126,17 @@
     var incoming = result.incoming;
     var before = BAO.backup.counts(state);
     var after = BAO.backup.counts(incoming);
+    var mediaCount = (result.media || []).length;
+
+    /** Holt die Klänge und Bilder des Soundboards nach, die der neue Bestand braucht. */
+    function restoreMedia(nextState) {
+      BAO.backup.restoreMedia(result.media, nextState).then(function (report) {
+        if (report.failed) {
+          BAO.toast.error(report.failed + ' ' + util.plural(report.failed, 'Datei', 'Dateien')
+            + ' des Soundboards ließen sich nicht aus der Sicherung lesen.');
+        }
+      });
+    }
 
     var table = h('table.mini', {},
       h('thead', {}, h('tr', {},
@@ -142,6 +167,14 @@
           ? h('div.note.note--warn', {}, h('strong', { text: 'Hinweise beim Prüfen:' }),
             h('ul', {}, result.warnings.slice(0, 6).map(function (w) { return h('li', { text: w }); })))
           : null,
+        mediaCount
+          ? h('div.note', {
+            dataset: { media: String(mediaCount) },
+            text: 'Die Datei enthält außerdem ' + mediaCount + ' ' + util.plural(mediaCount, 'Klang- oder Bilddatei', 'Klang- und Bilddateien')
+              + ' des Soundboards. Sie kommen beim Wiederherstellen mit; beim Zusammenführen bleiben '
+              + 'Klangtasten und Symbole dieses Rechners, wie sie sind.'
+          })
+          : null,
         h('div.stack.stack--tight', {},
           h('strong', { text: 'Wie sollen die Daten übernommen werden?' }),
           h('div.note', {
@@ -161,6 +194,7 @@
             // Der zusammengeführte Bestand steht so in keiner Sicherungsdatei.
             if (lines.length && !merged.state.meta.unsavedSince) merged.state.meta.unsavedSince = util.nowISO();
             BAO.store.replaceState(merged.state, 'Sicherung zusammengeführt');
+            restoreMedia(merged.state);
             BAO.toast.undoable(lines.length ? 'Zusammengeführt – ' + lines.join(', ') : 'Nichts Neues gefunden.', { timeout: 12000 });
             return true;
           }
@@ -180,6 +214,7 @@
               incoming.meta.unsavedSince = '';
               incoming.meta.changedAt = incoming.meta.changedAt || '';
               BAO.store.replaceState(incoming, 'Sicherung wiederhergestellt');
+              restoreMedia(incoming);
               BAO.toast.undoable('Bestand aus der Sicherung wiederhergestellt.', { timeout: 12000 });
               return true;
             });
@@ -431,6 +466,7 @@
     var storage = BAO.store.storageInfo();
     var totals = select.totals(state);
     var safety = BAO.storage.loadSafetyCopy();
+    var media = BAO.media.planExport(BAO.classroomModel.mediaIds(state));
 
     view.appendChild(h('div.view__head', {},
       h('div.view__title', {},
@@ -471,8 +507,8 @@
           usageNote(storage),
           h('p', {
             text: 'Die Sicherungsdatei enthält alles in einer einzigen Datei: Fächer, Lerngruppen, Reihen, '
-              + 'Wortschatz, Satzanfänge, Wortbanken, Tafeln, Whiteboards und Einstellungen. '
-              + 'Mit ihr zieht der Bestand auch auf einen anderen Rechner um.'
+              + 'Wortschatz, Satzanfänge, Wortbanken, Tafeln, Whiteboards, das Soundboard mit seinen Klängen '
+              + 'und Bildern sowie die Einstellungen. Mit ihr zieht der Bestand auch auf einen anderen Rechner um.'
           }),
           h('dl.kv', {},
             h('dt', { text: 'Fächer' }), h('dd', { text: String(totals.subjects) }),
@@ -481,8 +517,22 @@
             h('dt', { text: 'Satzanfänge' }), h('dd', { text: String(totals.starters) }),
             h('dt', { text: 'Wortbanken' }), h('dd', { text: String(totals.banks) }),
             h('dt', { text: 'Tafeln' }), h('dd', { text: String(totals.boards) }),
-            h('dt', { text: 'Whiteboards' }), h('dd', { text: String(totals.whiteboards) })
+            h('dt', { text: 'Whiteboards' }), h('dd', { text: String(totals.whiteboards) }),
+            h('dt', { text: 'Phasen-Presets' }), h('dd', { text: String(totals.presets) }),
+            h('dt', { text: 'Klänge und Bilder' }), h('dd', {
+              dataset: { bind: 'media-total' },
+              text: media.included.length + media.skipped.length
+                ? (media.included.length + media.skipped.length) + ' ('
+                  + BAO.media.formatBytes(media.bytes + media.skipped.reduce(function (sum, entry) { return sum + entry.size; }, 0)) + ')'
+                : '0'
+            })
           ),
+          media.skipped.length
+            ? h('div.note.note--warn', {
+              text: 'Zusammen sind die Dateien des Soundboards zu groß für die Sicherungsdatei. Nicht enthalten: '
+                + media.skipped.map(function (entry) { return entry.name; }).join(', ') + '.'
+            })
+            : null,
           h('button.btn.btn--primary.btn--wide', {
             type: 'button', title: 'Sicherungsdatei erstellen (Strg + S)', onclick: exportAll
           }, ui.icon('download', 16), 'Alle Daten exportieren'),
@@ -564,6 +614,12 @@
               ? 'lokal im Browser (localStorage), etwa ' + Math.round(storage.bytes / 1024) + ' kB'
                 + (storage.usage ? ' – rund ' + Math.max(1, Math.round(storage.usage.share * 100)) + ' % des üblichen Platzes' : '')
               : 'nicht verfügbar – bitte regelmäßig exportieren'
+          }),
+          h('dt', { text: 'Klänge und Bilder' }), h('dd', {
+            text: !BAO.media.isReady() ? 'Ablage wird geöffnet …'
+              : BAO.media.isPersistent()
+                ? 'lokal im Browser (IndexedDB), ' + BAO.media.formatBytes(BAO.media.usage().bytes)
+                : 'nur für diese Sitzung – der Browser erlaubt hier keine IndexedDB'
           }),
           h('dt', { text: 'Zuletzt gespeichert' }), h('dd', { text: util.formatDateTime(storage.savedAt) || '–' }),
           h('dt', { text: 'Datenschutz' }), h('dd', {

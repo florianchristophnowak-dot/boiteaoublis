@@ -25,6 +25,7 @@
 
   function teardown() {
     if (!active) return;
+    if (active.panel) active.panel.destroy();
     active.ctrl.destroy();
     active = null;
   }
@@ -485,6 +486,8 @@
     var ctrl = wb.mount(stage, { whiteboardId: board.id });
     active = { id: board.id, ctrl: ctrl, refs: refs };
     buildChrome(ctrl, refs).forEach(function (node) { stage.appendChild(node); });
+    // Die Unterrichtsleiste des Soundboards liegt wie die Werkzeugleisten über der Fläche.
+    active.panel = BAO.classroomPanel.mount(stage, { kind: 'whiteboard' });
   }
 
   BAO.views = BAO.views || {};

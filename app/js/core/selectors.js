@@ -243,7 +243,8 @@
       starters: state.starters.length,
       banks: state.banks.length,
       boards: (state.boards || []).length,
-      whiteboards: (state.whiteboards || []).length
+      whiteboards: (state.whiteboards || []).length,
+      presets: (state.presets || []).length
     };
   }
 
