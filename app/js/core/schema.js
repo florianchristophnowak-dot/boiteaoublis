@@ -15,14 +15,18 @@
    Das Whiteboard schließlich ist eine unbegrenzte Fläche für Handschrift:
    Striche, Unterstreichungen und Korrekturzeichen werden als Vektoren in
    Weltkoordinaten gespeichert und bleiben in jeder Vergrößerung scharf.
+
+   Quer dazu liegt das Soundboard: Klangtasten und die Unterrichtsleiste mit
+   Sozialform, Material und Timer (state.classroom) sowie die Phasen-Presets
+   (state.presets). Ihr Datenmodell steht in classroom/model.js.
    ========================================================================== */
 (function (BAO) {
   'use strict';
 
   var util = BAO.util;
 
-  var APP_VERSION = '1.2.0';
-  var SCHEMA_VERSION = 3;
+  var APP_VERSION = '1.3.0';
+  var SCHEMA_VERSION = 4;
   var EXPORT_KIND = 'boite-a-oublis.backup';
 
   /* --- Status eines Wortschatzeintrags ------------------------------------ */
@@ -357,11 +361,13 @@
       starters: [],
       banks: [],
       boards: [],
-      whiteboards: []
+      whiteboards: [],
+      presets: [],
+      classroom: BAO.classroomModel.defaults()
     };
   }
 
-  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
+  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'presets', 'functions'];
 
   /* --- Prüfung und Reparatur ----------------------------------------------- */
 
@@ -489,6 +495,9 @@
       });
     });
     if (brokenStrokes) warnings.push(brokenStrokes + ' Striche auf Whiteboards waren beschädigt und wurden entfernt.');
+
+    // Soundboard: Einstellungen, Kataloge und Phasen-Presets (classroom/model.js).
+    BAO.classroomModel.repair(state, warnings);
 
     if (typeof state.schemaVersion !== 'number') {
       state.schemaVersion = SCHEMA_VERSION;

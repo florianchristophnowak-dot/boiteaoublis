@@ -83,6 +83,17 @@
     try { return JSON.parse(raw); } catch (err) { return null; }
   }
 
+  /* Kleine Nebenablagen neben dem Bestand – etwa der Augenblickszustand der
+     Unterrichtsleiste (gewählte Sozialform, laufender Timer). Sie gehören
+     nicht in die Sicherungsdatei und nicht in den Rückgängig-Verlauf. */
+  function readJSON(key) {
+    var raw = read(key);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (err) { return null; }
+  }
+
+  function writeJSON(key, value) { return write(key, JSON.stringify(value)); }
+
   function approximateSize() {
     var raw = read(KEY);
     return raw ? raw.length : 0;
@@ -128,6 +139,8 @@
     saveState: saveState,
     saveSafetyCopy: saveSafetyCopy,
     loadSafetyCopy: loadSafetyCopy,
+    readJSON: readJSON,
+    writeJSON: writeJSON,
     approximateSize: approximateSize,
     usage: usage,
     dropSafetyCopy: dropSafetyCopy,

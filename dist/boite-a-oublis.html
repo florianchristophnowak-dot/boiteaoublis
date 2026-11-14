@@ -1,6 +1,6 @@
 <!--
-  Boîte à Oublis 1.2.0 – © Florian Nowak
-  Erzeugt am 2026-11-11T21:22:50.695Z aus app/index.html.
+  Boîte à Oublis 1.3.0 – © Florian Nowak
+  Erzeugt am 2026-11-14T05:16:52.348Z aus app/index.html.
   Diese Datei ist vollständig eigenständig: einfach im Browser öffnen.
 -->
 <!doctype html>
@@ -1842,6 +1842,17 @@ body[data-projecting="true"] .toast-root { display: none; }
     try { return JSON.parse(raw); } catch (err) { return null; }
   }
 
+  /* Kleine Nebenablagen neben dem Bestand – etwa der Augenblickszustand der
+     Unterrichtsleiste (gewählte Sozialform, laufender Timer). Sie gehören
+     nicht in die Sicherungsdatei und nicht in den Rückgängig-Verlauf. */
+  function readJSON(key) {
+    var raw = read(key);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (err) { return null; }
+  }
+
+  function writeJSON(key, value) { return write(key, JSON.stringify(value)); }
+
   function approximateSize() {
     var raw = read(KEY);
     return raw ? raw.length : 0;
@@ -1887,10 +1898,584 @@ body[data-projecting="true"] .toast-root { display: none; }
     saveState: saveState,
     saveSafetyCopy: saveSafetyCopy,
     loadSafetyCopy: loadSafetyCopy,
+    readJSON: readJSON,
+    writeJSON: writeJSON,
     approximateSize: approximateSize,
     usage: usage,
     dropSafetyCopy: dropSafetyCopy,
     clearAll: function () { remove(KEY); remove(SAFETY_KEY); }
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/classroom/timer.js */
+/* ==========================================================================
+   Phasen-Timer – reine Rechenlogik
+   Keine Uhr, keine Oberfläche: Jede Funktion bekommt den Stand und die
+   aktuelle Zeit und gibt einen neuen Stand zurück. So lässt sich der Timer
+   ohne Wartezeit prüfen und übersteht ein Neuladen der Seite – gespeichert
+   wird nicht „noch 4 Minuten“, sondern der Zeitpunkt, an dem er endet.
+
+   Stand:  { total, remaining, deadline, running, paused }
+     total      Gesamtdauer in Sekunden (0 = kein Timer gesetzt)
+     remaining  Rest in Sekunden, solange der Timer nicht läuft
+     deadline   Zeitpunkt des Endes (Millisekunden seit 1970), solange er läuft
+     running    die Uhr läuft
+     paused     angehalten mit Rest
+
+   Verhalten wie im Teacher Soundboard, aus dem der Timer stammt.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var MIN_MINUTES = 1;
+  var MAX_MINUTES = 999;
+
+  function clampMinutes(value, fallback) {
+    var parsed = parseInt(value, 10);
+    if (!isFinite(parsed)) return fallback === undefined ? MIN_MINUTES : fallback;
+    return Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, parsed));
+  }
+
+  function empty() {
+    return { total: 0, remaining: 0, deadline: 0, running: false, paused: false };
+  }
+
+  function finite(value) {
+    var number = Number(value);
+    return isFinite(number) ? number : 0;
+  }
+
+  /**
+   * Macht aus beliebigen gespeicherten Daten einen gültigen Stand.
+   * Ein Timer, der abgelaufen ist oder in der Zwischenzeit abgelaufen wäre,
+   * gilt als gelöscht: Wer die App am nächsten Morgen öffnet, soll weder eine
+   * rote Scheibe von gestern sehen noch ihr Signal hören.
+   */
+  function normalize(raw, now) {
+    if (!raw || typeof raw !== 'object') return empty();
+    var total = Math.max(0, finite(raw.total));
+    if (total <= 0) return empty();
+    total = Math.min(total, MAX_MINUTES * 60);
+    if (raw.running === true) {
+      var deadline = finite(raw.deadline);
+      var rest = (deadline - now) / 1000;
+      if (rest <= 0) return empty();
+      // Eine verstellte Systemuhr soll keinen Timer erzeugen, der länger
+      // läuft als seine Gesamtdauer.
+      if (rest > total) deadline = now + total * 1000;
+      return { total: total, remaining: Math.min(rest, total), deadline: deadline, running: true, paused: false };
+    }
+    var remaining = Math.min(finite(raw.remaining), total);
+    if (remaining <= 0) return empty();
+    return { total: total, remaining: remaining, deadline: 0, running: false, paused: true };
+  }
+
+  function hasValue(timer) { return timer.total > 0; }
+
+  function remainingSeconds(timer, now) {
+    if (timer.running) return Math.max(0, (timer.deadline - now) / 1000);
+    return Math.max(0, timer.remaining);
+  }
+
+  /** Ist die Zeit um, während die Uhr noch läuft, hält dieser Schritt sie an. */
+  function settle(timer, now) {
+    if (timer.running && timer.deadline - now <= 0) {
+      return { total: timer.total, remaining: 0, deadline: 0, running: false, paused: false };
+    }
+    return timer;
+  }
+
+  function start(minutes, now) {
+    var total = clampMinutes(minutes) * 60;
+    return { total: total, remaining: total, deadline: now + total * 1000, running: true, paused: false };
+  }
+
+  function pause(timer, now) {
+    if (!timer.running) return timer;
+    var rest = remainingSeconds(timer, now);
+    return { total: timer.total, remaining: rest, deadline: 0, running: false, paused: rest > 0 };
+  }
+
+  function resume(timer, now) {
+    if (!timer.paused || timer.remaining <= 0) return timer;
+    return {
+      total: timer.total, remaining: timer.remaining,
+      deadline: now + timer.remaining * 1000, running: true, paused: false
+    };
+  }
+
+  function togglePause(timer, now) {
+    if (timer.running) return pause(timer, now);
+    if (timer.paused) return resume(timer, now);
+    return timer;
+  }
+
+  /** Beginnt mit der vollen Dauer von vorn. */
+  function reset(timer, now) {
+    if (timer.total <= 0) return timer;
+    return {
+      total: timer.total, remaining: timer.total,
+      deadline: now + timer.total * 1000, running: true, paused: false
+    };
+  }
+
+  /**
+   * Verlängert oder verkürzt den Timer um ganze Minuten.
+   * Ein laufender Timer läuft weiter, ein angehaltener bleibt angehalten.
+   * Die Gesamtdauer wächst mit, damit der Kreisausschnitt nie über die
+   * volle Scheibe hinausreicht.
+   */
+  function addMinutes(timer, minutes, now) {
+    var seconds = Math.round(Number(minutes) || 0) * 60;
+    if (timer.total <= 0) return seconds > 0 ? start(minutes, now) : timer;
+
+    var wasRunning = timer.running;
+    var rest = Math.max(0, remainingSeconds(timer, now) + seconds);
+    var total = Math.max(rest, timer.total + seconds);
+    if (rest <= 0) return { total: total, remaining: 0, deadline: 0, running: false, paused: false };
+    if (wasRunning) return { total: total, remaining: rest, deadline: now + rest * 1000, running: true, paused: false };
+    return { total: total, remaining: rest, deadline: 0, running: false, paused: true };
+  }
+
+  /** Aufgerundet: Bei 4:01 stehen noch „5 Minuten“ an. */
+  function minutesOf(seconds) { return Math.max(0, Math.ceil(seconds / 60 - 1e-9)); }
+
+  function remainingMinutes(timer, now) { return minutesOf(remainingSeconds(timer, now)); }
+  function totalMinutes(timer) { return minutesOf(timer.total); }
+
+  /** Anteil der verbleibenden Zeit, 1 = alles übrig, 0 = abgelaufen. */
+  function progress(timer, now) {
+    if (timer.total <= 0) return 0;
+    return Math.max(0, Math.min(1, remainingSeconds(timer, now) / timer.total));
+  }
+
+  /** idle = kein Timer, running, paused, done = abgelaufen. */
+  function phase(timer, now) {
+    if (timer.total <= 0) return 'idle';
+    if (remainingSeconds(timer, now) <= 0) return 'done';
+    return timer.running ? 'running' : 'paused';
+  }
+
+  /** „4:05“ – für die Lehreransicht; auf der Leinwand stehen bewusst keine Ziffern. */
+  function clock(seconds) {
+    var whole = Math.max(0, Math.ceil(seconds - 1e-9));
+    var minutes = Math.floor(whole / 60);
+    var rest = whole % 60;
+    return minutes + ':' + (rest < 10 ? '0' : '') + rest;
+  }
+
+  BAO.classroomTimer = {
+    MIN_MINUTES: MIN_MINUTES,
+    MAX_MINUTES: MAX_MINUTES,
+    clampMinutes: clampMinutes,
+    empty: empty,
+    normalize: normalize,
+    hasValue: hasValue,
+    remainingSeconds: remainingSeconds,
+    settle: settle,
+    start: start,
+    pause: pause,
+    resume: resume,
+    togglePause: togglePause,
+    reset: reset,
+    addMinutes: addMinutes,
+    remainingMinutes: remainingMinutes,
+    totalMinutes: totalMinutes,
+    progress: progress,
+    phase: phase,
+    clock: clock
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/classroom/model.js */
+/* ==========================================================================
+   Datenmodell des Soundboards
+   Das Soundboard bringt zwei Dinge mit: Klangtasten („Münzen“) und die
+   textfreie Unterrichtsleiste mit Sozialform, Material und Timer. Hier steht,
+   was davon gespeichert wird – Voreinstellungen, Prüfung und Reparatur.
+
+     state.classroom   Einstellungen und Kataloge (siehe defaults())
+     state.presets     Phasen-Presets: eine Unterrichtsphase auf einen Klick
+
+   Was gerade gilt – gewählte Sozialform, gewähltes Material, laufender
+   Timer – steht bewusst NICHT im Bestand, sondern daneben (classroom.js):
+   Es ist ein Zustand des Augenblicks und soll weder in der Sicherungsdatei
+   landen noch durch „Rückgängig“ zurückspringen.
+
+   Die Klangdateien selbst liegen nicht im Bestand, sondern in der
+   Medienablage (media.js). Der Bestand merkt sich nur ihre Kennung.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var timer = BAO.classroomTimer;
+
+  var MAX_BUTTONS = 8;
+  var DEFAULT_VISIBLE = 6;
+  var MAX_TIMER_PRESETS = 6;
+  var MAX_PRESETS = 60;
+  var MAX_PRESET_MATERIALS = 12;
+
+  /* Die Bausteine der Unterrichtsleiste, in der Reihenfolge von oben nach unten. */
+  var MODULES = [
+    { id: 'sounds',     label: 'Klänge',     hint: 'die Münzen der Klangtasten' },
+    { id: 'projection', label: 'Projektion', hint: 'Sprachhilfe ein- und ausblenden, blättern, Presets starten' },
+    { id: 'phase',      label: 'Sozialform', hint: 'die aktuelle Sozialform oder Methode als Symbol' },
+    { id: 'materials',  label: 'Material',   hint: 'was die Lernenden bereitlegen' },
+    { id: 'timer',      label: 'Timer',      hint: 'verbleibende Zeit als Kreisfläche, ohne Ziffern' }
+  ];
+
+  var VIDEO_MODES = [
+    { id: 'large', label: 'groß in der Mitte' },
+    { id: 'full',  label: 'bildfüllend' },
+    { id: 'burst', label: 'kurz bildfüllend, dann groß' }
+  ];
+
+  var DEFAULT_PHASES = [
+    ['phase-plenum',       'Plenum',          'plenum'],
+    ['phase-individual',   'Einzelarbeit',    'individual'],
+    ['phase-partner',      'Partnerarbeit',   'partner'],
+    ['phase-group',        'Gruppenarbeit',   'group'],
+    ['phase-presentation', 'Präsentation',    'presentation'],
+    ['phase-stations',     'Stationenarbeit', 'stations']
+  ];
+
+  var DEFAULT_MATERIALS = [
+    ['material-binder',     'Hefter',          'binder'],
+    ['material-book',       'Buch',            'book'],
+    ['material-workbook',   'Arbeitsheft',     'workbook'],
+    ['material-sheet',      'Arbeitsblatt',    'worksheet'],
+    ['material-pen',        'Stift',           'pen'],
+    ['material-tablet',     'Tablet/Computer', 'tablet'],
+    ['material-headphones', 'Kopfhörer',       'headphones']
+  ];
+
+  function catalog(rows) {
+    return rows.map(function (row) { return { id: row[0], name: row[1], icon: row[2], imageId: '' }; });
+  }
+
+  function defaultPhases() { return catalog(DEFAULT_PHASES); }
+  function defaultMaterials() { return catalog(DEFAULT_MATERIALS); }
+
+  function emptyButton() {
+    return { mediaId: '', name: '', kind: '', imageId: '', imageName: '' };
+  }
+
+  function defaults() {
+    var buttons = [];
+    for (var i = 0; i < MAX_BUTTONS; i++) buttons.push(emptyButton());
+    return {
+      // Welche Bausteine die Leiste auf Projektion und Whiteboard zeigt.
+      // Anfangs keiner: Eine bestehende Projektion sieht aus wie bisher.
+      show: { sounds: false, projection: false, phase: false, materials: false, timer: false },
+      panelY: 0.08,                  // senkrechte Lage der Leiste am rechten Rand (0 … 1)
+      phases: defaultPhases(),
+      materials: defaultMaterials(),
+      timerPresets: [5, 8, 10],      // Minuten für die Schnellwahl
+      timerMinutes: 5,               // zuletzt gewählte Dauer
+      timerSound: { mediaId: '', name: '' },
+      sceneMap: {},                  // gemerkte Zuordnung Szene -> Sozialform
+      sounds: {
+        volume: 0.75,
+        videoMode: 'burst',          // large | full | burst
+        burstSeconds: 1.6,
+        visible: DEFAULT_VISIBLE,    // so viele Münzen zeigt die Leiste
+        buttons: buttons
+      }
+    };
+  }
+
+  function makeItem(data) {
+    return Object.assign({ id: util.uid('sym'), name: 'Eigenes Symbol', icon: 'generic', imageId: '' }, data || {});
+  }
+
+  /**
+   * Ein Phasen-Preset startet alles, was zu einer Unterrichtsphase gehört:
+   * die Wortbank, Tafel oder das Whiteboard, dazu Sozialform, Material und
+   * Timer. Das Ziel ist freigestellt – ein Preset kann auch nur die Leiste
+   * einstellen.
+   */
+  function makePreset(data) {
+    return Object.assign({
+      id: util.uid('pre'),
+      name: '',
+      targetKind: '',           // '' | 'bank' | 'board' | 'whiteboard'
+      targetId: '',
+      targetTitle: '',          // nur zur Anzeige, falls das Ziel später fehlt
+      targetGroup: '',
+      level: 2,                 // Unterstützungsstufe, mit der eine Wortbank startet
+      phaseId: '',
+      materialIds: [],
+      timerMinutes: 0,          // 0 = kein Timer
+      timerAutostart: false,
+      createdAt: util.nowISO(),
+      updatedAt: util.nowISO()
+    }, data || {});
+  }
+
+  function presetLabel(preset) {
+    return (preset && (preset.name || preset.targetTitle)) || 'Ohne Namen';
+  }
+
+  /* --- Prüfung und Reparatur ------------------------------------------------- */
+
+  function text(value, limit) {
+    return typeof value === 'string' ? value.slice(0, limit || 300) : '';
+  }
+
+  function boundedNumber(value, fallback, min, max) {
+    var number = typeof value === 'number' ? value : parseFloat(value);
+    if (!isFinite(number)) return fallback;
+    return Math.max(min, Math.min(max, number));
+  }
+
+  function boundedInt(value, fallback, min, max) {
+    var number = parseInt(value, 10);
+    if (!isFinite(number)) return fallback;
+    return Math.max(min, Math.min(max, number));
+  }
+
+  /**
+   * Katalog der Sozialformen oder Materialien. Eine leere Liste bleibt leer –
+   * wer alle Symbole entfernt hat, bekommt sie nicht ungefragt zurück. Nur
+   * eine fehlende oder beschädigte Liste wird durch die Vorgaben ersetzt.
+   */
+  function repairCatalog(list, makeDefaults) {
+    if (!Array.isArray(list)) return makeDefaults();
+    var seen = Object.create(null);
+    var result = [];
+    list.forEach(function (entry) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+      var id = text(entry.id, 120);
+      if (!id || seen[id]) id = util.uid('sym');
+      seen[id] = true;
+      result.push(Object.assign({}, entry, {
+        id: id,
+        name: text(entry.name, 120).trim() || 'Eigenes Symbol',
+        icon: text(entry.icon, 60) || 'generic',
+        imageId: text(entry.imageId, 120)
+      }));
+    });
+    return result;
+  }
+
+  function repairTimerPresets(list) {
+    var result = [];
+    if (Array.isArray(list)) {
+      list.forEach(function (value) {
+        var minutes = parseInt(value, 10);
+        if (isFinite(minutes) && minutes >= timer.MIN_MINUTES && minutes <= timer.MAX_MINUTES
+          && result.indexOf(minutes) < 0) result.push(minutes);
+      });
+    }
+    return result.length ? result.slice(0, MAX_TIMER_PRESETS) : [5, 8, 10];
+  }
+
+  function repairButtons(list) {
+    var result = [];
+    for (var i = 0; i < MAX_BUTTONS; i++) {
+      var raw = Array.isArray(list) && list[i] && typeof list[i] === 'object' ? list[i] : {};
+      var mediaId = text(raw.mediaId, 120);
+      result.push({
+        mediaId: mediaId,
+        name: mediaId ? text(raw.name, 200) : '',
+        kind: mediaId ? (raw.kind === 'video' ? 'video' : 'audio') : '',
+        imageId: text(raw.imageId, 120),
+        imageName: text(raw.imageName, 200)
+      });
+    }
+    return result;
+  }
+
+  function repairSceneMap(map) {
+    var result = {};
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      Object.keys(map).forEach(function (scene) {
+        var key = normalizeScene(scene);
+        var value = text(map[scene], 120);
+        if (key && value) result[key] = value;
+      });
+    }
+    return result;
+  }
+
+  function repairClassroom(input) {
+    var base = defaults();
+    var raw = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    var show = raw.show && typeof raw.show === 'object' ? raw.show : {};
+    var sounds = raw.sounds && typeof raw.sounds === 'object' ? raw.sounds : {};
+    var timerSound = raw.timerSound && typeof raw.timerSound === 'object' ? raw.timerSound : {};
+    var soundId = text(timerSound.mediaId, 120);
+
+    // Unbekannte Felder bleiben erhalten (vorwärtskompatibel).
+    var result = Object.assign({}, raw);
+    result.show = {};
+    MODULES.forEach(function (module) {
+      result.show[module.id] = typeof show[module.id] === 'boolean' ? show[module.id] : base.show[module.id];
+    });
+    result.panelY = boundedNumber(raw.panelY, base.panelY, 0, 1);
+    result.phases = repairCatalog(raw.phases, defaultPhases);
+    result.materials = repairCatalog(raw.materials, defaultMaterials);
+    result.timerPresets = repairTimerPresets(raw.timerPresets);
+    result.timerMinutes = boundedInt(raw.timerMinutes, base.timerMinutes, timer.MIN_MINUTES, timer.MAX_MINUTES);
+    result.timerSound = { mediaId: soundId, name: soundId ? text(timerSound.name, 200) : '' };
+    result.sceneMap = repairSceneMap(raw.sceneMap);
+    result.sounds = Object.assign({}, sounds, {
+      volume: boundedNumber(sounds.volume, base.sounds.volume, 0, 1),
+      videoMode: VIDEO_MODES.some(function (mode) { return mode.id === sounds.videoMode; })
+        ? sounds.videoMode : base.sounds.videoMode,
+      burstSeconds: boundedNumber(sounds.burstSeconds, base.sounds.burstSeconds, 0.2, 10),
+      visible: boundedInt(sounds.visible, base.sounds.visible, 1, MAX_BUTTONS),
+      buttons: repairButtons(sounds.buttons)
+    });
+    return result;
+  }
+
+  function repairPreset(preset) {
+    var kind = ['bank', 'board', 'whiteboard'].indexOf(preset.targetKind) >= 0 ? preset.targetKind : '';
+    var targetId = kind ? text(preset.targetId, 120) : '';
+    if (!targetId) kind = '';
+    var materialIds = [];
+    (Array.isArray(preset.materialIds) ? preset.materialIds : []).forEach(function (id) {
+      id = text(id, 120);
+      if (id && materialIds.indexOf(id) < 0) materialIds.push(id);
+    });
+    preset.name = text(preset.name, 120);
+    preset.targetKind = kind;
+    preset.targetId = targetId;
+    preset.targetTitle = text(preset.targetTitle, 160);
+    preset.targetGroup = text(preset.targetGroup, 120);
+    preset.level = boundedInt(preset.level, 2, 1, 3);
+    preset.phaseId = text(preset.phaseId, 120);
+    preset.materialIds = materialIds.slice(0, MAX_PRESET_MATERIALS);
+    preset.timerMinutes = boundedInt(preset.timerMinutes, 0, 0, timer.MAX_MINUTES);
+    preset.timerAutostart = !!preset.timerAutostart;
+    return preset;
+  }
+
+  /**
+   * Bringt state.classroom und state.presets in einen gültigen Zustand.
+   * Wird von schema.validateState aufgerufen; state.presets ist dort bereits
+   * eine Liste von Objekten mit eindeutigen Kennungen.
+   */
+  function repair(state, warnings) {
+    if (state.classroom !== undefined && (!state.classroom || typeof state.classroom !== 'object' || Array.isArray(state.classroom))) {
+      warnings.push('Die Einstellungen des Soundboards waren beschädigt und wurden zurückgesetzt.');
+    }
+    state.classroom = repairClassroom(state.classroom);
+    state.presets = (state.presets || []).map(repairPreset);
+    if (state.presets.length > MAX_PRESETS) {
+      warnings.push((state.presets.length - MAX_PRESETS) + ' Phasen-Presets über der Höchstzahl von '
+        + MAX_PRESETS + ' wurden entfernt.');
+      state.presets = state.presets.slice(0, MAX_PRESETS);
+    }
+    return state;
+  }
+
+  /* --- Szene -> Sozialform ------------------------------------------------------
+     Wer ein Preset für eine Wortbank anlegt, bekommt zur Szene der Wortbank
+     eine Sozialform vorgeschlagen. Reihenfolge: eigene Zuordnung, mitgelieferte
+     Zuordnung, Ähnlichkeit der Namen. Findet sich nichts, bleibt die Auswahl
+     leer – geraten wird nicht. */
+
+  /** Kleinschreibung ohne Akzente und Sonderzeichen. */
+  function normalizeScene(value) {
+    var folded = String(value || '');
+    if (folded.normalize) folded = folded.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+    return folded.replace(/ß/g, 'ss').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
+
+  var DEFAULT_SCENE_PHASES = {
+    partnergesprach: 'phase-partner',
+    diskussion: 'phase-plenum',
+    rollenspiel: 'phase-partner',
+    prasentation: 'phase-presentation',
+    schreibphase: 'phase-individual',
+    textanalyse: 'phase-individual',
+    sprachmittlung: 'phase-partner',
+    reflexion: 'phase-plenum',
+    wortschatzarbeit: 'phase-individual'
+  };
+
+  function commonPrefix(left, right) {
+    var length = 0;
+    while (length < left.length && length < right.length && left.charAt(length) === right.charAt(length)) length += 1;
+    return length;
+  }
+
+  function suggestPhase(scene, phases, sceneMap) {
+    var key = normalizeScene(scene);
+    if (!key || !phases || !phases.length) return '';
+    var available = Object.create(null);
+    phases.forEach(function (item) { available[item.id] = item; });
+
+    var own = (sceneMap || {})[key];
+    if (own && available[own]) return own;
+
+    var fallback = DEFAULT_SCENE_PHASES[key];
+    if (fallback && available[fallback]) return fallback;
+
+    var bestId = '';
+    var bestScore = 0;
+    phases.forEach(function (item) {
+      var candidates = [normalizeScene(item.name)].concat(
+        String(item.name || '').split(/[\s\/,-]+/).filter(Boolean).map(normalizeScene));
+      candidates.forEach(function (candidate) {
+        if (!candidate) return;
+        var score = commonPrefix(key, candidate);
+        var shortest = Math.min(key.length, candidate.length);
+        if (score < 5 || !shortest || score / shortest < 0.4) return;
+        if (score > bestScore) { bestScore = score; bestId = item.id; }
+      });
+    });
+    return bestId;
+  }
+
+  /* --- Verweise auf die Medienablage ------------------------------------------- */
+
+  /** Alle Kennungen von Dateien, die dieser Bestand braucht. */
+  function mediaIds(state) {
+    var ids = [];
+    var classroom = state && state.classroom;
+    if (!classroom) return ids;
+    function add(id) { if (id && ids.indexOf(id) < 0) ids.push(id); }
+    ((classroom.sounds && classroom.sounds.buttons) || []).forEach(function (button) {
+      add(button.mediaId);
+      add(button.imageId);
+    });
+    add(classroom.timerSound && classroom.timerSound.mediaId);
+    (classroom.phases || []).concat(classroom.materials || []).forEach(function (item) { add(item.imageId); });
+    return ids;
+  }
+
+  BAO.classroomModel = {
+    MAX_BUTTONS: MAX_BUTTONS,
+    DEFAULT_VISIBLE: DEFAULT_VISIBLE,
+    MAX_TIMER_PRESETS: MAX_TIMER_PRESETS,
+    MAX_PRESETS: MAX_PRESETS,
+    MAX_PRESET_MATERIALS: MAX_PRESET_MATERIALS,
+    MODULES: MODULES,
+    VIDEO_MODES: VIDEO_MODES,
+    DEFAULT_SCENE_PHASES: DEFAULT_SCENE_PHASES,
+    defaults: defaults,
+    defaultPhases: defaultPhases,
+    defaultMaterials: defaultMaterials,
+    emptyButton: emptyButton,
+    makeItem: makeItem,
+    makePreset: makePreset,
+    presetLabel: presetLabel,
+    repair: repair,
+    repairClassroom: repairClassroom,
+    repairPreset: repairPreset,
+    repairTimerPresets: repairTimerPresets,
+    normalizeScene: normalizeScene,
+    suggestPhase: suggestPhase,
+    mediaIds: mediaIds
   };
 })(window.BAO = window.BAO || {});
 
@@ -1914,14 +2499,18 @@ body[data-projecting="true"] .toast-root { display: none; }
    Das Whiteboard schließlich ist eine unbegrenzte Fläche für Handschrift:
    Striche, Unterstreichungen und Korrekturzeichen werden als Vektoren in
    Weltkoordinaten gespeichert und bleiben in jeder Vergrößerung scharf.
+
+   Quer dazu liegt das Soundboard: Klangtasten und die Unterrichtsleiste mit
+   Sozialform, Material und Timer (state.classroom) sowie die Phasen-Presets
+   (state.presets). Ihr Datenmodell steht in classroom/model.js.
    ========================================================================== */
 (function (BAO) {
   'use strict';
 
   var util = BAO.util;
 
-  var APP_VERSION = '1.2.0';
-  var SCHEMA_VERSION = 3;
+  var APP_VERSION = '1.3.0';
+  var SCHEMA_VERSION = 4;
   var EXPORT_KIND = 'boite-a-oublis.backup';
 
   /* --- Status eines Wortschatzeintrags ------------------------------------ */
@@ -2256,11 +2845,13 @@ body[data-projecting="true"] .toast-root { display: none; }
       starters: [],
       banks: [],
       boards: [],
-      whiteboards: []
+      whiteboards: [],
+      presets: [],
+      classroom: BAO.classroomModel.defaults()
     };
   }
 
-  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'functions'];
+  var COLLECTIONS = ['subjects', 'groups', 'units', 'lexemes', 'starters', 'banks', 'boards', 'whiteboards', 'presets', 'functions'];
 
   /* --- Prüfung und Reparatur ----------------------------------------------- */
 
@@ -2389,6 +2980,9 @@ body[data-projecting="true"] .toast-root { display: none; }
     });
     if (brokenStrokes) warnings.push(brokenStrokes + ' Striche auf Whiteboards waren beschädigt und wurden entfernt.');
 
+    // Soundboard: Einstellungen, Kataloge und Phasen-Presets (classroom/model.js).
+    BAO.classroomModel.repair(state, warnings);
+
     if (typeof state.schemaVersion !== 'number') {
       state.schemaVersion = SCHEMA_VERSION;
       warnings.push('Die Versionsangabe fehlte und wurde ergänzt.');
@@ -2495,6 +3089,19 @@ body[data-projecting="true"] .toast-root { display: none; }
         if (!Array.isArray(state.whiteboards)) state.whiteboards = [];
         if (!state.settings) state.settings = {};
         if (!state.settings.whiteboard || typeof state.settings.whiteboard !== 'object') state.settings.whiteboard = {};
+        return state;
+      }
+    },
+    {
+      to: 4,
+      describe: 'Soundboard ergänzt: Klänge, Unterrichtsleiste, Phasen-Presets',
+      run: function (state) {
+        if (!Array.isArray(state.presets)) state.presets = [];
+        // Die Einzelheiten ergänzt die Prüfung (classroom/model.js). Anfangs
+        // zeigt die Leiste nichts: Eine bestehende Projektion bleibt, wie sie war.
+        if (!state.classroom || typeof state.classroom !== 'object' || Array.isArray(state.classroom)) {
+          state.classroom = BAO.classroomModel.defaults();
+        }
         return state;
       }
     }
@@ -11339,6 +11946,1821 @@ body { position: relative; }
   }
 
   BAO.whiteboardImage = { toCanvas: toCanvas, savePng: savePng };
+})(window.BAO = window.BAO || {});
+
+  </script>
+<!-- Soundboard: Klänge und Unterrichtsleiste -->
+  <script>
+/* js/classroom/glyphs.js */
+/* ==========================================================================
+   Symbole der Unterrichtsleiste – die Motive
+   Dieselben Zeichen wie im Teacher Soundboard, damit die Klasse sie
+   wiedererkennt. Dort liegen sie als Bilder (assets/icons, 512 × 512, weißes
+   Motiv); hier stehen ihre Umrisse als Vektorpfade im selben Raster. So
+   bleiben sie auf dem Beamer in jeder Größe scharf, und die App kommt
+   weiterhin ohne Bilddateien aus.
+
+   Jeder Eintrag ist ein Pfad für fill-rule="evenodd" im Feld 0 0 512 512.
+   Die farbige Kachel zeichnet BAO.classroomIcons (icons.js).
+   Diese Datei enthält nur Daten und wird nicht von Hand bearbeitet.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  BAO.classroomGlyphs = {
+    'plenum': 'M90.9 83.5l7.6-.7 321 .2 2.5 1.5 1.6 3-.1 161-2 .5-67 0-4-4.6-6-5.2-7-4-9-2.4-9 0-9 .8-7 2.6-5 3-5 4.1-5 5.7-66 0-7-7.8-8-5.1-10-3.3-10 0-9 1-8 3.3-5 3.2-9 8.7-68 0-.8-.5-.1-2 0-158 1.6-4zM107.6 373.5l1.9-.5 31 0 2 .9 7 1 7 2.4 8 5 6.4 6.2 2.8 5 1.4 5 1 7 0 17-1.2 3-2.4 2.4-4 .6-85 0-7-.5-2-1-1.5-1.5-1.9-4-.1-11 1-12 3-7 1.9-3 5-5 7.6-5.1 13-4.5zM371.3 373.5l2.2-.5 30 0 1 .7 4 .2 9 2.6 10 5.5 6.7 6.5 4.8 10 1 13 0 11-1 2-3.5 3.5-4 .5-87 0-5-.5-2-1.3-2.6-5.2 .1-16 .9-7 1.5-5 2.8-5 6.3-6.1 5-3.4 11-4.1zM238.4 373.5l1.1-.5 33 0 1 .8 4 .1 6 1.8 8 3.4 3.7 2.4 8.2 8 3.5 8 1.1 5 0 21-.5 .8-4 3.7-4 .3-88 .3-4-.8-2.6-2.3-1.6-4 .7-21 2.7-9 4.8-6.6 8-5.8 11-4.3zM173.8 311.5l1.7-.5 29 .1 2 .9 4 0 9 2.9 .5 1.6-2.9 6-1.8 8 0 9 1.7 8 2.1 5 4.4 7 3.6 4-.6 .7-6 1.7-6 .2-4 .9-43 0-3-.9-6-.2-4-1-1.8-1.4 4.2-5 3-5 4-12-.1-14-2.8-9-2-3 5.5-2.4zM305.6 311.5l.9-.5 30 0 2 1 4 0 2 .9 2 .1 5 2 .4 1.5-1.9 3-2.9 11 .1 9 .8 2 0 3 2 6 4.3 8 4.6 5-.4 .6-6 1.1-1 .7-6 .2-3 .9-42 0-3-.9-6-.1-1-.8-3-.1-2.7-1.6 7.1-10 3.9-12 0-13-2.1-8-2.7-5 5.5-2.4zM121.4 303.5l3.1-.4 6 .8 9 3.5 3 1.9 8.3 9.2 2 4 1.6 6-.1 12-1.5 6-2 4-7.1 8-3.2 2.4-3 1.6-8 2.6-11 0-6-1.8-5-2.4-5.6-4.4-4-5-3.8-8-1.1-4 0-11 1.9-6 4-7 7.6-7.3 7-3.3zM385.2 303.5l3.3-.4 6 .9 5 1.8 6 3.3 7.4 7.4 5 11 .9 7-.9 7-5 11-7.4 7.5-6 3.2-6 1.9-12 0-4-1.1-7-3.2-5-4.3-5.4-7-2.7-7-.7-4 0-8 1.4-7 5.4-8.9 4-4.2 4-2.8 9-3.6zM314.8 242.5l.7-.5 12 0 1 .8 3 .3 7 3.6 5 4.1 5.2 6.7 2.9 7 1.1 6 0 5-.9 5-2.8 7-2 3-7.5 7.5-9 4.5-5 .9-8 0-7-1.6-4-2-4.6-3.3-5-5-3.9-7-1-4-.9-1-.1-13 1-4 4.4-8 7.1-7.2 8-4.2zM251.9 303.5l5.6-.5 5 .9 7 2.7 4.7 2.9 6.7 7 2.7 5 2.4 7 0 12-2.8 8-2.3 4-8.4 8.1-5 2.6-6 1.9-12 0-4-1.2-7-3.4-6-5.3-4.1-5.7-3.4-11-.1-7 1-5 1.6-5 3.7-6 4.6-5 3.7-2.8 6-2.8zM183 242.5l12.5-.5 2 1 2 0 8 4.2 4.3 3.3 3.9 5 4.2 9 .2 3 .9 2 0 6-.9 2-.1 3-1 1-2 6-5.4 7-4.1 3.5-9 4.5-5 .9-8 0-4-.8-8-3.6-3-2-5.3-5.5-2.2-3-3.8-9 0-14 .7-1 .1-2 3.4-6 8.1-9 6-3.4zM77.2 258.5l73.3-.2 1.4 1.2-1.8 4-.2 5-1.4 4.2-71 0-2.5-2.2-.4-8 .3-2zM360.3 258.5l72.2-.2 2 .8 2.4 2.4 .1 7-1 2-2.5 2.2-71 0-1.6-10.2-.8-1zM228.5 258.5l54-.2 .8 1.2-2.8 13.1-49 .1-1-.1-.5-1.1 0-3-1.7-7z',
+    'individual': 'M242.6 72.5l.9-.5 13-.2 10 .2 2 .9 4 .1 1 .9 3 .1 11 4 8 4.1 9 5.8 7.3 6.6 6.3 7 7.9 12 5 11 1.1 5 .9 1 .1 3 .9 1 .1 4 .8 1 0 23-.9 2-1 7-4 11-3 6-7 11-9.5 10.5-12 9-11 5.9-16 4.9-4 .1-3 .9-17 0-10-1.9-16-5.9-14-9-13.5-13.5-7.9-12-5.8-14-2.3-8-.1-4-.8-1 0-20 1.9-10 6-16 4-7 1.9-2 .1-1 3.9-5 11.6-11.6 7-5 16-7.9 5-1.2 1-.8 3-.2 1-.8zM212.3 247.5l85.2-.2 10 1.1 18 3.7 12 3.9 15 7 12 7.9 12.6 12.6 3 4 7.9 15 2 7 .9 1 2.1 12 0 55-.8 1-.3 2-2 3-3.4 3.1-4 1.9-27 7.6-3 .3-.8-.9 .3-90-.9-5-3.6-3.6-2-.9-4-.4-5 .9-22 5.6-3 .2-5 1.8-3 0-1 .8-16 3.3-5 1.8-3 .1-1 .9-3 .2-1 .8-3 .1-1 .9-7 1-5 1.9-3 .1-2-.9-3-.1-1-.9-3-.1-1-.9-3-.1-1-.9-3-.1-1-.9-3-.1-1-.8-3-.2-14-3.9-7-1.2-1-.8-3 0-1-.9-3-.1-26-6.6-7-.9-4 1.3-2.6 2.6-1.3 2-.3 3 .3 91-1.1 .7-3-.1-1-.9-3-.1-1-.9-6-1.1-13-3.9-6-2.4-5.2-5.3-2.3-6 0-52 1-3 .2-5 .8-1 0-3 1.3-4 1.7-5 5-10 6.9-10 5.7-6 5.9-5.6 12-7.9 10-4.9 14-5 2-.1 1-.9 3-.1 1-.9 8-1.1 1-.7zM169.9 307.5l.6-.6 4 .7 16 3.6 1 .7 19 4.1 14 4 7 1 1 .9 7 1.1 1 .9 7 1.1 3.1 1.5-.1 112-1 1.5-1-.9-3-.1-1-1-7-1.1-1-.9-3-.1-1-.8-3-.2-1-.9-7-1-1-.9-3-.1-1-.8-16-3.3-5-1.8-11-2-5-1.7-3-.2-4-1.1-1.7-1.6-.9-4zM337.4 307.5l3.1-.4 .8 1.4-.1 107-1 4-1.7 1.7-3 .9-3 .2-14 3.8-3 .2-5 1.7-3 .1-1 .9-7 1-2 1-6 1-6 2-3 .2-1 .8-3 .2-1 .8-3 .1-1 .9-3 .1-1 .9-3 .1-1 .9-4 .8-.7-1.3 0-112 1.7-1.5 3-.1 1-.9 3 0 1-1 3-.1 1-.8 3-.1 6-2 3-.1 1-.8 11-2.1 1-.9 3-.1 2-1zM319.5 337.1l-2 .9-6 1-2 1-2 0-28 7.4-1.6 1.1-1.1 2 .3 4 2.4 2.5 5 0 2-1 7-1.3 5-1.7 3-.1 1-.9 3-.2 1-.8 3-.1 1-.9 3-.2 1-.8 3-.2 6-1.9 1.6-1.4 1-4-1-2-2.6-2.4zM313.5 360.3l-5 1.8-3 .2-1 .8-18 4-2.9 2.4-.6 3 .4 2 2.1 2.2 5 .3 5-1.8 3-.2 1-.8 3-.1 1-.9 15-3.3 2.5-1.4 1.4-3-1.3-4-1.6-1.2z',
+    'partner': 'M329 312.5l51.5-.3 7 .9 9 2 1 .9 2 0 1 .9 2 .1 1 .9 4 1.1 9 4.6 7.7 5.9 8.2 10 4.6 10 .1 2 .9 1 .1 3 .8 1 .1 55-1.5 2.8-3.2 3.2-6.8 3.4-24 6.2-9 1.1-1 .8-5 0-2 1-7 .1-2 .9-18 .4-25-.4-2-.9-13-1.1-2-.9-4-.1-1-.9-4-.2-1-.7-3-.1-1-.7-13-2.7-11-3.8-3-2-3.3-4.4-1.3-5 0-45 1.8-11 4.3-11 5.2-7 4.3-4.4 8-5.7 16-7.4 6-1.1 1-.9zM128.1 312.5l51.4-.3 3 .9 5 .1 1 .8 7 1 1 1 2 0 1 .9 2 .1 5 2.1 6 2.8 8 5.1 10.4 11.5 4 8 2.3 8 .9 7 0 48-1.2 4-2.4 2.9-8 4.5-16 4.3-7 1.1-1 .7-9 1.1-2 .9-5 0-2 1-7 .1-3 .9-20 .3-20-.3-3-1-6 0-2-.9-11-1.1-2-.9-3 0-18-4.3-9-3-3.8-2.3-3.2-3.2-2.5-5.8 0-49 .9-2 1.1-7 2.1-5 4.4-7.9 3-3.9 6.3-6.2 5.7-4.1 11-5.4 8-2.7 3-.4 1-.9zM202.4 80.5l103.1-.3 7 .8 5 2.3 7.2 6.2 3.1 6 .7 3-.1 63-2.4 7-3.5 4.5-5 3.6-8 2.6-59 0-31 28.8-2 1-.8-.5-.9-1-.3-27.6-1-.7-14 0-7-2.2-5.9-4.5-2.6-3-1.8-3-1.5-5 0-63 .7-3 3-6 6.1-5.5 6-3zM349.5 203.5l2-.6 9 0 9 1.8 12 5.3 7 5.3 7.4 8.2 3.9 7 4.1 11 .1 4 1 3-.1 9-.7 1-1.2 8-1 1-.2 2-4.3 9-5 6.6-8 7.4-10 5.4-10 3.1-4 .1-3 .9-11-1-7-2-7-3.1-9-6-5.3-5.4-5.1-7-4.4-10-1.8-8 0-15 1.7-7 4.4-10 4.9-7 6.6-6.5 7-4.9 8-3.6zM149 203.5l1.5-.6 8 0 10 1.9 7 2.5 9 5.7 8.6 8.5 4.7 7 2.9 6 2.4 9 .1 17-.8 4-3.4 9-4.1 7-7.9 9-4.5 3.4-12 6.1-7 2-9 .9-13-1.9-1-.9-2-.1-8-3.6-5.8-3.9-9.2-9.2-3.7-5.8-4.8-11-2-10 .1-7 2-10 1.9-5 6.1-11 9.4-9.3 6-4.2 11-4.3z',
+    'group': 'M244.7 160.5l1.8-.5 18 0 18 3.4 5 1.6 15 7 14 9.9 12.6 12.6 9.8 14 8 18 3.1 13 .2 5 .7 1 .1 20-.9 2 0 4-1 2-1.4 9-2.9 8-5.9 12-9.8 14-12.6 12.6-14 9.9-15 7-5 1.7-17 3.3-21 0-2-.9-4-.1-1-.8-9-1.5-5-1.7-15-7-14-9.9-12.6-12.6-10.9-16-6.9-16-2.4-12-.7-1-.1-5-.9-2 0-18 .9-2 .1-5 3.1-13 8-18 9.8-14 12.6-12.6 14-9.9 15-7 5-1.7 9-1.4 2-1zM252.1 71.5l5.4-.5 2 .9 3 .1 9 4.4 7.1 7.1 4.4 11 0 10-1.1 4-4.4 7.9-7 6.3-4 2.2-6 2.1-10 0-6-2.1-5.9-3.4-5.1-5.1-1.9-2.9-3.6-9 0-10 2.1-6 3.3-6 6.1-6.1 6-3.4zM92.6 228.5l5.9-.7 7 .3 8 3.5 7 6 2.2 2.9 3.2 7 .1 3 1 2 0 6-.9 2-.2 3-3.3 7-2.1 2.9-6 5.3-10 4.3-11-.2-5-1.8-6-3.4-5.1-5.1-2-3-2.4-5-1-4 0-11 4.4-10 7.1-7.1 4-2.2zM250.7 384.5l.8-.5 8 0 1 .9 3 .1 7 3.4 3 2.2 5.2 5.9 4.3 10 0 11-4.5 10-7 6.8-7 3.7-2 .1-1 .8-12 0-1-.8-2-.1-8-4.4-5.1-5.1-3.3-6-2.1-6 0-10 2.2-6 3.3-5.8 7-6.4 7-3.3zM405.1 228.5l12.4-.5 10 4.4 7.1 7.1 4.4 10 .5 6-.5 6-3.3 8-2.1 3-5.1 5.1-6 3.4-6 2-10 0-10-4.3-4-3.5-3.9-4.7-2.5-5-1.1-3-.1-3-.8-1-.1-6 2-7 2.4-5 3.1-3.8 5-4.4zM208.3 349.5l20.2 7.2 19 3.3 17 0 3-1 5-.2 1-.7 3-.1 12-3.1 1-.9 2-.2 11-4.9 .5 .6-.2 4-2 6-4.8 7-4.5 4.2-9 4.4-6 1-1 .9-11 0-29-.1-1-.8-3-.1-1-.9-2-.2-7-3-8.2-7.4-4.1-8-.3-3-.8-1zM235.5 134.5l1-.5 38 0 10 2.9 5 2.3 7.2 6.3 4.3 7 1.1 5 .8 1 .1 3-.5 .5-16-6.8-21-4.2-21 0-2 1-4 0-14 3.2-16 6.3-.4-3 .8-1 .3-3 4.2-8 2.1-2.2 4-3.9 3.3-1.9 8.7-3.4zM156.3 208.5l5.2-.5 .5 .5-5.9 13-4.1 16 0 4-1 2-.3 10 .3 13 4.1 20 6.1 15-.7 1.4-2-.8-3-.1-5-2.2-5-3.2-4-4.1-3.3-5-4.2-13 0-38 2.2-8 2.2-6 5.4-7 7.7-5.5zM349 208.5l4.5-.4 6 1.9 7.6 5.5 4.8 6 3.9 10 .2 3 1 2 0 38-2.1 8-3 7-7.4 8.1-6 3.4-7 1.9-1.6-.4-.1-1 4-9 .2-2 .9-1 3.2-12 .1-3 .8-1 0-4 .9-2 .4-13-.3-11-1-2 0-4-.8-1-1.7-10-2.7-8z',
+    'presentation': 'M88 94.5l1.5-.5 15-.1 272 .1 7 3 4 3.1 3.5 4.4 2.7 7 .1 43-1.3 1.3-16-.2-1.4-1.1 .7-4-.1-34-1.1-3-1.1-.5-278-.4-3 .3-1.6 1.6 .1 185 1.5 2.2 30 .6 222-.2 1 .2 .8 1.2-.1 17-1.7 .5-254 0-7-2.9-3.8-2.6-2.8-3-2.9-5-2-7 0-187 1.4-5 2.5-5 6.6-6.5zM303.9 176.5l2.6-.8 4 0 4 1.7 46 45.8 50 .4 5 .9 5 1.7 8.7 6.3 4.4 5 4.3 8 2.1 9 0 60-1 3-2 3-3.5 2.3-6 .1-2.7-1.4-3.7-4-.9-5-.3-53-2.4-1.7-3 .4-.9 1.3-.1 147-2 4.8-3.3 3.2-2.7 1.5-3 1-3 0-3-1-5-3.8-2.2-3.7-.6-82-.2-3-3-2.5-2 .2-2.5 3.3 0 83-1.3 3-3.2 3.4-3 2.1-3 1-4 0-3-1-3.4-2.5-3.2-5-.3-157-1.4-3-55.1-55-2.1-4-.1-6 2.6-4.7zM237.6 144.5l6.9-1 24 .2 3 .4 1.3 1.4 .8 3-.2 116-.4 5-2.5 2.4-31 .1-3.5-2.5-.1-120 .1-3zM183.3 182.5l1.2-.5 32 0 2.5 2.5 .6 2-.1 81-.6 2-2.4 2.4-32 .1-2.1-1.5-1.2-2-.2-82zM131.3 217.5l29.2 .3 2 .2 1.5 1.5 .9 4-.1 44-1.2 3-2.1 1.5-32 0-2.4-2.5-.7-2 0-46 2.1-3.4zM378.8 166.5l2.7-.8 8 .1 9 3.5 7.3 7.2 2.2 4 2 6-.2 8-2 6-2.2 4-6.1 6.2-9 4.3-11 0-7-2.9-4-2.9-3.4-3.7-3.1-5-1.8-5 0-10 1.9-6 4.4-6 5-4.4z',
+    'stations': 'M328.1 338.5l1.4-.5 101 0 4 2.2 2.3 2.3 2.2 4 0 67-2.4 5-2.1 2.2-5 2.3-99 0-4-1.2-1.8-1.3-2.2-2-2.5-5 0-67 2.3-4 2.2-2.2zM80 338.5l1.5-.5 101 0 4 2.3 2.2 2.2 2.3 4 0 67-2.5 5-4 3.3-3 1.2-100 0-5-2.5-2.1-2-2.4-4 0-68 2.2-4 2.3-2.3zM331.2 88.5l95.3-.4 6 1.2 3 2 3.5 6.2 0 67-1.2 3-4.3 4.3-2 .3-1 .9-102 0-4-2.3-3.1-3.2-1.4-3 0-67 1.2-3 2.3-3 4-2.5zM82.8 88.5l93.7-.4 7 .9 4 2.5 3.5 6 0 67-1.4 3-3.1 3.2-5 2.3-101 0-3-1.2-4.3-4.3-.3-2-.9-1 0-67 3.5-6.2 4-2.3zM246.9 373.5l1.6-.5 .5 .5-2.6 10-.7 6 3.8 1.4 15 .4 3 2.4 1.4 2.8 .1 2-1.5 2.7-3 2.8-21-.1-1.3 2.6-1.2 10-1.5 5.5-15.7-13.5-18.9-18 2.6-2.2 10-3.6 10-4.6zM271.4 89.5l1.1-.5 9 8 14.6 13.5 10 10 .1 1-42.7 16.5-.8-.5 .2-3 .9-2 1.8-10-.8-2-17.3-.5-2-1-2-2.5-.5-5 1.5-2.4 3-2.1 20 0 1.3-2.5 .2-4 1-2 0-3 .9-2zM124.2 188.5l1.3-.8 .9 .8 1.6 4 .1 2 3.8 11 5.2 22 1.9 5-2.5 .5-7-2.9-7-1.7-1.4 2.1-.1 4-1 2-.1 5-1.1 4-3.3 3.4-5 .1-3-2.5-1.5-3 1-10 1.9-6-.2-3-15.2-3.5-1.7-1.5 28.7-28.1zM395.9 262.5l4.6-.5 3 2 1.5 2.5 0 9-.8 1-.2 4-1.7 5 .5 1 4.7 1.5 7 1 1 .8 3 .2 1.3 1.5-34.3 32.3-1.3-1.3-2.3-9-.8-1-5.3-22-3.8-12 1.5-.4 1 .8 2 .1 4 1.9 8 2.2 1.5-1.6 0-3 .8-1 1.2-11 2.1-3zM301.2 383.5l3.3 .5 2.2 1.5 1.3 2-.1 5-2.4 3.2-2 1.2-13 3.4-5 0-2.5-1.8-1.9-5 2.4-4.5 3-1.8zM217.4 111.5l3.1-.8 4 0 3 1.1 1.5 1.7 1.1 3-.9 4-3.7 3.3-8 1.5-8 2.7-3-1-2.5-2.5-1.1-3 1.3-4 4.3-3.5zM109.8 263.5l5.7-.5 2 1.2 2.4 5.3 .1 5 1 2 .9 8-3.4 4.4-3 1.2-4-1-2.5-2.6-.9-3-.2-4-.9-2-.1-6-.9-2 1.3-4zM380 184.5l5.5-.5 3.6 3.5 5.8 13 .1 4-1 2-1.9 2-2.6 1.3-4-.9-2.5-2.4-5.6-12-.7-2 .1-4zM392.8 222.5l1.7-.7 4 .1 2.5 1.6 2 4 .1 4 .9 2 0 5 1 4-1.3 3-3.2 2.6-5-.1-2.2-1.5-1.2-2-1.1-5-.2-5-.7-1-.2-6 .1-2zM120.2 302.5l3.3-.5 2.6 .5 3.9 4 1.8 4 3.2 8 .2 3-1.2 3-3.5 2.5-4-.3-3-2.5-5.4-10.7-1.2-3 0-4 1.6-2.8z',
+    'binder': 'M200.8 71.5l.7-.5 202 0 4 1.2 1.9 1.3 4.2 5 1.3 6-.1 342-1.8 6-5.5 5.4-3 1.1-203 0-.7-.5-.4-131zM105.9 71.5l1.6-.5 77 0 1.3 .5-.3 367.4-79 .1-3-1.2-3-2.3-3.4-5-.7-8-.2-67-.1-272 .9-4 1.5-2.8 3.1-3.2zM139.5 122.4l-8 1.6-6 3-5.3 4.5-3.1 4-3.1 6-1.7 7-.1 4 1.1 6 1.9 5 3.9 6 3.4 3.5 6 4 5 1.9 5 1.1 6-.1 7-1.8 4-2 4.7-3.6 4.8-5 2.8-5 1.7-5 .5-7-.5-6-3.9-9-8.1-8.2-9-4.3zM136.5 330.4l-6 1.6-4 2.1-5 3.9-4.5 5.5-3.9 9 0 12 2 6 3 5 6.4 6.4 5 3 6 2.1 11 0 6-2 6-3.4 5.4-5.1 2-3 3.7-9-.1-12-3.6-9-4.4-5.4-5-3.7-4-2.2-7-2.2zM138.9 344.5l3.6-.5 6 2.1 4.8 4.4 1.8 4 .2 8-1.1 3-3.7 4.5-6 3-6 0-3-1-5-3.7-3.4-5.8 0-8 2.2-4 5.2-4.5zM136.8 137.5l.7-.5 7 0 3 1 5.5 4.5 2.3 5 0 7-1 3-3 4-5.8 3.4-8 .1-4-2-3.2-2.5-3.2-6 .1-7 1.2-3 4.4-5z',
+    'book': 'M136.7 118.5l2.8-.5 28 0 3 .9 6 .1 2 .9 5 .1 2 .9 8 1.1 1 .7 12 2.5 18 7.4 8 4.4 7 5.1 8.4 8.4 1.1 4 0 206-.5 1.1-15-8.8-12-5.7-14-5-15-4-3 0-7-1.7-19-1.5-22 0-19 1.6-9 1.6-6 0-2-.9-2.3-2.7-.6-2 0-204 1.8-4 4.1-2.6 4 0 8-1.9 5 0 2-.9zM343 118.5l2.5-.5 26 0 3 .9 8 .1 2 .9 6 .1 14 2.8 2.9 2.7 1.1 3-.1 205-1.1 2-2.8 2.6-8-.1-9-1.6-19-1.5-19 0-21 1.5-11 1.8-12 3.8-2 0-1 .9-13 4.2-18 9-7 4.8-2 .2-.5-29.6 .4-179 .7-2 8.4-8.3 9-6.2 12-6 9-3 1-.9 15-3.4 1-.8 3 0 7-1.9 5-.1 2-.9zM77 152.5l10.5-.5 1.4 .5 0 1 0 206 1.5 3 3.1 2.1 2 .1 130 0 1 .1 8 6.2 5 2.6 7 2.4 9 1 9-1.1 7-2.3 14-8.9 132 0 3.5-2.2 1.1-3 0-206 .1-1 1.3-.5 10 .1 3.5 2.4 2 3 .1 212-.1 6-1.1 2-2.4 2.1-4 1.5-141 0-7 4.8-14 6.1-13 1.9-10-.9-10-2.9-7-3.3-8-5.6-142-.1-3.9-1.6-1.4-1-2.2-4 0-216 2.3-4z',
+    'workbook': 'M135.8 71.5l1.7-.5 268 0 6 2.2 4 3.7 2.5 4.6 1 5 0 335-1 8-3 5-3.5 3.3-5 2.2-270 0-5-2.2-5.4-5.3-2-5 .4-15 20 .3 6-.9 5-3 2.4-2.4 2-3 2-7-.9-6-2.1-4-3.6-4-3.8-2.4-4-1-21 .3-2.5-.9 .5-12.6 1-.6 22 .6 3-.9 4-2.3 4.2-4.2 2.1-4 1.1-5-1.1-6-2.8-5-3.5-3.3-3.3-1.7-3.7-1.2-22 .5-1.4-1.3 .4-12.5 1-.5 23 .5 3-1 4-2.3 2.3-2.2 2-3 2.1-7 0-3-2-6-3.4-4.5-5-3.2-6-1-20 .8-1.4-1.1 .4-13.3 1-.6 24 .4 6-3.2 2.4-2.3 2-3 2-7-.9-6-1.2-3-2.2-3-4.1-3.4-6-2.1-13 .1-9 .8-1.1-.4-.3-1 .4-13.1 1-.5 13 .3 8 .9 5.8-1.6 4.1-3 2.6-3 2-4 .9-4-.1-4-2-6-3.3-4.3-5-3.1-5-1.1-12 .1-6 .9-4.2-.5 .2-13.7 24-.1 3-1 3-1.8 3.6-3.4 2.7-5 1-5-1.9-8-3.4-4.2-4-3.1-7-2-12 .8-8 0-1.3-.5-.2-13 .5-.5 11-.1 9 .9 6-1 4-2.3 4-4.2 2.5-4.8 .8-4-.8-6-1.3-3-6.2-6.4-5-2-21-.4-3.5-1.2 .1-14 1-3 4.7-6 3.7-2.5zM211.5 220.4l-3.6 2.1-1.9 2-.1 1 .1 4 1.1 2 3.4 2.3 141 0 4.2-3.3 1.1-3-1.3-4-2-1.8-3-1.3zM209.5 185.4l-3.4 3.1-.2 5 2.6 3.4 3 1 140 0 4.4-3.4 1-3-1-3-1.4-1.8-4-1.9-137 0zM210.5 149.2l-4.2 3.3-.4 5 1.7 3 2.9 1.5 141 0 1-.1 3.4-3.4 .9-3-2.3-4.5-4-2zM98.9 200.5l3.6-.6 41 .1 4 1 3.9 3.5 1 2 .1 5-3 4.4-4 2-45 0-3-.9-3-2.9-2.3-5.6 1.9-5 2.4-2.2zM98.9 340.5l1.6-.5 45 .1 5.3 3.4 1.4 3 .1 5-2.5 4-4.3 2.5-45 0-3-1.2-3.1-2.3-2.2-5 1-4 3.6-4zM97.8 247.5l3.7-1 43 .3 4 1.4 3.2 3.3 .7 2-.2 5-2.7 4.2-4 1.8-46-.2-2-.6-3.5-3.2-1.8-5 1.8-5zM99.2 293.5l45.3-.2 3 .7 4.2 4.5 .7 2 0 4-2.3 4-4.6 2.6-46-.1-3-1.2-2.4-2.3-1.8-5 .8-4 3.8-4zM101 153.5l41.5-.2 4 .6 2 1 3.3 3.6 .5 6-1.3 3-1.5 1.5-4 2-46-.1-2-.9-3-2.8-1.2-1.7-1-4 2.2-5.1 3-2.1zM98.8 387.5l.7-.5 46 0 4 1.9 1.4 1.6 1.3 3 .2 4-1.3 3-3.6 3.5-22 .8-27-.8-4-2.7-2.3-5.8 2.2-5zM97.8 107.5l.7-.5 48 0 4.5 3.5 1.3 3 0 4-1.3 3-1.5 1.6-4 1.9-47-.1-4.3-3.4-2.2-5 2-5z',
+    'worksheet': 'M128.9 71.5l1.6-.5 173 0 .5 .5 0 70 1.3 4 4.2 6.8 6 4.3 9 2.3 67 0 1.4 .6 .1 269-1.5 3.9-3.2 4.1-3.8 2.5-3 1-252 0-5-2.5-4-4-2.5-5 0-346 3.9-7 4.6-3.4zM165.5 245.3l-3.3 2.2-2 4-.2 3 2.5 4.4 4 2.1 178 0 4-1.8 1.4-1.7 1.1-3 0-3-2-4-3.5-2.4zM167.5 195l-3 .8-2 1.6-2.5 5.1 2.1 6 3.4 2.4 180 0 2-1 2.3-2.4 1.2-4-1.3-5-3.2-2.7-3-.7zM165.5 296.3l-4.2 3.2-1.1 4 .8 4 3.5 3.4 3 .9 177 0 4-2.3 2.5-5-1.3-5-2.2-2.3-3-1.3zM319 76.5l.5-.6 1 .5 6 5.6 61.5 61.5-.5 .5-55-.1-5-.7-4-2.1-2.5-2.6-2-5zM165.5 346.1l-3.5 2.4-1.9 6 .9 3 1.5 1.9 2 1.7 3 .9 119 0 4-1.3 1.2-1.2 1.2-2 .4-4-.2-3-2.6-3.3-2-1.1z',
+    'pen': 'M370.3 90.5l1.2-.2 3 2.7 63.5 63.5 1 2 0 5-1.5 2.5-106 106-1 .9-6 0-3.3-2.4-1.5-4 .9-4 2.9-3.8 96.9-97.2 .4-1-.8-1-6-6-2.5-2-1 .5-117 116.8-50-49.7-.7-1.6 69.7-70zM231.6 228.5l.9-.4 1 .7 9.7 9.7 39.3 39.3 .3 1.7-121.3 120.5-1 .1-50.3-50.6zM101.4 361.5l1.1-.6 .6 .6 29.9 30 14.6 15 1.6 2-.2 1-28.5 12.1-8 2.6-10 4.7-29 11.1-1.5-1.5 1.2-5 1.7-3 .1-2 1.7-3 4.4-13 6.6-15 3.5-11 5.6-12zM411.4 73.5l8.1-.5 4 1.1 4 2 5.5 4.4 4 6 2 5 0 11-.9 1-.2 2-9.9 19-1.5 1.3-39.8-40.3 6.8-4.4 12-6z',
+    'tablet': 'M123.4 71.5l1.1-.5 263 0 1 .9 5 1.1 4 2.1 7.6 7.4 3.9 9 0 328-2 6-3.9 6-3.6 3.4-7 4.1-4 1-266 0-4-1-4-2.1-5-3.9-3.5-4.5-4-10 0-326 3-8 1.9-2 .1-1 4.9-5 5.6-3.2zM135.5 104l-.5 1.5 .2 284 240.3 .3 .5-1.3 0-284-.5-.5zM251.5 400.5l-4 1.7-4.2 4.3-1.6 4 .1 9 1.9 4 3.8 3.6 4 1.8 8 .1 4-1.9 4.8-4.6 2-6-.7-7-1.8-3-5.3-5-3-1.3z',
+    'headphones': 'M246.6 90.5l14.9-.5 19 2 2 .9 12 2 18 5.1 22 10.1 16 10 16 12 12.4 12.4 1.6 3.1 1.6 3.9 .1 12 8.5 12 8.9 16 7.4 17 3.7 12 3.4 17 1.8 18 .1 31 8.8 9 6.2 9 6 15 2.9 15 .1 22-1 9-3.1 12-4.1 10-3.1 5-8.2 10.1-11 9.2-5 2.8-14 5.4-3 0-2 1-4 0-.6-.5 0-147 .6-.8 4 .1 10 2.4 1 .8 1.3-.5 .2-5 0-13-.9-3-.1-8-.8-2-.1-5-1.6-9-3.5-13-2-4-.1-2-7.1-16-8.5-14-4.8-6.6-9-.1-6-3-14.1-13.3-13.9-10.3-13-7.1-11-4.9-14-4.1-3-.2-1-.8-3-.1-2-1-4 0-2-1-6-.1-2-.8-18 0-3 .9-6 .2-1 .7-5 .2-1 .8-7 1.1-14 4.2-11 4.9-14 8-10 7.4-18 16.4-4 1.8-5 .9-5-.5-2.7 3.4-8.7 14-5.3 11-2.8 8-.9 1-5.5 19-2.6 18-.1 26 .6 .5 4-1.7 7-1.6 5 0 .5 .8 0 147-.5 .5-5 0-1-.9-3-.1-9-2.9-9-4.2-12-9.6-11.4-14.8-4.2-10-3.9-15 0-34 1-2 0-3 3.8-12 4.2-9 4-6 10.7-11-.7-27 .8-5 .2-9 .8-2 .1-5 4.2-21 .9-1 .1-2 4.1-11 7.8-17 7.2-12 8.3-11.1-.6-10.9 3.2-8 10.4-10.3 18-14.1 16-10 13-6.1 8-3 1-1 22-6.1 8-1 2-.9 5-.1 2-.9zM142.2 272.5l1.3-.7 12 .1 7 2.4 5.3 4.2 3 5 2.2 7 0 113-1.9 6-1.8 3-5.1 5-6.7 3.5-5 .6-8 .1-2.2-1.2zM355.8 272.5l2.7-.7 9 0 1.3 .7-.1 148-1.2 1.4-9 .1-5-1.1-7-3.8-3.7-3.6-2-3-2.8-9 0-110 2-7 2.1-4 5.4-5.3 5-2.2z',
+    'phase-placeholder': 'M239.9 142.5l5.6-1 25 .5 2 .9 2.5 2.6 1.4 4 .3 55 .8 .5 56 0 4 2.9 2.3 3.6 .2 29-1.5 2.6-3 2.9-3 1-55 0-.9 .5-.2 56-3 5-4.9 2.6-26 0-4-1.8-2-1.9-1.9-3.9-.1-56-1-.5-55 0-4.5-2.5-3-5 0-27 2-4 2.5-2.4 3-1.1 55.8-.5 .3-55 1.4-4 2.5-2.6zM310.8 382.5l27.7-.3 2 .8 4 .1 9 2.9 11 6.8 5.5 7.7 2 7 0 22-1.3 2-7.2 3.6-6 1-2 .9-3 .1-1 .9-12 1.1-2 .9-25-.1-2-.9-6-.1-1-.9-9-1-1-.9-3-.1-1-.9-2 0-5-1.9-3.7-3.7 0-1 0-20 2.4-9 1.8-2 0-1 4.5-4.4 6-4.1 9-4zM174.4 382.5l28.1-.3 12 2.8 1 1 4 1.2 7 4.4 4.9 4.9 2.7 5 1 5 .9 1 0 22-3.5 3.4-6 2.2-2 .1-1 .8-8 1.1-1 .9-4 0-2 1-6 .1-2 .9-23 0-3-1-6-.1-1-.8-4-.1-2-1-7-1-1-.8-5-1.1-4-2.1-1.5-1.5-.1-1 0-23 1.8-6 2.5-5 4.3-4 9-5.5 2-.1 1-.9 5-1 1-.8zM318.9 320.5l.6-.5 12 .1 7 2.7 3 2 7.5 7.7 3.8 8 .7 7-.6 6-4 9-5.4 6.3-6 4.1-5 1.8-9 1-5-.9-5-1.9-8.6-6.4-4.1-6-2.6-7-.2-11 1-4 4.2-8 5.3-5.3 5-3zM182.2 320.5l1.3-.5 11 0 9.9 4.5 7.6 8 4 8 .2 4 .7 1 .1 4-1 2 0 3-2 5-3 5-5.5 5.5-3 2-4 1.9-7 1.8-5 0-5-1-9-4.7-5.6-5.5-2-3-1.9-4-1.2-6-.8-1 0-6 1-2 0-3 5.5-9.9 4-4.1 8-4.4zM317.1 71.5l1.4-.5 36 0 3 1 4.5 3.5 1.9 4 0 8-.8 1-.2 2-4.4 4.4-5 1.3-32-.1-6-.7-2-1.1-3.5-3.8-1-3 0-8 2.5-5 3-2.3zM156 71.5l1.5-.5 36 0 5 2.4 3.3 5.1 .6 6-.4 5-3.5 4.7-3 1.5-34 .6-7-.6-3-1.7-3.5-4.5-.9-3 .1-6 2.3-4.6 4-3.6zM237 71.5l1.5-.5 34 0 4 1 4 2.8 2.5 4.7 0 9-3.8 5-3.7 2.2-29 .6-11-.6-3-1.6-3.5-4.6-1-3 0-6 .8-1 .2-2 2.5-3.2 3-2.3zM79.7 228.5l6.8-.5 3 1 4.5 3.5 1.8 4 .1 39-.9 2-4.5 4.5-3 1-8 0-2-1-4-3.7-2.4-4.8-.1-36 2.5-4.8 4-3.6zM423.8 228.5l5.7-.5 5 2 3.5 3.5 2 5 0 35-3 6-5.5 3.5-8 0-4-2-2.5-2.5-1.8-4 0-38 1.8-4 1.5-1.5 3-2zM78.3 148.5l10.2-.4 2 .9 3.5 3.5 1.9 3-.1 39-1.3 2.8-2.3 2.2-4.7 2.5-8-.1-2-.9-4.2-3.5-2.3-6 0-34 2-5 2.5-2.5zM422.2 148.5l9.3-.4 4 1.9 2.5 2.5 2 5 0 36-1 1-.2 2-2.3 2.9-5 2.6-8 0-5-2.9-3.1-4.6-.3-39 1.9-3 3.5-3.5zM78.8 309.5l.7-.5 8 0 3 .9 4 3.8 1.3 2.8 .1 39-1 2-3.4 3.5-5 1.9-6 0-3-.9-4.5-4.5-2-4 0-35 2.3-5 3.3-3zM396 76.5l1.5-.6 5 0 6 2 6 3.4 3 2.7 1 0 8.4 8.5 5.1 8 3.1 8 0 5-1.2 3-2.4 2.7-4 2-4 .8-6-1.1-4.7-4.4-3.2-7-4.5-5-5.6-4.2-7.3-3.8-2.3-3-1-3 0-5 2-5 3.6-3.6zM422.6 309.5l.9-.5 7 0 3 1.2 4.2 3.3 2.3 5 0 35-2.5 5.6-2 1.9-4 1.9-8 0-4-1.9-2.5-2.5-1.9-4 .2-38 3.5-5zM106.7 76.5l.8-.6 6 0 3 1.2 2.7 2.4 2 4 .6 4-.6 5-1 2-3.7 3.6-8 4-5.8 5.4-3.2 5.1-1.4 3.9-4.6 4.6-7 1-4-1.1-4.6-3.5-2-4 0-5 2-6 3.2-6 3-4 8.4-8.5 7-4.6 5-2.5zM418.9 389.5l6.6-.6 3 1 4.3 2.6 1.9 3 .4 8-5.1 11-2 2-.1 1-10.4 10.5-4 2.8-10 4.3-5 0-3-1-3.7-3.6-1.9-4 0-8 .9-2 3.7-3.7 5-2.1 4.7-3.2 4.8-5 4.9-10zM83.8 389.5l.7-.6 6 0 3 1 4.6 4.6 2 5 2.6 4 6.8 6 9.1 5 2.6 4 0 8-1 3-2.7 3.6-4 2-6 0-3-1-11-6.3-10.2-10.3-2.3-3-5.1-11 0-7 1-2 3.6-3.6z',
+    'material-placeholder': 'M315.3 286.5l74.2-.5 .9 1.5 .2 8-.2 29 .6 4 2.5 2.7 4 2.7 40 0 .6 .6-.1 101-2.5 3.5-2 1-119 0-3.6-2.5-1-2 0-145 2.6-3.3zM250 158.5l5.5 0 6 .9 2.6 2.1 3 5 .3 55 55.1 .4 2 .9 4.3 3.7 1 2 .1 28-.9 2-4.5 4.4-5 1.2-52 .3-.4 53.1-1.2 4-3.4 3.5-2 1-29 0-4.6-3.5-1.7-3-.3-55-1.4-.6-50 .1-5-1.1-3-2.1-2.4-3.3-1.1-4 0-22 2-5 3.5-3.4 3-1.2 54.4-.4 .2-55 3.4-4.6 4-2.8zM81.3 292.5l6.2-.2 4 1.7 4.4 4.5 .9 3-.1 35-.9 3-2.3 2.5-6 3.1-6 0-4-1.5-3.4-3.1-2.1-5 .1-34 1.9-4 2.5-2.6zM78.5 143.5l6-.8 5 .4 4 2.4 2.2 3 1.1 3 0 34-1 3-2 3-5.3 3.4-8 0-2-.9-4.5-4.5-2-5 .1-33 2.1-5zM405.2 142.5l5.3-.5 5 1.8 3 2.9 1.8 3.8 .2 35-1 2 .3 1-1.8 3-1.5 1.5-4 1.9-8 0-2.9-1.4-3.6-4-2-5 0-33 2.1-5 2.4-2.4zM84.1 217.5l5.4 .5 2 1 3.5 3.5 1.8 4-.1 35-1.2 2.8-2.1 2.2-2.9 2.5-2 .2-1 .8-6 0-3-1.1-4-3.4-2.5-5 .2-34 2.3-4.8 3-2.7 2-1zM406 217.5l3.5-.5 6 2 3.5 3.5 1.4 4 0 34-1.4 4-2.9 3-5.6 2.5-4 0-4-1.2-3-2.1-3.4-7.2-.1-33 2.5-4.9 2.1-2.1 1.9-1.2zM151.6 71.5l.9-.5 36 0 3 1.2 3.5 3.3 1.8 4 0 7-.8 3-4.5 4.5-2 .9-38 0-4.9-3.4-1.8-4-.2-5 .2-4 1.3-3 3.4-3.5zM227.3 71.5l1.2-.5 36 0 4.6 2.5 2.8 4 1 4-.9 7-3.5 4.5-4 1.9-37-.1-4.3-3.3-2-3-1.2-4 0-4 1-3 2.8-4zM303.8 71.5l1.7-.5 36 .2 3.7 2.3 2.8 4 1 2-.1 7-2.4 4.6-2.4 2.4-2.6 1.4-38-.3-3.4-2.1-2.1-3-1-2-.1-5 .1-4 2.1-4zM153.3 390.5l1.2-.7 39 0 4 2.9 2.6 3.8 0 9-3 5-4.6 2.6-37 0-2.9-1.6-3.3-3-2.1-5 0-5 1-3 1.3-2.2zM229.7 390.5l1.8-.7 38 0 2 1 3.9 3.7 1 3 0 7-2.2 5-1.7 1.7-4 1.9-37-.2-2-.8-3.9-3.6-1.1-2-.5-4 .4-6 2.5-4zM87 367.5l1.5-.6 6 0 3 1.2 3.5 3.4 2.1 5 5.4 5.3 6 4.1 5 2.2 3.4 3.4 1.1 3 0 6-1.8 4-3.7 3.9-2 1.1-6 .1-5-1.8-10-6.7-10.5-10.6-3.6-5-1.9-4 0-7 3-4.6zM378.5 77.5l1-.6 6-.1 8 3.4 9.9 8.3 5.3 6 6.3 11 0 6-2 4-1.5 1.5-4 2.2-4 1-3-.2-4-1.3-3.3-3.2-3.1-7-3.6-3.9-5-4.5-6-3.3-3.4-3.3-.1-2-.9-1 .9-7 3.5-4.3zM105.7 77.5l.8-.7 7 0 2 .9 3.9 3.8 1.8 6-1.2 6-3.5 3.8-5.9 3.2-5.1 4.4-3 3.7-3.3 6.9-3.7 3.7-2 1-7 0-4-1.7-3-3.1-1.7-3.9 .3-5 3.9-9 2-2 0-1 11.5-11.5 4-2.8zM400 289.5l.5-.3 5 4.9 24.4 24.4 5.2 6-.6 .5-28-.3-4.4-1.2-2.2-3z',
+    'clear': 'M239.6 72.5l.9-.5 30 0 2 .9 7 .1 2 1 9 .9 21 5.2 13 4.9 21 10 2 1.7 7 3.8 17 12.5 7.6 6.5 13 13 5.9 7 11.8 16 7.2 12 9 19 4.9 13 5.2 20 1 9 .9 1 .1 6 .9 2 0 9 1 10-1 8 0 9-.9 2-.1 6-.8 1-1.1 9-4.3 17-3.8 11-.9 1-.2 2-8.9 19-8.2 14-9.3 12.7-10.4 12.3-17.6 16.5-17 12.8-10 5.3-4 2.9-16 7.1-3 1.9-2 .2-8 3.6-15 3.4-1 .8-3 .1-1 .9-9 1-2 1-5 0-2 1-17 .8-20-.8-2-1-5 0-2-1-9-.9-1-.8-7-1.1-15-4.3-10-3.9-17-8-4-2.9-1-.1-9-5.4-18-13.6-11.5-10.5-14.2-16-11.7-16-8.1-14-7-15-.1-2-1.9-3-2-7-.9-1-.1-2-.9-1-3.2-13-.1-3-.8-1-1-9-1-2 0-5-1-2-.8-20 .8-5 0-10 .9-2 .1-6 .8-1 1.2-10 .9-1 .1-3 3.4-12-.3-1 .9-1 .1-2 .9-1 2-7 1.9-3 .1-2 8-17 2.9-4 5.3-10 12.8-17 6.9-8 17.6-16.5 17-12.8 10-5.3 4-2.9 17-8 16-5.8 12-2.4 1-.8 3-.1 2-1 4-.1 1-.8zM247.5 113.4l-15 1.4-16 3.4-11 3.8-1 1-2 .2-15 6.9-12 7.5-11 8.5-17.6 17.4-9.3 12-4.6 8-1.9 2-11 25-3.6 13-.8 7-.9 2 .1 4-.9 2-.1 7-.9 3 0 14 .9 4 .2 7 .7 1 0 4 2.5 13 .8 1 1.9 8 6.8 16 6.4 12 5.3 8 11.5 14 8.5 8.6 15 12.5 13 8.3 22 10 2 .2 1 .9 8 1.9 1 .7 13 2.6 23 1.7 5-.8 9 0 2-.9 5-.1 13-2.5 9-2.7 1-.9 2-.2 3-1.8 2-.2 6-2.6 11-5.3 13-8.3 13.6-11.1 10.4-10.3 8.9-10.7 7.5-11 4-7 7.1-17 1-1 .1-2 .9-1 2.7-9 1.6-10 .9-2-.1-4 .9-2 .1-6 .9-3 0-18-.9-3-.9-12-.9-2-1.6-10-2.7-9-.9-1-.1-2-1-1-.3-2-7.8-17-9.6-15-6.2-7-.2-1-9.2-10-9.2-8.6-11-8.3-8-4.6-2-1.9-25-11-13-3.6-7-.8-2-.9-4 0-2-.8-8-.1-3-.9zM194.4 169.5l2.1-.4 4 1.9 45.7 46.5 9.3 8.3 55-54.8 2-1.1 3-.6 5 2.2 19.1 19 1.5 3-.1 5-1.1 2-54.6 55 51.7 52 4 5 .1 5-1.5 3-20.1 20-3 1.5-2 0-4-2-55-54.6-56 55.6-4 1-5-2.5-19.1-19-2.4-5 2-5 54.7-55-51.7-52-4-5-.1-5 1.5-3 19.1-19z'
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/classroom/icons.js */
+/* ==========================================================================
+   Symbole der Unterrichtsleiste – Kacheln, Schaltflächen, Münzen, Timer
+   Alles wird als Inline-SVG erzeugt: keine Bilddatei, keine Symbolschrift.
+   Jede Funktion bekommt das Zieldokument, weil dieselben Zeichen auch im
+   eigenständigen Beamerfenster entstehen.
+
+   Farben und Formen folgen dem Teacher Soundboard, aus dem die Leiste stammt:
+   weißes Motiv auf farbiger Kachel, kühle Töne für Sozialformen, warme für
+   Material – gleiche wahrgenommene Helligkeit, damit die Reihe als ein System
+   wirkt.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var serial = 0;
+
+  var TILE_COLORS = {
+    plenum: '#2563eb', individual: '#7c3aed', partner: '#0d9488',
+    group: '#16a34a', presentation: '#c026d3', stations: '#0891b2',
+    binder: '#ea580c', book: '#dc2626', workbook: '#d97706',
+    worksheet: '#64748b', pen: '#e11d48', tablet: '#4c6382', headphones: '#b45309',
+    'phase-placeholder': '#3f4854', 'material-placeholder': '#3f4854',
+    generic: '#475569', clear: '#7f1d1d'
+  };
+
+  /* Zustände der Kachel „Projektion“ (im Soundboard die Boîte-Kachel). */
+  var BOITE_COLORS = { ready: '#2f6f8f', live: '#1d9a6c', blank: '#38424e' };
+
+  /* Farben der Timer-Scheibe. */
+  var TIMER = {
+    idle: '#5d6874', paused: '#eda34d', done: '#df5d67', spent: '#39424f',
+    plenty: '#63c6a0', low: '#eda34d'
+  };
+
+  function tileColor(key) { return TILE_COLORS[key] || TILE_COLORS.generic; }
+
+  /** Farbe des Rests: grün, im letzten Fünftel orange, am Ende rot. */
+  function timerArcColor(progress) {
+    if (progress > 0.20) return TIMER.plenty;
+    return progress > 0 ? TIMER.low : TIMER.done;
+  }
+
+  function el(doc, tag, attrs, children) {
+    var node = doc.createElementNS(SVG_NS, tag);
+    Object.keys(attrs || {}).forEach(function (key) {
+      if (attrs[key] !== null && attrs[key] !== undefined) node.setAttribute(key, attrs[key]);
+    });
+    (children || []).forEach(function (child) { if (child) node.appendChild(child); });
+    return node;
+  }
+
+  function svg(doc, viewBox, className, children) {
+    return el(doc, 'svg', {
+      viewBox: viewBox, 'class': className, 'aria-hidden': 'true', focusable: 'false'
+    }, children);
+  }
+
+  /* --- Motive der Kacheln --------------------------------------------------- */
+
+  function hasGlyph(key) { return !!(BAO.classroomGlyphs && BAO.classroomGlyphs[key]); }
+
+  /** Das weiße Motiv einer Kachel. Unbekannte Schlüssel bekommen drei Punkte. */
+  function glyph(doc, key) {
+    if (hasGlyph(key)) {
+      return svg(doc, '0 0 512 512', 'cr-glyph', [
+        el(doc, 'path', { d: BAO.classroomGlyphs[key], fill: 'currentColor', 'fill-rule': 'evenodd' })
+      ]);
+    }
+    return svg(doc, '0 0 100 100', 'cr-glyph', [28, 50, 72].map(function (x) {
+      return el(doc, 'circle', { cx: x, cy: 50, r: 7, fill: 'none', stroke: 'currentColor', 'stroke-width': 5 });
+    }));
+  }
+
+  /* --- Schaltflächen -------------------------------------------------------- */
+
+  function stroke(width) {
+    return { fill: 'none', stroke: 'currentColor', 'stroke-width': width || 7,
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  }
+
+  function line(doc, x1, y1, x2, y2, width) {
+    return el(doc, 'path', Object.assign({ d: 'M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2 }, stroke(width)));
+  }
+
+  function filled(doc, d) { return el(doc, 'path', { d: d, fill: 'currentColor' }); }
+
+  /** Unterstützungsstufe als Balkenreihe – ohne eine einzige Ziffer. */
+  function levelBars(doc, x, y, width, height, level, dimmed) {
+    var total = 3;
+    var gap = width * 0.10;
+    var barWidth = (width - gap * (total - 1)) / total;
+    var nodes = [];
+    for (var index = 0; index < total; index++) {
+      // Ansteigende Höhe: Auch ohne Farbe bleibt die Reihenfolge ablesbar.
+      var share = 0.45 + 0.55 * (index / (total - 1));
+      var barHeight = height * share;
+      var attrs = {
+        x: (x + index * (barWidth + gap)).toFixed(2), y: (y + height - barHeight).toFixed(2),
+        width: barWidth.toFixed(2), height: barHeight.toFixed(2),
+        rx: (Math.min(barWidth, barHeight) * 0.35).toFixed(2)
+      };
+      if (index < level) {
+        attrs.fill = 'currentColor';
+        if (dimmed) attrs['fill-opacity'] = 0.67;
+      } else {
+        attrs.fill = 'none';
+        attrs.stroke = 'currentColor';
+        attrs['stroke-opacity'] = 0.5;
+        attrs['stroke-width'] = Math.max(1.2, height * 0.10).toFixed(2);
+      }
+      nodes.push(el(doc, 'rect', attrs));
+    }
+    return nodes;
+  }
+
+  var ACTIONS = {
+    play: function (doc) { return [filled(doc, 'M34 26L74 50 34 74z')]; },
+    pause: function (doc) {
+      return [el(doc, 'rect', { x: 30, y: 26, width: 13, height: 48, rx: 2, fill: 'currentColor' }),
+        el(doc, 'rect', { x: 57, y: 26, width: 13, height: 48, rx: 2, fill: 'currentColor' })];
+    },
+    reset: function (doc) {
+      return [el(doc, 'path', Object.assign({ d: 'M62.5 28.3A25 25 0 1 0 73.5 58.6' }, stroke(7))),
+        filled(doc, 'M79.3 42.6L83.8 62.3 63.2 54.8z')];
+    },
+    plus: function (doc) { return [line(doc, 28, 50, 72, 50), line(doc, 50, 28, 50, 72)]; },
+    minus: function (doc) { return [line(doc, 28, 50, 72, 50)]; },
+    sound: function (doc) {
+      return [filled(doc, 'M22 39H34L48 24V76L34 61H22z'),
+        el(doc, 'path', Object.assign({ d: 'M61.2 63.1A16 16 0 0 0 61.2 36.9' }, stroke(6))),
+        el(doc, 'path', Object.assign({ d: 'M68.1 72.9A28 28 0 0 0 68.1 27.1' }, stroke(6)))];
+    },
+    stop: function (doc) {
+      return [el(doc, 'rect', { x: 29, y: 29, width: 42, height: 42, rx: 6, fill: 'currentColor' })];
+    },
+    menu: function (doc) {
+      return [[34, 34], [66, 34], [34, 66], [66, 66]].map(function (p) {
+        return el(doc, 'circle', { cx: p[0], cy: p[1], r: 6.5, fill: 'currentColor' });
+      });
+    },
+    prev: function (doc) { return [filled(doc, 'M64 26L30 50 64 74z'), line(doc, 23, 28, 23, 72)]; },
+    next: function (doc) { return [filled(doc, 'M36 26L70 50 36 74z'), line(doc, 77, 28, 77, 72)]; },
+    eye: function (doc) {
+      return [el(doc, 'path', Object.assign({ d: 'M20 50Q50 20 80 50Q50 80 20 50z' }, stroke(7))),
+        el(doc, 'circle', { cx: 50, cy: 50, r: 9, fill: 'currentColor' })];
+    },
+    'eye-off': function (doc) { return ACTIONS.eye(doc).concat([line(doc, 22, 76, 78, 24, 8)]); },
+    live: function (doc) {
+      return [el(doc, 'path', Object.assign({
+        d: 'M32 24H68A10 10 0 0 1 78 34V54A10 10 0 0 1 68 64H52L36 78 40 64H32A10 10 0 0 1 22 54V34A10 10 0 0 1 32 24z'
+      }, stroke(7))), line(doc, 38, 44, 62, 44), line(doc, 50, 32, 50, 56)];
+    },
+    level1: function (doc) { return levelBars(doc, 22, 26, 56, 48, 1); },
+    level2: function (doc) { return levelBars(doc, 22, 26, 56, 48, 2); },
+    level3: function (doc) { return levelBars(doc, 22, 26, 56, 48, 3); }
+  };
+
+  /** Zeichen einer runden Schaltfläche (Start, Pause, Plus …). */
+  function action(doc, name) {
+    var draw = ACTIONS[name] || ACTIONS.menu;
+    return svg(doc, '0 0 100 100', 'cr-action', draw(doc));
+  }
+
+  /* --- Kachel „Projektion“ ---------------------------------------------------
+     Eine Leinwand auf ihrem Ständer. Läuft eine Projektion, stehen Zeilen
+     darauf; ist sie ausgeblendet, hängt das Rollo herunter. */
+
+  function boite(doc, state, level) {
+    var nodes = [
+      el(doc, 'rect', Object.assign({ x: 17, y: 16, width: 66, height: 42, rx: 5 }, stroke(5.5))),
+      line(doc, 50, 58, 50, 67, 5.5), line(doc, 38, 67, 62, 67, 5.5)
+    ];
+    if (state === 'live') {
+      [[26.08, 47.5], [37, 34.3], [47.92, 40.9]].forEach(function (row) {
+        nodes.push(el(doc, 'rect', { x: 26.24, y: row[0], width: row[1], height: 5, rx: 2.5, fill: 'currentColor' }));
+      });
+    } else if (state === 'blank') {
+      nodes.push(el(doc, 'rect', { x: 24.9, y: 34.1, width: 50.2, height: 5.9, rx: 2.95, fill: 'currentColor' }));
+    }
+    if ((state === 'live' || state === 'blank') && level) {
+      nodes = nodes.concat(levelBars(doc, 24, 74, 52, 16, level, state === 'blank'));
+    }
+    return svg(doc, '0 0 100 100', 'cr-glyph', nodes);
+  }
+
+  /* --- Münzen ------------------------------------------------------------------
+     Die Klangtasten sehen aus wie im Soundboard: nummerierte Münzen in Gold,
+     Silber und Bronze mit Glanzlicht, Punktrand und einer leicht schräg
+     sitzenden Ziffer. Ein eigenes Bild ersetzt die Münze (siehe panel.js). */
+
+  var COIN_PALETTES = [
+    { base: [240, 205, 90], edge: [170, 120, 20] },
+    { base: [210, 210, 220], edge: [120, 120, 130] },
+    { base: [200, 140, 90], edge: [120, 70, 35] }
+  ];
+  var COIN_TILT = [-6, 5, -3, 7, -5, 4, -7, 3];
+
+  function rgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
+
+  function coin(doc, number) {
+    var palette = COIN_PALETTES[(number - 1) % COIN_PALETTES.length];
+    var id = 'cr-coin-' + (++serial);
+    var light = palette.base.map(function (v) { return Math.min(v + 35, 255); });
+
+    var gradient = el(doc, 'radialGradient', {
+      id: id, gradientUnits: 'userSpaceOnUse', cx: 50, cy: 50, r: 58, fx: 32.5, fy: 28.7
+    }, [
+      el(doc, 'stop', { offset: 0, 'stop-color': rgb(light) }),
+      el(doc, 'stop', { offset: 0.45, 'stop-color': rgb(palette.base) }),
+      el(doc, 'stop', { offset: 1, 'stop-color': rgb(palette.edge) })
+    ]);
+
+    var nodes = [
+      el(doc, 'defs', {}, [gradient]),
+      el(doc, 'circle', { cx: 50, cy: 50, r: 47, fill: 'url(#' + id + ')', stroke: rgb(palette.edge), 'stroke-width': 4 }),
+      el(doc, 'circle', { cx: 50, cy: 50, r: 38.5, fill: 'none', stroke: '#fff', 'stroke-opacity': 0.47, 'stroke-width': 1.8 })
+    ];
+    for (var i = 0; i < 18; i++) {
+      var angle = (i / 18) * 2 * Math.PI;
+      nodes.push(el(doc, 'circle', {
+        cx: (50 + Math.cos(angle) * 43.6).toFixed(2), cy: (50 + Math.sin(angle) * 43.6).toFixed(2),
+        r: 1.8, fill: '#fff', 'fill-opacity': 0.47
+      }));
+    }
+    nodes.push(el(doc, 'path', {
+      d: 'M85.1 29.8A40.5 40.5 0 0 0 19 24', fill: 'none', stroke: '#fff', 'stroke-opacity': 0.55,
+      'stroke-width': 3, 'stroke-linecap': 'round'
+    }));
+
+    var font = '"Comic Sans MS", "Segoe Print", "Arial Rounded MT Bold", "Segoe UI", Arial, sans-serif';
+    var tilt = 'rotate(' + COIN_TILT[(number - 1) % COIN_TILT.length] + ' 50 50)';
+    function digit(attrs) {
+      var text = el(doc, 'text', Object.assign({
+        x: 50, y: 68, 'text-anchor': 'middle', 'font-family': font, 'font-size': 52, 'font-weight': 700,
+        transform: tilt
+      }, attrs));
+      text.textContent = String(number);
+      return text;
+    }
+    nodes.push(digit({ x: 52, y: 70, fill: '#000', 'fill-opacity': 0.35 }));
+    nodes.push(digit({ fill: '#fff', stroke: '#000', 'stroke-width': 6, 'stroke-linejoin': 'round', 'paint-order': 'stroke' }));
+
+    return svg(doc, '0 0 100 100', 'cr-coin__face', nodes);
+  }
+
+  /* --- Timer-Scheibe -------------------------------------------------------------
+     Restzeit als schrumpfender Kreisausschnitt, bewusst ohne Ziffern: Der
+     Ausschnitt zeigt die verbleibende Zeit als Fläche und ist damit auch aus
+     der letzten Reihe ablesbar. Er beginnt bei zwölf Uhr und reicht im
+     Uhrzeigersinn so weit, wie noch Zeit bleibt. */
+
+  function pieD(progress) {
+    var p = Math.max(0, Math.min(1, progress));
+    if (p <= 0) return '';
+    if (p >= 0.9999) return 'M0 -49A49 49 0 1 1 0 49A49 49 0 1 1 0 -49z';
+    var angle = p * 2 * Math.PI;
+    var x = 49 * Math.sin(angle);
+    var y = -49 * Math.cos(angle);
+    return 'M0 0L0 -49A49 49 0 ' + (p > 0.5 ? 1 : 0) + ' 1 ' + x.toFixed(2) + ' ' + y.toFixed(2) + 'z';
+  }
+
+  /**
+   * @returns {{node: SVGElement, set: function(number, string)}}
+   * set(progress, state) mit state = idle | running | paused | done
+   */
+  function dial(doc) {
+    var disc = el(doc, 'circle', { cx: 0, cy: 0, r: 49, fill: TIMER.idle });
+    var rest = el(doc, 'path', { d: '', fill: TIMER.plenty });
+    var node = svg(doc, '-50 -50 100 100', 'cr-dial__svg', [disc, rest]);
+    var last = '';
+    function set(progress, state) {
+      var key = state + ':' + (state === 'running' || state === 'paused' ? progress.toFixed(4) : '');
+      if (key === last) return;
+      last = key;
+      if (state === 'idle' || state === 'done') {
+        disc.setAttribute('fill', state === 'idle' ? TIMER.idle : TIMER.done);
+        rest.setAttribute('d', '');
+        return;
+      }
+      disc.setAttribute('fill', TIMER.spent);
+      rest.setAttribute('fill', state === 'paused' ? TIMER.paused : timerArcColor(progress));
+      rest.setAttribute('d', pieD(progress));
+    }
+    return { node: node, set: set };
+  }
+
+  BAO.classroomIcons = {
+    TILE_COLORS: TILE_COLORS,
+    BOITE_COLORS: BOITE_COLORS,
+    TIMER: TIMER,
+    tileColor: tileColor,
+    timerArcColor: timerArcColor,
+    hasGlyph: hasGlyph,
+    glyph: glyph,
+    action: action,
+    boite: boite,
+    coin: coin,
+    dial: dial,
+    pieD: pieD
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/classroom/media.js */
+/* ==========================================================================
+   Medienablage
+   Klang- und Videodateien sowie eigene Bilder sind zu groß für den
+   localStorage, in dem der Bestand liegt (rund fünf Millionen Zeichen für
+   alles). Sie liegen deshalb in einer IndexedDB desselben Browsers; der
+   Bestand merkt sich nur ihre Kennung.
+
+   Erlaubt der Browser keine IndexedDB – manche sperren sie für direkt
+   geöffnete Dateien (file://) –, bleiben die Dateien nur für diese Sitzung
+   im Arbeitsspeicher. Die Oberfläche sagt das dann ausdrücklich.
+
+   Damit ein Klang ohne Verzögerung startet, hält die Ablage alle Einträge
+   bereit: url(id) antwortet sofort mit einer Adresse, die ein Audio- oder
+   Videoelement direkt abspielen kann.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+
+  var DB_NAME = 'bao-media';
+  var STORE = 'files';
+  var OPEN_TIMEOUT_MS = 4000;
+
+  /* Gedacht für kurze Signale und Clips. Die Grenze schützt den Browser und
+     hält die Sicherungsdatei handhabbar, in der die Dateien mitreisen. */
+  var MAX_FILE_BYTES = 30 * 1024 * 1024;
+  var MAX_BACKUP_BYTES = 100 * 1024 * 1024;
+  var MAX_IMAGE_EDGE = 512;
+
+  var db = null;
+  var ready = false;
+  var readyPromise = null;
+  var storeBlobs = true;                  // false: Der Browser speichert nur Rohdaten
+  var entries = Object.create(null);      // id -> { id, name, type, size, addedAt, blob, stored }
+  var urls = Object.create(null);         // id -> Objekt-URL
+  var listeners = [];
+
+  function emit(reason) {
+    listeners.forEach(function (fn) {
+      try { fn(reason); } catch (err) { console.error('Fehler im Beobachter der Medienablage:', err); }
+    });
+  }
+
+  function subscribe(fn) {
+    listeners.push(fn);
+    return function () {
+      var i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    };
+  }
+
+  /* --- Datenbank ------------------------------------------------------------- */
+
+  function openDatabase() {
+    return new Promise(function (resolve) {
+      var settled = false;
+      var guard = null;
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        if (guard) window.clearTimeout(guard);
+        resolve(value);
+      }
+      var request;
+      try {
+        if (!window.indexedDB) { finish(null); return; }
+        request = window.indexedDB.open(DB_NAME, 1);
+      } catch (err) { finish(null); return; }
+      // Manche Browser antworten für file:// gar nicht – dann nicht ewig warten.
+      guard = window.setTimeout(function () { finish(null); }, OPEN_TIMEOUT_MS);
+      request.onupgradeneeded = function () {
+        var database = request.result;
+        if (!database.objectStoreNames.contains(STORE)) database.createObjectStore(STORE, { keyPath: 'id' });
+      };
+      request.onsuccess = function () {
+        if (settled) { try { request.result.close(); } catch (err) { /* schon geschlossen */ } return; }
+        finish(request.result);
+      };
+      request.onerror = function (event) { if (event && event.preventDefault) event.preventDefault(); finish(null); };
+      request.onblocked = function () { finish(null); };
+    });
+  }
+
+  function transact(mode, work) {
+    return new Promise(function (resolve, reject) {
+      var tx;
+      var result;
+      try {
+        tx = db.transaction(STORE, mode);
+        result = work(tx.objectStore(STORE));
+      } catch (err) { reject(err); return; }
+      tx.oncomplete = function () { resolve(result && result.result !== undefined ? result.result : undefined); };
+      tx.onerror = function (event) { if (event && event.preventDefault) event.preventDefault(); reject(tx.error); };
+      tx.onabort = function () { reject(tx.error || new Error('Vorgang abgebrochen')); };
+    });
+  }
+
+  function toBlob(record) {
+    if (record.blob instanceof Blob) return record.blob;
+    if (record.buffer) return new Blob([record.buffer], { type: record.type || '' });
+    return null;
+  }
+
+  function loadAll() {
+    return transact('readonly', function (store) { return store.getAll(); }).then(function (records) {
+      (records || []).forEach(function (record) {
+        var blob = toBlob(record);
+        if (!record.id || !blob) return;
+        entries[record.id] = {
+          id: record.id, name: record.name || '', type: record.type || blob.type || '',
+          size: blob.size, addedAt: record.addedAt || '', blob: blob, stored: true
+        };
+      });
+    });
+  }
+
+  /** Öffnet die Ablage. Mehrfach aufrufbar; liefert immer dasselbe Versprechen. */
+  function init() {
+    if (readyPromise) return readyPromise;
+    readyPromise = openDatabase().then(function (database) {
+      db = database;
+      return db ? loadAll() : null;
+    }).catch(function (err) {
+      console.warn('Die Medienablage ließ sich nicht lesen:', err);
+      db = null;
+    }).then(function () {
+      ready = true;
+      emit('ready');
+    });
+    return readyPromise;
+  }
+
+  function writeRecord(entry) {
+    if (!db) return Promise.resolve(false);
+    var base = { id: entry.id, name: entry.name, type: entry.type, size: entry.size, addedAt: entry.addedAt };
+
+    function putBuffer() {
+      return readAsArrayBuffer(entry.blob).then(function (buffer) {
+        return transact('readwrite', function (store) { return store.put(Object.assign({ buffer: buffer }, base)); });
+      });
+    }
+
+    var attempt = storeBlobs
+      ? transact('readwrite', function (store) { return store.put(Object.assign({ blob: entry.blob }, base)); })
+        .catch(function (err) {
+          // Ältere Browser legen in der IndexedDB keine Blobs ab – dann als Rohdaten.
+          if (err && (err.name === 'QuotaExceededError')) throw err;
+          storeBlobs = false;
+          return putBuffer();
+        })
+      : putBuffer();
+
+    return attempt.then(function () { return true; }, function (err) {
+      console.warn('Datei konnte nicht dauerhaft gespeichert werden:', err);
+      return false;
+    });
+  }
+
+  /* --- Lesen und Schreiben --------------------------------------------------- */
+
+  function readAsArrayBuffer(blob) {
+    if (blob.arrayBuffer) return blob.arrayBuffer();
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
+  function publicInfo(entry) {
+    return entry ? {
+      id: entry.id, name: entry.name, type: entry.type, size: entry.size,
+      addedAt: entry.addedAt, stored: entry.stored
+    } : null;
+  }
+
+  /**
+   * Legt eine Datei ab.
+   * @returns {Promise<{id, name, type, size, stored}>} stored = false heißt:
+   *          nur für diese Sitzung (keine IndexedDB oder kein Platz).
+   */
+  function add(blob, meta) {
+    meta = meta || {};
+    var entry = {
+      id: meta.id || util.uid('med'),
+      name: String(meta.name || blob.name || 'Datei').slice(0, 200),
+      type: meta.type || blob.type || '',
+      size: blob.size,
+      addedAt: util.nowISO(),
+      blob: blob,
+      stored: false
+    };
+    return init().then(function () {
+      entries[entry.id] = entry;
+      return writeRecord(entry);
+    }).then(function (stored) {
+      entry.stored = stored;
+      emit('add');
+      return publicInfo(entry);
+    });
+  }
+
+  function remove(id) {
+    if (!entries[id]) return Promise.resolve();
+    delete entries[id];
+    if (urls[id]) { try { URL.revokeObjectURL(urls[id]); } catch (err) { /* egal */ } delete urls[id]; }
+    emit('remove');
+    if (!db) return Promise.resolve();
+    return transact('readwrite', function (store) { return store.delete(id); })
+      .catch(function (err) { console.warn('Datei konnte nicht entfernt werden:', err); });
+  }
+
+  function has(id) { return !!(id && entries[id]); }
+  function info(id) { return publicInfo(entries[id]); }
+  function blobOf(id) { return entries[id] ? entries[id].blob : null; }
+
+  /** Adresse zum Abspielen oder Anzeigen; leer, wenn die Datei fehlt. */
+  function url(id) {
+    if (!id || !entries[id]) return '';
+    if (!urls[id]) urls[id] = URL.createObjectURL(entries[id].blob);
+    return urls[id];
+  }
+
+  function usage() {
+    var count = 0;
+    var bytes = 0;
+    Object.keys(entries).forEach(function (id) { count += 1; bytes += entries[id].size || 0; });
+    return { count: count, bytes: bytes };
+  }
+
+  /**
+   * Entfernt Dateien, auf die nichts mehr verweist. Läuft nur beim Start:
+   * Innerhalb einer Sitzung kann „Rückgängig“ eine Zuweisung zurückholen.
+   */
+  function sweep(keepIds) {
+    var keep = Object.create(null);
+    (keepIds || []).forEach(function (id) { keep[id] = true; });
+    var stale = Object.keys(entries).filter(function (id) { return !keep[id]; });
+    return Promise.all(stale.map(remove)).then(function () { return stale.length; });
+  }
+
+  /* --- Sicherungsdatei --------------------------------------------------------- */
+
+  function readAsBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var result = String(reader.result || '');
+        resolve(result.slice(result.indexOf(',') + 1));
+      };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /** Base64 stückweise zurückwandeln – ohne die ganze Datei doppelt im Speicher. */
+  function blobFromBase64(data, type) {
+    var clean = String(data || '').replace(/[^A-Za-z0-9+/=]/g, '');
+    var CHUNK = 4 * 65536;                 // Vielfaches von 4: jedes Stück ist für sich gültig
+    var parts = [];
+    for (var offset = 0; offset < clean.length; offset += CHUNK) {
+      var binary = window.atob(clean.slice(offset, offset + CHUNK));
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      parts.push(bytes);
+    }
+    return new Blob(parts, { type: type || '' });
+  }
+
+  /**
+   * Wählt aus, welche Dateien in die Sicherungsdatei passen: kleine zuerst,
+   * bis die Obergrenze erreicht ist.
+   * @returns {{included: object[], skipped: object[], missing: string[]}}
+   */
+  function planExport(ids) {
+    var missing = [];
+    var known = [];
+    (ids || []).forEach(function (id) {
+      if (entries[id]) known.push(entries[id]); else missing.push(id);
+    });
+    known.sort(function (a, b) { return a.size - b.size; });
+    var included = [];
+    var skipped = [];
+    var total = 0;
+    known.forEach(function (entry) {
+      if (total + entry.size <= MAX_BACKUP_BYTES) { included.push(publicInfo(entry)); total += entry.size; }
+      else skipped.push(publicInfo(entry));
+    });
+    return { included: included, skipped: skipped, missing: missing, bytes: total };
+  }
+
+  /** Eine Datei als Eintrag der Sicherungsdatei: { id, name, type, size, data }. */
+  function exportEntry(id) {
+    var entry = entries[id];
+    if (!entry) return Promise.resolve(null);
+    return readAsBase64(entry.blob).then(function (data) {
+      return { id: entry.id, name: entry.name, type: entry.type, size: entry.size, data: data };
+    });
+  }
+
+  /**
+   * Übernimmt Dateien aus einer Sicherungsdatei. Schon vorhandene Kennungen
+   * bleiben unberührt – dieselbe Kennung bedeutet dieselbe Datei.
+   * @returns {Promise<{added: number, failed: number}>}
+   */
+  function importEntries(list, onlyIds) {
+    var wanted = null;
+    if (onlyIds) {
+      wanted = Object.create(null);
+      onlyIds.forEach(function (id) { wanted[id] = true; });
+    }
+    var report = { added: 0, failed: 0 };
+    var chain = init();
+    (Array.isArray(list) ? list : []).forEach(function (item) {
+      if (!item || typeof item !== 'object' || typeof item.id !== 'string' || typeof item.data !== 'string') return;
+      if (wanted && !wanted[item.id]) return;
+      chain = chain.then(function () {
+        if (entries[item.id]) return null;
+        var blob;
+        try { blob = blobFromBase64(item.data, typeof item.type === 'string' ? item.type : ''); }
+        catch (err) { report.failed += 1; return null; }
+        if (!blob.size) { report.failed += 1; return null; }
+        return add(blob, { id: item.id, name: item.name, type: blob.type }).then(function () { report.added += 1; });
+      });
+    });
+    return chain.then(function () { return report; });
+  }
+
+  /* --- Bilder verkleinern -------------------------------------------------------
+     Ein Symbol der Leiste ist auf der Leinwand selten größer als 150 Pixel.
+     Ein Handyfoto mit 12 Megapixeln wäre verschwendeter Platz. */
+
+  function loadImage(blob) {
+    return new Promise(function (resolve, reject) {
+      var source = URL.createObjectURL(blob);
+      var image = new Image();
+      image.onload = function () { resolve({ image: image, release: function () { URL.revokeObjectURL(source); } }); };
+      image.onerror = function () { URL.revokeObjectURL(source); reject(new Error('Bild nicht lesbar')); };
+      image.src = source;
+    });
+  }
+
+  /** @returns {Promise<Blob>} höchstens 512 Pixel Kantenlänge; SVG bleibt Vektor. */
+  function prepareImage(file) {
+    var isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || '');
+    // Ohne Typangabe zeigte der Browser eine SVG-Datei nicht als Bild an.
+    var source = isSvg && file.type !== 'image/svg+xml' ? new Blob([file], { type: 'image/svg+xml' }) : file;
+    return loadImage(source).then(function (loaded) {
+      var image = loaded.image;
+      var width = image.naturalWidth;
+      var height = image.naturalHeight;
+      if (isSvg) { loaded.release(); return source; }
+      if (!width || !height) { loaded.release(); throw new Error('Bild ohne Größe'); }
+      var scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
+      if (scale >= 1 && file.size <= 400 * 1024) { loaded.release(); return file; }
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      loaded.release();
+      return new Promise(function (resolve, reject) {
+        canvas.toBlob(function (blob) {
+          if (blob) resolve(blob); else reject(new Error('Bild konnte nicht umgerechnet werden'));
+        }, 'image/png');
+      });
+    });
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0).replace('.', ',') + ' MB';
+  }
+
+  BAO.media = {
+    MAX_FILE_BYTES: MAX_FILE_BYTES,
+    MAX_BACKUP_BYTES: MAX_BACKUP_BYTES,
+    init: init,
+    isReady: function () { return ready; },
+    /** false: Dateien bleiben nur für diese Sitzung erhalten. */
+    isPersistent: function () { return !!db; },
+    subscribe: subscribe,
+    add: add,
+    remove: remove,
+    has: has,
+    info: info,
+    blob: blobOf,
+    url: url,
+    usage: usage,
+    sweep: sweep,
+    planExport: planExport,
+    exportEntry: exportEntry,
+    importEntries: importEntries,
+    blobFromBase64: blobFromBase64,
+    prepareImage: prepareImage,
+    formatBytes: formatBytes
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/classroom/classroom.js */
+/* ==========================================================================
+   Soundboard – Steuerung
+   Alles, was Münzen und Unterrichtsleiste tun, läuft durch dieses Modul:
+   Sozialform und Material wählen, den Timer führen, Symbole und Klänge
+   verwalten, Phasen-Presets starten. Die Leiste auf der Leinwand (panel.js)
+   und die Ansicht „Soundboard“ sind nur zwei Bedienoberflächen dafür.
+
+   Zwei Arten von Zustand:
+
+     Bestand (store)        Einstellungen, Kataloge, Zuweisungen, Presets –
+                            gesichert, exportiert, teils rückgängig zu machen.
+     Augenblick (live)      gewählte Sozialform, gewähltes Material, Timer –
+                            eigene kleine Ablage, übersteht ein Neuladen, steht
+                            aber weder in der Sicherungsdatei noch im Verlauf.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+  var model = BAO.classroomModel;
+  var T = BAO.classroomTimer;
+  var select = BAO.select;
+
+  var LIVE_KEY = 'bao.classroom.live.v1';
+  // Einstellungen, die die Leiste selbst ändert (Lage, zuletzt gewählte
+  // Dauer, sichtbare Bausteine). Die Lehreransicht wird dafür nicht neu
+  // aufgebaut – siehe QUIET_LABELS in app.js.
+  var QUIET_LABEL = 'Unterrichtsleiste';
+  var TICK_MS = 200;
+
+  var live = { phaseId: '', materialIds: [], timer: T.empty() };
+  var soundFired = false;
+  var ticker = null;
+  var listeners = [];
+  var signature = '';
+  var clock = function () { return Date.now(); };
+
+  /* --- Beobachter -------------------------------------------------------------
+     Gründe: 'live' (Sozialform, Material, Timer gesetzt oder beendet),
+             'tick' (die Uhr läuft), 'settings' (Bestand geändert),
+             'media' (Dateien geladen, hinzugefügt, entfernt). */
+
+  function subscribe(fn) {
+    listeners.push(fn);
+    return function () {
+      var i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    };
+  }
+
+  function emit(reason) {
+    listeners.slice().forEach(function (fn) {
+      try { fn(reason); } catch (err) { console.error('Fehler im Beobachter der Unterrichtsleiste:', err); }
+    });
+  }
+
+  /* --- Zugriff ---------------------------------------------------------------- */
+
+  var fallback = null;
+
+  function settings() {
+    var state = BAO.store.getState();
+    if (state && state.classroom) return state.classroom;
+    if (!fallback) fallback = model.defaults();
+    return fallback;
+  }
+
+  function presets() {
+    var state = BAO.store.getState();
+    return (state && state.presets) || [];
+  }
+
+  function catalog(kind) { return settings()[kind === 'materials' ? 'materials' : 'phases'] || []; }
+
+  function findItem(list, id) {
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+
+  function phaseItem() { return live.phaseId ? findItem(catalog('phases'), live.phaseId) : null; }
+
+  function materialItems() {
+    var list = catalog('materials');
+    return live.materialIds.map(function (id) { return findItem(list, id); }).filter(Boolean);
+  }
+
+  /** Verändert Einstellungen, ohne einen Rückgängig-Schritt anzulegen. */
+  function tune(mutator) {
+    return BAO.store.commit(QUIET_LABEL, function (draft) { return mutator(draft.classroom, draft); }, { undoable: false });
+  }
+
+  /** Inhaltliche Änderung – lässt sich rückgängig machen. */
+  function change(label, mutator) {
+    return BAO.store.commit(label, function (draft) { return mutator(draft.classroom, draft); });
+  }
+
+  /* --- Augenblickszustand -------------------------------------------------------- */
+
+  function saveLive() {
+    BAO.storage.writeJSON(LIVE_KEY, { phaseId: live.phaseId, materialIds: live.materialIds, timer: live.timer });
+  }
+
+  /** Entfernt Verweise auf Symbole, die es nicht mehr gibt. true = etwas geändert. */
+  function sanitizeLive() {
+    var changed = false;
+    if (live.phaseId && !findItem(catalog('phases'), live.phaseId)) { live.phaseId = ''; changed = true; }
+    var materials = catalog('materials');
+    var kept = [];
+    live.materialIds.forEach(function (id) {
+      if (findItem(materials, id) && kept.indexOf(id) < 0) kept.push(id);
+    });
+    if (kept.length !== live.materialIds.length) { live.materialIds = kept; changed = true; }
+    return changed;
+  }
+
+  function loadLive() {
+    var raw = BAO.storage.readJSON(LIVE_KEY) || {};
+    live = {
+      phaseId: typeof raw.phaseId === 'string' ? raw.phaseId : '',
+      materialIds: Array.isArray(raw.materialIds)
+        ? raw.materialIds.filter(function (id) { return typeof id === 'string'; }) : [],
+      timer: T.normalize(raw.timer, clock())
+    };
+    sanitizeLive();
+    soundFired = false;
+    saveLive();
+    if (live.timer.running) ensureTicker();
+  }
+
+  function liveChanged() {
+    saveLive();
+    emit('live');
+  }
+
+  /* --- Sozialform und Material ------------------------------------------------------ */
+
+  function setPhase(id) {
+    var next = id && findItem(catalog('phases'), id) ? id : '';
+    if (next === live.phaseId) return;
+    live.phaseId = next;
+    liveChanged();
+  }
+
+  /** Wie in der Leiste: Ein Klick auf die gewählte Sozialform nimmt sie zurück. */
+  function togglePhase(id) { setPhase(live.phaseId === id ? '' : id); }
+
+  function toggleMaterial(id) {
+    if (!findItem(catalog('materials'), id)) return;
+    var index = live.materialIds.indexOf(id);
+    if (index >= 0) live.materialIds.splice(index, 1); else live.materialIds.push(id);
+    liveChanged();
+  }
+
+  function setMaterials(ids) {
+    var materials = catalog('materials');
+    var next = [];
+    (ids || []).forEach(function (id) {
+      if (findItem(materials, id) && next.indexOf(id) < 0) next.push(id);
+    });
+    live.materialIds = next;
+    liveChanged();
+  }
+
+  function clearMaterials() {
+    if (!live.materialIds.length) return;
+    live.materialIds = [];
+    liveChanged();
+  }
+
+  /* --- Timer -------------------------------------------------------------------------
+     Der Timer rechnet mit dem Zeitpunkt seines Endes, nicht mit gezählten
+     Takten. Ein Browser, der ein verdecktes Fenster ausbremst, verfälscht
+     ihn deshalb nicht – tick() darf beliebig oft und von überall gerufen
+     werden (auch aus dem Beamerfenster, siehe panel.js). */
+
+  function rememberMinutes(minutes) {
+    minutes = T.clampMinutes(minutes, settings().timerMinutes);
+    if (minutes !== settings().timerMinutes) tune(function (c) { c.timerMinutes = minutes; });
+    return minutes;
+  }
+
+  function ensureTicker() {
+    if (ticker) return;
+    ticker = window.setInterval(tick, TICK_MS);
+  }
+
+  function stopTicker() {
+    if (!ticker) return;
+    window.clearInterval(ticker);
+    ticker = null;
+  }
+
+  function timerChanged() {
+    if (live.timer.running) ensureTicker(); else stopTicker();
+    liveChanged();
+  }
+
+  function startTimer(minutes) {
+    minutes = rememberMinutes(minutes);
+    live.timer = T.start(minutes, clock());
+    soundFired = false;
+    timerChanged();
+  }
+
+  /** Start, Pause, Weiter – oder nach dem Ablauf: noch einmal von vorn. */
+  function toggleTimer() {
+    if (!T.hasValue(live.timer)) { startTimer(settings().timerMinutes); return; }
+    if (T.remainingSeconds(live.timer, clock()) <= 0) { resetTimer(); return; }
+    live.timer = T.togglePause(live.timer, clock());
+    timerChanged();
+  }
+
+  function resetTimer() {
+    if (!T.hasValue(live.timer)) { startTimer(settings().timerMinutes); return; }
+    live.timer = T.reset(live.timer, clock());
+    soundFired = false;
+    timerChanged();
+  }
+
+  /** Ändert die laufende Zeit oder, ohne gesetzten Timer, die Startdauer. */
+  function adjustTimer(delta) {
+    if (T.hasValue(live.timer)) {
+      live.timer = T.addMinutes(live.timer, delta, clock());
+      if (T.remainingSeconds(live.timer, clock()) > 0) soundFired = false;
+      timerChanged();
+      return;
+    }
+    rememberMinutes(settings().timerMinutes + delta);
+  }
+
+  function clearTimer() {
+    live.timer = T.empty();
+    soundFired = false;
+    if (BAO.sounds) BAO.sounds.stopTimerSound();
+    timerChanged();
+  }
+
+  function tick() {
+    var now = clock();
+    var before = live.timer;
+    live.timer = T.settle(live.timer, now);
+    if (T.remainingSeconds(live.timer, now) > 0) {
+      soundFired = false;
+    } else if (T.hasValue(live.timer) && !soundFired) {
+      // Genau einmal je abgelaufenem Timer, nicht bei jedem Takt.
+      soundFired = true;
+      if (BAO.sounds) BAO.sounds.playTimerSound();
+    }
+    if (live.timer !== before) { timerChanged(); return; }
+    if (!live.timer.running) stopTicker();
+    emit('tick');
+  }
+
+  /** Alles, was eine Anzeige über den Timer wissen muss. */
+  function timerView() {
+    var now = clock();
+    var remaining = T.remainingSeconds(live.timer, now);
+    return {
+      phase: T.phase(live.timer, now),          // idle | running | paused | done
+      progress: T.progress(live.timer, now),
+      remaining: remaining,
+      clock: T.clock(remaining),
+      totalMinutes: T.totalMinutes(live.timer),
+      running: live.timer.running,
+      hasValue: T.hasValue(live.timer),
+      defaultMinutes: settings().timerMinutes
+    };
+  }
+
+  /* --- Einstellungen der Leiste ------------------------------------------------------- */
+
+  function setShow(module, on) {
+    if (settings().show[module] === !!on) return;
+    tune(function (c) { c.show[module] = !!on; });
+  }
+
+  function setPanelY(ratio) {
+    ratio = util.clamp(Number(ratio) || 0, 0, 1);
+    if (Math.abs(ratio - settings().panelY) < 0.001) return;
+    tune(function (c) { c.panelY = ratio; });
+  }
+
+  function setTimerPresets(list) {
+    var next = model.repairTimerPresets(list);
+    change('Timer-Schnellwahl geändert', function (c) { c.timerPresets = next; });
+    return next;
+  }
+
+  function setSoundOption(key, value) {
+    tune(function (c) {
+      c.sounds[key] = value;
+      // Die Prüfung holt jeden Wert in seinen gültigen Bereich zurück.
+      c.sounds = model.repairClassroom({ sounds: c.sounds }).sounds;
+    });
+  }
+
+  /* --- Kataloge: Sozialformen und Materialien --------------------------------------------- */
+
+  function listOf(c, kind) { return kind === 'materials' ? c.materials : c.phases; }
+  function kindLabel(kind) { return kind === 'materials' ? 'Material' : 'Sozialform'; }
+
+  function addItem(kind, name) {
+    var item = model.makeItem({ name: String(name || '').trim().slice(0, 120) || 'Eigenes Symbol' });
+    change(kindLabel(kind) + ' hinzugefügt', function (c) { listOf(c, kind).push(item); });
+    return item.id;
+  }
+
+  function renameItem(kind, id, name) {
+    name = String(name || '').trim().slice(0, 120);
+    if (!name) return false;
+    return change(kindLabel(kind) + ' umbenannt', function (c) {
+      var item = findItem(listOf(c, kind), id);
+      if (!item || item.name === name) return false;
+      item.name = name;
+    });
+  }
+
+  function moveItem(kind, id, delta) {
+    return change('Reihenfolge geändert', function (c) {
+      var list = listOf(c, kind);
+      var index = list.indexOf(findItem(list, id));
+      var target = index + delta;
+      if (index < 0 || target < 0 || target >= list.length) return false;
+      list.splice(target, 0, list.splice(index, 1)[0]);
+    });
+  }
+
+  function removeItem(kind, id) {
+    return change(kindLabel(kind) + ' entfernt', function (c) {
+      var list = listOf(c, kind);
+      var index = list.indexOf(findItem(list, id));
+      if (index < 0) return false;
+      list.splice(index, 1);
+    });
+  }
+
+  function restoreDefaults(kind) {
+    return change('Standards wiederhergestellt', function (c) {
+      if (kind === 'materials') c.materials = model.defaultMaterials(); else c.phases = model.defaultPhases();
+    });
+  }
+
+  /** Ersetzt das Symbol durch ein eigenes Bild (PNG, JPG, SVG …). */
+  function setItemImage(kind, id, file) {
+    return storeImage(file).then(function (result) {
+      if (!result.ok) return result;
+      change('Symbol ausgetauscht', function (c) {
+        var item = findItem(listOf(c, kind), id);
+        if (!item) return false;
+        item.imageId = result.info.id;
+      });
+      return result;
+    });
+  }
+
+  function resetItemImage(kind, id) {
+    return change('Standardbild wiederhergestellt', function (c) {
+      var item = findItem(listOf(c, kind), id);
+      if (!item || !item.imageId) return false;
+      item.imageId = '';
+    });
+  }
+
+  /* --- Dateien annehmen --------------------------------------------------------------------- */
+
+  function tooLarge(file) {
+    return file.size > BAO.media.MAX_FILE_BYTES
+      ? { ok: false, message: '„' + file.name + '“ ist ' + BAO.media.formatBytes(file.size)
+        + ' groß. Erlaubt sind höchstens ' + BAO.media.formatBytes(BAO.media.MAX_FILE_BYTES)
+        + ' – gedacht ist das Soundboard für kurze Signale und Clips.' }
+      : null;
+  }
+
+  function storeImage(file) {
+    if (!file) return Promise.resolve({ ok: false, message: '' });
+    var refused = tooLarge(file);
+    if (refused) return Promise.resolve(refused);
+    return BAO.media.prepareImage(file).then(function (blob) {
+      return BAO.media.add(blob, { name: file.name });
+    }).then(function (info) {
+      return { ok: true, info: info };
+    }, function () {
+      return { ok: false, message: '„' + file.name + '“ ließ sich nicht als Bild lesen. Geeignet sind PNG, JPG und SVG.' };
+    });
+  }
+
+  function storeMedia(file, wantAudio) {
+    if (!file) return Promise.resolve({ ok: false, message: '' });
+    var refused = tooLarge(file);
+    if (refused) return Promise.resolve(refused);
+    return BAO.sounds.probe(file).then(function (probe) {
+      if (!probe.ok) {
+        return { ok: false, message: '„' + file.name + '“ kann dieser Browser nicht abspielen. ' + BAO.sounds.FORMAT_TIP };
+      }
+      return BAO.media.add(file, { name: file.name }).then(function (info) {
+        return { ok: true, info: info, kind: wantAudio ? 'audio' : probe.kind };
+      });
+    });
+  }
+
+  /* --- Münzen ---------------------------------------------------------------------------------- */
+
+  function button(index) { return settings().sounds.buttons[index] || null; }
+
+  function assignMedia(index, file) {
+    return storeMedia(file, false).then(function (result) {
+      if (!result.ok) return result;
+      change('Klang zugewiesen', function (c) {
+        var target = c.sounds.buttons[index];
+        if (!target) return false;
+        target.mediaId = result.info.id;
+        target.name = result.info.name;
+        target.kind = result.kind;
+      });
+      return result;
+    });
+  }
+
+  function assignImage(index, file) {
+    return storeImage(file).then(function (result) {
+      if (!result.ok) return result;
+      change('Münzbild zugewiesen', function (c) {
+        var target = c.sounds.buttons[index];
+        if (!target) return false;
+        target.imageId = result.info.id;
+        target.imageName = result.info.name;
+      });
+      return result;
+    });
+  }
+
+  function resetImage(index) {
+    return change('Münzbild entfernt', function (c) {
+      var target = c.sounds.buttons[index];
+      if (!target || !target.imageId) return false;
+      target.imageId = '';
+      target.imageName = '';
+    });
+  }
+
+  function clearButton(index) {
+    if (BAO.sounds && BAO.sounds.playingIndex() === index) BAO.sounds.stop();
+    return change('Zuweisungen gelöscht', function (c) {
+      var target = c.sounds.buttons[index];
+      if (!target || (!target.mediaId && !target.imageId)) return false;
+      c.sounds.buttons[index] = model.emptyButton();
+    });
+  }
+
+  /* --- Klang am Ende des Timers ------------------------------------------------------------------ */
+
+  function assignTimerSound(file) {
+    return storeMedia(file, true).then(function (result) {
+      if (!result.ok) return result;
+      change('Timer-Klang festgelegt', function (c) {
+        c.timerSound = { mediaId: result.info.id, name: result.info.name };
+      });
+      return result;
+    });
+  }
+
+  function removeTimerSound() {
+    if (BAO.sounds) BAO.sounds.stopTimerSound();
+    return change('Timer-Klang entfernt', function (c) {
+      if (!c.timerSound.mediaId) return false;
+      c.timerSound = { mediaId: '', name: '' };
+    });
+  }
+
+  /* --- Phasen-Presets ------------------------------------------------------------------------------ */
+
+  var TARGET_KINDS = {
+    bank: { label: 'Wortbank', collection: 'banks' },
+    board: { label: 'Tafel', collection: 'boards' },
+    whiteboard: { label: 'Whiteboard', collection: 'whiteboards' }
+  };
+
+  function preset(id) { return findItem(presets(), id); }
+
+  /** Das Ziel eines Presets im Bestand – oder null, wenn es gelöscht wurde. */
+  function presetTarget(item, state) {
+    state = state || BAO.store.getState();
+    var kind = item && TARGET_KINDS[item.targetKind];
+    if (!kind || !item.targetId) return null;
+    return select.byId(state[kind.collection] || [], item.targetId);
+  }
+
+  /** hasTarget = es ist ein Ziel gewählt; missing = gewählt, aber nicht mehr vorhanden. */
+  function presetStatus(item, state) {
+    var hasTarget = !!(item && TARGET_KINDS[item.targetKind] && item.targetId);
+    var target = hasTarget ? presetTarget(item, state) : null;
+    return {
+      hasTarget: hasTarget,
+      missing: hasTarget && !target,
+      kindLabel: hasTarget ? TARGET_KINDS[item.targetKind].label : '',
+      title: target ? target.title : (item ? item.targetTitle : ''),
+      target: target
+    };
+  }
+
+  /** Alles, was ein Preset öffnen kann – für die Auswahl im Dialog. */
+  function presetTargets(state) {
+    state = state || BAO.store.getState();
+    var result = [];
+    Object.keys(TARGET_KINDS).forEach(function (kind) {
+      (state[TARGET_KINDS[kind].collection] || []).forEach(function (entry) {
+        var group = select.group(state, entry.groupId);
+        if (group && group.archived) return;
+        result.push({
+          kind: kind, id: entry.id, kindLabel: TARGET_KINDS[kind].label,
+          title: entry.title || '', group: group ? group.name : '',
+          scene: kind === 'bank' ? (entry.scene || '') : '',
+          level: kind === 'bank' ? (entry.defaultLevel || 2) : 2
+        });
+      });
+    });
+    return result.sort(function (a, b) {
+      return (a.group + ' ' + a.kindLabel + ' ' + a.title).localeCompare(b.group + ' ' + b.kindLabel + ' ' + b.title, 'de');
+    });
+  }
+
+  function suggestPhase(scene) {
+    return model.suggestPhase(scene, catalog('phases'), settings().sceneMap);
+  }
+
+  /**
+   * Legt ein Preset an oder ändert es.
+   * options.rememberScene: Szene, deren Zuordnung zur Sozialform gemerkt wird.
+   */
+  function savePreset(data, options) {
+    options = options || {};
+    var existing = data.id ? preset(data.id) : null;
+    var next = model.repairPreset(model.makePreset(Object.assign({}, existing || {}, data, { updatedAt: util.nowISO() })));
+    if (!existing) next.createdAt = next.updatedAt;
+    next.name = next.name.trim() || next.targetTitle;
+
+    BAO.store.commit(existing ? 'Preset geändert' : 'Preset angelegt', function (draft) {
+      var index = draft.presets.indexOf(findItem(draft.presets, next.id));
+      if (index >= 0) draft.presets[index] = next; else draft.presets.push(next);
+      var sceneKey = model.normalizeScene(options.rememberScene);
+      if (sceneKey) {
+        if (next.phaseId) draft.classroom.sceneMap[sceneKey] = next.phaseId;
+        else delete draft.classroom.sceneMap[sceneKey];
+      }
+    });
+    return next.id;
+  }
+
+  function removePreset(id) {
+    return BAO.store.commit('Preset gelöscht', function (draft) {
+      var index = draft.presets.indexOf(findItem(draft.presets, id));
+      if (index < 0) return false;
+      draft.presets.splice(index, 1);
+    });
+  }
+
+  function movePreset(id, delta) {
+    return BAO.store.commit('Reihenfolge geändert', function (draft) {
+      var index = draft.presets.indexOf(findItem(draft.presets, id));
+      var target = index + delta;
+      if (index < 0 || target < 0 || target >= draft.presets.length) return false;
+      draft.presets.splice(target, 0, draft.presets.splice(index, 1)[0]);
+    });
+  }
+
+  /** Der Unterrichtsteil eines Presets: Sozialform, Material, Timer. */
+  function applyPreset(item) {
+    var show = {};
+    if (item.phaseId && findItem(catalog('phases'), item.phaseId)) {
+      live.phaseId = item.phaseId;
+      show.phase = true;
+    }
+    var materials = catalog('materials');
+    var wanted = item.materialIds.filter(function (id) { return !!findItem(materials, id); });
+    if (wanted.length) {
+      live.materialIds = wanted;
+      show.materials = true;
+    }
+    if (item.timerMinutes > 0) show.timer = true;
+
+    var current = settings();
+    var hidden = Object.keys(show).filter(function (key) { return !current.show[key]; });
+    var minutes = item.timerMinutes > 0 ? item.timerMinutes : current.timerMinutes;
+    if (hidden.length || minutes !== current.timerMinutes) {
+      tune(function (c) {
+        hidden.forEach(function (key) { c.show[key] = true; });
+        c.timerMinutes = minutes;
+      });
+    }
+    liveChanged();
+    if (item.timerMinutes > 0 && item.timerAutostart) startTimer(item.timerMinutes);
+  }
+
+  /**
+   * Startet eine Unterrichtsphase: stellt die Leiste ein und öffnet das Ziel.
+   * @returns {{ok: boolean, missing: boolean}} missing = das Ziel gibt es nicht mehr
+   */
+  function startPreset(id) {
+    var item = preset(id);
+    if (!item) return { ok: false, missing: false };
+    var status = presetStatus(item);
+    applyPreset(item);
+
+    if (status.target && BAO.app) {
+      var target = status.target;
+      if (item.targetKind === 'bank') {
+        BAO.app.setContext(target.subjectId, target.groupId);
+        BAO.app.projectBank(target.id, { level: item.level });
+      } else if (item.targetKind === 'board') {
+        BAO.app.projectBoard(target.id);
+      } else {
+        BAO.app.setContext(target.subjectId, target.groupId);
+        BAO.app.go('whiteboard/' + target.id);
+      }
+    }
+    return { ok: true, missing: status.missing };
+  }
+
+  /* --- Start ------------------------------------------------------------------------------------------- */
+
+  function sign(state) {
+    return JSON.stringify(state.classroom || null) + '\n' + JSON.stringify(state.presets || null);
+  }
+
+  function boot(meta) {
+    signature = sign(BAO.store.getState());
+    loadLive();
+    BAO.media.subscribe(function () { emit('media'); });
+    BAO.media.init().then(function () {
+      // Aufräumen nur bei einem regulär geladenen Bestand: Nach einem
+      // Fehlstart verwiese nichts mehr auf die Dateien, obwohl sie noch
+      // gebraucht werden könnten.
+      if (meta && meta.startedFresh) return;
+      var keep = model.mediaIds(BAO.store.getState());
+      var safety = BAO.storage.loadSafetyCopy();
+      if (safety && safety.state) keep = keep.concat(model.mediaIds(safety.state));
+      BAO.media.sweep(keep);
+    });
+  }
+
+  BAO.store.subscribe(function (state, meta) {
+    if (meta.reason === 'init') { boot(meta); return; }
+    var next = sign(state);
+    if (next === signature) return;
+    signature = next;
+    if (sanitizeLive()) saveLive();
+    emit('settings');
+  });
+
+  BAO.classroom = {
+    QUIET_LABEL: QUIET_LABEL,
+    subscribe: subscribe,
+    settings: settings,
+    presets: presets,
+    catalog: catalog,
+    live: function () { return live; },
+    phaseItem: phaseItem,
+    materialItems: materialItems,
+
+    setPhase: setPhase,
+    togglePhase: togglePhase,
+    toggleMaterial: toggleMaterial,
+    setMaterials: setMaterials,
+    clearMaterials: clearMaterials,
+
+    startTimer: startTimer,
+    toggleTimer: toggleTimer,
+    resetTimer: resetTimer,
+    adjustTimer: adjustTimer,
+    clearTimer: clearTimer,
+    tick: tick,
+    timerView: timerView,
+    TICK_MS: TICK_MS,
+
+    setShow: setShow,
+    setPanelY: setPanelY,
+    setTimerPresets: setTimerPresets,
+    setSoundOption: setSoundOption,
+
+    addItem: addItem,
+    renameItem: renameItem,
+    moveItem: moveItem,
+    removeItem: removeItem,
+    restoreDefaults: restoreDefaults,
+    setItemImage: setItemImage,
+    resetItemImage: resetItemImage,
+
+    button: button,
+    assignMedia: assignMedia,
+    assignImage: assignImage,
+    resetImage: resetImage,
+    clearButton: clearButton,
+    assignTimerSound: assignTimerSound,
+    removeTimerSound: removeTimerSound,
+
+    preset: preset,
+    presetStatus: presetStatus,
+    presetTargets: presetTargets,
+    suggestPhase: suggestPhase,
+    savePreset: savePreset,
+    removePreset: removePreset,
+    movePreset: movePreset,
+    startPreset: startPreset,
+
+    /** Nur für Prüfungen: ersetzt die Uhr, damit ein Timer ohne Warten abläuft. */
+    setClock: function (fn) { clock = fn || function () { return Date.now(); }; },
+    reloadLive: loadLive
+  };
+})(window.BAO = window.BAO || {});
+
+  </script>
+  <script>
+/* js/classroom/sounds.js */
+/* ==========================================================================
+   Klänge abspielen
+   Die Münzen des Soundboards: Jede spielt eine Audio- oder Videodatei. Ein
+   zweiter Klick auf dieselbe Münze stoppt, eine andere Münze löst die
+   laufende ab. Ein Video erscheint über der Leinwand – groß in der Mitte,
+   bildfüllend oder kurz bildfüllend und danach groß.
+
+   Der Ton kommt immer aus dem Hauptfenster: Dort hat die Lehrkraft geklickt,
+   also erlaubt der Browser die Wiedergabe. Ist das Beamerfenster offen,
+   läuft das Video dort stumm und im Gleichschritt mit.
+
+   Daneben gibt es einen zweiten, unabhängigen Spieler für den Klang am Ende
+   des Timers – er darf eine laufende Münze nicht abbrechen.
+   ========================================================================== */
+(function (BAO) {
+  'use strict';
+
+  var util = BAO.util;
+
+  var FORMAT_TIP = 'Am zuverlässigsten sind MP3 oder WAV für Klänge und MP4 (H.264/AAC) oder WebM für Videos.';
+  var AUDIO_ACCEPT = 'audio/*,.mp3,.wav,.ogg,.oga,.flac,.m4a,.aac,.opus';
+  var MEDIA_ACCEPT = AUDIO_ACCEPT + ',video/*,.mp4,.m4v,.mov,.webm,.mkv';
+  var IMAGE_ACCEPT = 'image/png,image/jpeg,image/svg+xml,image/webp,image/gif,.png,.jpg,.jpeg,.svg,.webp,.gif';
+  var PROBE_TIMEOUT_MS = 6000;
+
+  var current = null;        // { index, video, element, frames: [{ node, doc }], mirror, burst }
+  var timerAudio = null;
+  var listeners = [];
+
+  function emit(reason) {
+    listeners.slice().forEach(function (fn) {
+      try { fn(reason); } catch (err) { console.error('Fehler im Beobachter der Klänge:', err); }
+    });
+  }
+
+  function subscribe(fn) {
+    listeners.push(fn);
+    return function () {
+      var i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    };
+  }
+
+  function options() { return BAO.classroom.settings().sounds; }
+  function volume() { return util.clamp(Number(options().volume), 0, 1); }
+
+  /* --- Datei prüfen ------------------------------------------------------------ */
+
+  /**
+   * Kann der Browser die Datei abspielen – und ist es ein Klang oder ein Video?
+   * Maßgeblich ist der Inhalt, nicht die Endung: Eine MP4-Datei ohne Bildspur
+   * ist ein Klang.
+   * @returns {Promise<{ok: boolean, kind: string, duration: number}>}
+   */
+  function probe(blob) {
+    return new Promise(function (resolve) {
+      var source = URL.createObjectURL(blob);
+      var element = document.createElement('video');
+      var done = false;
+      var guard = window.setTimeout(function () { finish({ ok: false, kind: '', duration: 0 }); }, PROBE_TIMEOUT_MS);
+      function finish(result) {
+        if (done) return;
+        done = true;
+        window.clearTimeout(guard);
+        element.onloadedmetadata = element.onerror = null;
+        element.removeAttribute('src');
+        try { element.load(); } catch (err) { /* egal */ }
+        URL.revokeObjectURL(source);
+        resolve(result);
+      }
+      element.preload = 'metadata';
+      element.muted = true;
+      element.onloadedmetadata = function () {
+        finish({
+          ok: true,
+          kind: element.videoWidth > 0 && element.videoHeight > 0 ? 'video' : 'audio',
+          duration: isFinite(element.duration) ? element.duration : 0
+        });
+      };
+      element.onerror = function () { finish({ ok: false, kind: '', duration: 0 }); };
+      element.src = source;
+    });
+  }
+
+  /* --- Video über der Leinwand ---------------------------------------------------- */
+
+  function hostOf(doc) {
+    return doc.fullscreenElement && doc.fullscreenElement !== doc.documentElement
+      ? doc.fullscreenElement : doc.body;
+  }
+
+  function buildFrame(doc, source, muted) {
+    BAO.render.ensureStyle(doc, false);
+    var video = doc.createElement('video');
+    video.className = 'snd-video__film';
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.muted = !!muted;
+    video.src = source;
+    var node = doc.createElement('div');
+    node.className = 'snd-video';
+    node.setAttribute('role', 'button');
+    node.setAttribute('aria-label', 'Video – Klick beendet die Wiedergabe');
+    var box = doc.createElement('div');
+    box.className = 'snd-video__box';
+    box.appendChild(video);
+    node.appendChild(box);
+    box.addEventListener('click', function () { stop(); });
+    hostOf(doc).appendChild(node);
+    return { node: node, doc: doc, video: video };
+  }
+
+  function setMode(mode) {
+    if (!current) return;
+    current.frames.forEach(function (frame) { frame.node.dataset.mode = mode; });
+  }
+
+  function showVideo(source) {
+    var settings = options();
+    current.frames.push(buildFrame(document, source, false));
+    current.element = current.frames[0].video;
+
+    // Im Beamerfenster läuft dasselbe Video stumm mit.
+    var surface = BAO.output.getSurface('window');
+    if (surface && surface.doc && surface.doc !== document) {
+      try {
+        var twin = buildFrame(surface.doc, source, true);
+        current.frames.push(twin);
+        current.mirror = twin.video;
+      } catch (err) { console.warn('Video im Beamerfenster nicht möglich:', err); }
+    }
+
+    if (settings.videoMode === 'full') {
+      setMode('full');
+    } else if (settings.videoMode === 'burst') {
+      setMode('full');
+      current.burst = window.setTimeout(function () { setMode('large'); },
+        Math.max(200, Math.round(settings.burstSeconds * 1000)));
+    } else {
+      setMode('large');
+    }
+  }
+
+  function syncMirror() {
+    if (!current || !current.mirror) return;
+    var mirror = current.mirror;
+    try {
+      if (Math.abs(mirror.currentTime - current.element.currentTime) > 0.25) mirror.currentTime = current.element.currentTime;
+      if (mirror.paused) { var attempt = mirror.play(); if (attempt && attempt.catch) attempt.catch(function () {}); }
+    } catch (err) { /* Fenster inzwischen geschlossen */ }
+  }
+
+  /* --- Münzen ------------------------------------------------------------------------ */
+
+  function playingIndex() { return current ? current.index : -1; }
+  function isVideoShowing() { return !!(current && current.video); }
+
+  function reportError(name) {
+    BAO.toast.error('„' + name + '“ konnte nicht abgespielt werden. ' + FORMAT_TIP);
+  }
+
+  /**
+   * Löst eine Münze aus (index 0 … 7).
+   * @returns {'playing'|'stopped'|'empty'|'missing'|'none'}
+   */
+  function trigger(index) {
+    var button = options().buttons[index];
+    if (!button) return 'none';
+    if (!button.mediaId) return 'empty';
+    if (!BAO.media.has(button.mediaId)) return 'missing';
+
+    if (current && current.index === index) { stop(); return 'stopped'; }
+    stop();
+
+    var source = BAO.media.url(button.mediaId);
+    var session = { index: index, video: button.kind === 'video', element: null, frames: [], mirror: null, burst: null, failed: false };
+    current = session;
+
+    if (session.video) showVideo(source);
+    else { session.element = new Audio(); session.element.src = source; }
+
+    var element = session.element;
+    element.volume = volume();
+    element.addEventListener('ended', function () { if (current === session) stop(); });
+    element.addEventListener('error', function () { fail(session, button.name); });
+    if (session.mirror) {
+      element.addEventListener('playing', syncMirror);
+      element.addEventListener('timeupdate', syncMirror);
+    }
+
+    var attempt;
+    try { attempt = element.play(); } catch (err) { fail(session, button.name); return 'none'; }
+    if (attempt && attempt.catch) attempt.catch(function (err) {
+      // Ein Abbruch durch stop() ist kein Fehler.
+      if (err && err.name === 'AbortError') return;
+      fail(session, button.name);
+    });
+
+    emit('play');
+    return 'playing';
+  }
+
+  function fail(session, name) {
+    if (session.failed || current !== session) return;
+    session.failed = true;            // genau eine Meldung je Fehlversuch
+    stop();
+    reportError(name || 'Die Datei');
+  }
+
+  function release(element) {
+    if (!element) return;
+    try {
+      element.pause();
+      element.removeAttribute('src');
+      element.load();
+    } catch (err) { /* Fenster inzwischen geschlossen */ }
+  }
+
+  function stop() {
+    if (!current) return false;
+    var session = current;
+    current = null;
+    if (session.burst) window.clearTimeout(session.burst);
+    release(session.element);
+    session.frames.forEach(function (frame) {
+      release(frame.video);
+      try { if (frame.node.parentNode) frame.node.parentNode.removeChild(frame.node); } catch (err) { /* egal */ }
+    });
+    emit('stop');
+    return true;
+  }
+
+  /** Meldungen in Worten – für Klicks außerhalb der Verwaltung. */
+  function triggerWithFeedback(index) {
+    var result = trigger(index);
+    var button = options().buttons[index];
+    if (result === 'empty') {
+      BAO.toast.show('Für Münze ' + (index + 1) + ' ist keine Medien-Datei zugewiesen.', {
+        actionLabel: 'Soundboard öffnen', onAction: function () { BAO.app.go('soundboard'); }
+      });
+    } else if (result === 'missing') {
+      BAO.toast.error('Die Datei „' + (button.name || 'ohne Namen') + '“ für Münze ' + (index + 1)
+        + ' liegt in diesem Browser nicht mehr vor. Bitte neu zuweisen oder die Sicherungsdatei wiederherstellen.');
+    }
+    return result;
+  }
+
+  /** Lautstärke sofort anwenden – etwa während der Regler gezogen wird. */
+  function applyVolume(value) {
+    var level = util.clamp(Number(value), 0, 1);
+    if (current && current.element) current.element.volume = level;
+    if (timerAudio) timerAudio.volume = level;
+  }
+
+  /* --- Klang am Ende des Timers --------------------------------------------------------- */
+
+  function stopTimerSound() {
+    if (!timerAudio) return;
+    release(timerAudio);
+    timerAudio = null;
+  }
+
+  /** @returns {boolean} true, wenn ein Klang gestartet wurde */
+  function playTimerSound() {
+    stopTimerSound();
+    var sound = BAO.classroom.settings().timerSound;
+    if (!sound || !sound.mediaId || !BAO.media.has(sound.mediaId)) return false;
+    var audio = new Audio();
+    timerAudio = audio;
+    audio.src = BAO.media.url(sound.mediaId);
+    audio.volume = volume();
+    audio.addEventListener('ended', function () { if (timerAudio === audio) stopTimerSound(); });
+    try {
+      var attempt = audio.play();
+      if (attempt && attempt.catch) attempt.catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        console.warn('Der Klang am Ende des Timers ließ sich nicht abspielen:', err);
+      });
+    } catch (err) { return false; }
+    return true;
+  }
+
+  function stopAll() {
+    var stopped = stop();
+    if (timerAudio) { stopTimerSound(); stopped = true; }
+    return stopped;
+  }
+
+  /* --- Tastatur -----------------------------------------------------------------------------
+     Überall in der App, auch im Beamerfenster:
+       Alt + Umschalt + 1 … 8   Münze auslösen (nur sichtbare Münzen)
+       Alt + Umschalt + 0       alles stoppen
+     Solange ein Video zu sehen ist, beenden Esc, Leertaste und Rücktaste es.
+     Die Tasten werden abgefangen, bevor Projektion, Tafel oder Whiteboard sie
+     sehen – sonst löschte die Rücktaste nebenbei ein Element der Tafel. */
+
+  function digitOf(event) {
+    var match = /^(?:Digit|Numpad)([0-9])$/.exec(event.code || '');
+    return match ? parseInt(match[1], 10) : -1;
+  }
+
+  function onKeyDown(event) {
+    if (isVideoShowing() && !event.ctrlKey && !event.metaKey && !event.altKey
+      && (event.key === 'Escape' || event.key === ' ' || event.key === 'Spacebar' || event.key === 'Backspace')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      stop();
+      return;
+    }
+    if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
+    var digit = digitOf(event);
+    if (digit < 0 || digit > BAO.classroomModel.MAX_BUTTONS) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.repeat) return;
+    if (digit === 0) { stopAll(); return; }
+    if (digit <= options().visible) triggerWithFeedback(digit - 1);
+  }
+
+  /**
+   * Bindet die Tastatur eines Dokuments an – Hauptfenster oder Beamerfenster.
+   * Mehrfaches Anbinden schadet nicht: Derselbe Beobachter zählt nur einmal.
+   */
+  function bindDocument(doc) {
+    if (doc) doc.addEventListener('keydown', onKeyDown, true);
+  }
+
+  bindDocument(document);
+
+  BAO.sounds = {
+    FORMAT_TIP: FORMAT_TIP,
+    AUDIO_ACCEPT: AUDIO_ACCEPT,
+    MEDIA_ACCEPT: MEDIA_ACCEPT,
+    IMAGE_ACCEPT: IMAGE_ACCEPT,
+    subscribe: subscribe,
+    probe: probe,
+    trigger: trigger,
+    triggerWithFeedback: triggerWithFeedback,
+    stop: stop,
+    stopAll: stopAll,
+    playingIndex: playingIndex,
+    isVideoShowing: isVideoShowing,
+    applyVolume: applyVolume,
+    playTimerSound: playTimerSound,
+    stopTimerSound: stopTimerSound,
+    isTimerSoundPlaying: function () { return !!timerAudio; },
+    bindDocument: bindDocument
+  };
 })(window.BAO = window.BAO || {});
 
   </script>

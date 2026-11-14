@@ -55,6 +55,19 @@
         if (!state.settings.whiteboard || typeof state.settings.whiteboard !== 'object') state.settings.whiteboard = {};
         return state;
       }
+    },
+    {
+      to: 4,
+      describe: 'Soundboard ergänzt: Klänge, Unterrichtsleiste, Phasen-Presets',
+      run: function (state) {
+        if (!Array.isArray(state.presets)) state.presets = [];
+        // Die Einzelheiten ergänzt die Prüfung (classroom/model.js). Anfangs
+        // zeigt die Leiste nichts: Eine bestehende Projektion bleibt, wie sie war.
+        if (!state.classroom || typeof state.classroom !== 'object' || Array.isArray(state.classroom)) {
+          state.classroom = BAO.classroomModel.defaults();
+        }
+        return state;
+      }
     }
   ];
 
